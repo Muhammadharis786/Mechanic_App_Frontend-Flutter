@@ -1,0 +1,60 @@
+name: mech_app
+description: "A new Flutter project."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.8.1
+
+dependencies:
+  http: ^1.2.0  
+  flutter:
+    sdk: flutter
+  
+
+  # OTP field package
+  pinput: ^4.0.0 
+
+  # Google Fonts package 
+  google_fonts: ^6.3.2 # Rakh liya gaya hai
+
+  google_sign_in: ^6.1.1 
+
+  # Location Access aur Permissions ke liye 👇
+  geolocator: ^11.0.0 
+  
+  # Google Maps integration ke liye 👇
+  google_maps_flutter: ^2.5.3 
+
+  # Cupertino Icons
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+
+  fonts:
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins/Poppins-Regular.ttf
+        - asset: assets/fonts/Poppins/Poppins-Italic.ttf
+          style: italic
+        - asset: assets/fonts/Poppins/Poppins-Bold.ttf
+          weight: 700
+
+    - family: MontserratAlternates
+      fonts:
+        - asset: assets/fonts/Montserrat_Alternates/MontserratAlternates-Regular.ttf
+        - asset: assets/fonts/Montserrat_Alternates/MontserratAlternates-Italic.ttf
+          style: italic
+        - asset: assets/fonts/Montserrat_Alternates/MontserratAlternates-Bold.ttf
+          weight: 700
