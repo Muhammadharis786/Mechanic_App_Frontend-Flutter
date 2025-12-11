@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'verifyScreenforgotpassword.dart';
+import 'otpScreenforgotpassword.dart';
 import 'homescreen_dart.dart';
 import 'r_screen.dart';
 
@@ -63,7 +63,7 @@ class _VerifyScreenState extends State<VerifyScreen> {
       if (response.statusCode == 200) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
+          MaterialPageRoute(builder: (_) =>  HomeScreen()),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(

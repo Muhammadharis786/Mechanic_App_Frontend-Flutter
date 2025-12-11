@@ -160,94 +160,89 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Stack(
+        child: Column(
           children: [
             // ---------------- SKIP BUTTON ----------------
-            Positioned(
-              right: 20,
-              top: 10,
-              child: TextButton(
-                onPressed: () {
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const VerifyScreen(),
+            Align(
+              alignment: Alignment.topRight,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 10, right: 20),
+                child: TextButton(
+                  onPressed: () {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const VerifyScreen(),
+                      ),
+                    );
+                  },
+                  child: Text(
+                    "Skip >",
+                    style: GoogleFonts.poppins(
+                      color: const Color.fromARGB(255, 70, 68, 68),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w300,
                     ),
-                  );
-                },
-                child: Text(
-                  "Skip >",
-                  style: GoogleFonts.poppins(
-                    color: const Color.fromARGB(255, 70, 68, 68),
-                    fontSize: 18,
-                    fontWeight: FontWeight.w300,
                   ),
                 ),
               ),
             ),
 
             // ---------------- PAGEVIEW + BOTTOM SECTION ----------------
-            Positioned.fill(
+            Expanded(
+              child: PageView.builder(
+                controller: _pageController,
+                itemCount: onboardingData.length,
+                onPageChanged: (index) {
+                  setState(() {
+                    _currentPage = index;
+                  });
+                  _textController.forward(from: 0);
+                },
+                itemBuilder: (context, index) {
+                  return _pageViewContent(index);
+                },
+              ),
+            ),
+
+            // Dots + Next Button
+            SizedBox(
+              height: 120,
               child: Column(
                 children: [
-                  Expanded(
-                    flex: 3,
-                    child: PageView.builder(
-                      controller: _pageController,
-                      itemCount: onboardingData.length,
-                      onPageChanged: (index) {
-                        setState(() {
-                          _currentPage = index;
-                        });
-                        _textController.forward(from: 0);
-                      },
-                      itemBuilder: (context, index) {
-                        return _pageViewContent(index);
-                      },
-                    ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(onboardingData.length, _buildDot),
                   ),
-
-                  // Dots + Next Button
-                  SizedBox(
-                    height: 120,
-                    child: Column(
-                      children: [
-                        const SizedBox(height: 16),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: List.generate(onboardingData.length, _buildDot),
-                        ),
-                        const Spacer(),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 8),
-                          child: SizedBox(
-                            width: double.infinity,
-                            height: 50,
-                            child: ElevatedButton(
-                              onPressed: _nextPage,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFFFB3300),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(35),
-                                ),
-                              ),
-                              child: Text(
-                                _currentPage == onboardingData.length - 1
-                                    ? "Get Started"
-                                    : "Next",
-                                style: GoogleFonts.poppins(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
+                  const Spacer(),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 8),
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        onPressed: _nextPage,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFFB3300),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(35),
                           ),
                         ),
-                        const SizedBox(height: 20),
-                      ],
+                        child: Text(
+                          _currentPage == onboardingData.length - 1
+                              ? "Get Started"
+                              : "Next",
+                          style: GoogleFonts.poppins(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
+                  const SizedBox(height: 20),
                 ],
               ),
             ),

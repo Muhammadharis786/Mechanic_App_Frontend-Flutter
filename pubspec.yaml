@@ -11,13 +11,14 @@ dependencies:
   http: ^1.2.0  
   flutter:
     sdk: flutter
+  google_fonts: ^6.0.0
   
 
   # OTP field package
   pinput: ^4.0.0 
 
-  # Google Fonts package 
-  google_fonts: ^6.3.2 # Rakh liya gaya hai
+  # Google Fonts package flu
+  
 
   google_sign_in: ^6.1.1 
 
@@ -51,6 +52,9 @@ flutter:
         - asset: assets/fonts/Poppins/Poppins-Bold.ttf
           weight: 700
 
+    - family: LuckiestGuy
+      fonts:
+        - asset: assets/fonts/LuckiestGuy-Regular.ttf
     - family: MontserratAlternates
       fonts:
         - asset: assets/fonts/Montserrat_Alternates/MontserratAlternates-Regular.ttf

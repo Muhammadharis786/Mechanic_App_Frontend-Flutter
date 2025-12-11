@@ -1,9 +1,9 @@
 // otp_screen.dart file ke top par
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pinput/pinput.dart';
 // 👇 CORRECT FILE NAME IMPORT
-import 'homescreen_dart.dart'; 
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'verify_screen.dart';
@@ -205,7 +205,7 @@ Future<void> _resendOtp() async {
                 ),
                 pinAnimationType: PinAnimationType.scale,
                 keyboardType: TextInputType.number,
-                
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 validator: (s) {
                   if (s == null || s.length < 6) {
                     return 'Enter the complete 6-digit code';

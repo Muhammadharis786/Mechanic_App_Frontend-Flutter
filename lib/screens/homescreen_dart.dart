@@ -1,233 +1,446 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:geolocator/geolocator.dart'; // 👈 Geolocator import kiya
+import 'package:geolocator/geolocator.dart';
+
+void main() {
+  runApp(const MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Mechanic App',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        textTheme: GoogleFonts.plusJakartaSansTextTheme(
+          Theme.of(context).textTheme,
+        ),
+      ),
+      home: HomeScreen(),
+    );
+  }
+}
 
 class HomeScreen extends StatefulWidget {
-  // Filename is homescreen_dart.dart
-  const HomeScreen({super.key});
+  HomeScreen({super.key});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // State variables for Location
-  bool locationEnabled = false; // Isse pata chalega ki location service on hai ya nahi
-  String locationStatusMessage = 'Checking location status...';
-  
-  int selectedIndex = 0; // Bottom nav index
+  final Color contrastColor = const Color(0xFFFB3300);
+  final Color silverColor = const Color(0xFFF5F5F5);
 
-  // Example mechanics list
-  final List<Map<String, String>> mechanics = [
-    {
-      'name': 'Ali Auto Repair',
-      'experience': '5 years',
-      'rating': '4.5',
-      'distance': '2 km',
-    },
-    {
-      'name': 'Ahmed Garage',
-      'experience': '3 years',
-      'rating': '4.2',
-      'distance': '3.5 km',
-    },
-    {
-      'name': 'Zeeshan Motors',
-      'experience': '7 years',
-      'rating': '4.8',
-      'distance': '1.8 km',
-    },
+  bool _isLocationEnabled = false;
+  Position? _currentPosition;
+
+  final List<Map<String, dynamic>> _mechanics = [
+    {'name': 'Hli Mechanic', 'distance': '1.2 km', 'type': 'Bike Mechanic', 'rating': '4.5', 'isOnline': true},
+    {'name': 'Ahmad Auto', 'distance': '3.5 km', 'type': 'Car Mechanic', 'rating': '4.8', 'isOnline': false},
+    {'name': 'Raza Repair', 'distance': '0.5 km', 'type': 'Bike Mechanic', 'rating': '4.2', 'isOnline': true},
   ];
+
+  final PageController _pageController = PageController();
+  int _currentPage = 0;
+  late final Timer _timer;
 
   @override
   void initState() {
     super.initState();
-    // App start hote hi location status check aur request karein
-    _checkAndRequestLocationPermission();
+
+    // Listen for location service changes
+    Geolocator.getServiceStatusStream().listen((ServiceStatus status) {
+      setState(() {
+        _isLocationEnabled = status == ServiceStatus.enabled;
+      });
+      if (_isLocationEnabled) {
+        _getCurrentPosition();
+      }
+    });
+
+    _pageController.addListener(() {
+      final page = _pageController.page ?? 0;
+      if (page.round() != _currentPage) {
+        setState(() {
+          _currentPage = page.round();
+        });
+      }
+    });
+
+    _timer = Timer.periodic(const Duration(seconds: 4), (Timer timer) {
+      if (_pageController.hasClients) {
+        int nextPage = (_pageController.page!.round() + 1) % _mechanics.length;
+        _pageController.animateToPage(
+          nextPage,
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeIn,
+        );
+      }
+    });
+
+    _checkLocationStatus();
   }
 
-  // 👇 Location check aur permission request ka main function
-  Future<void> _checkAndRequestLocationPermission() async {
-    bool serviceEnabled;
-    LocationPermission permission;
+  Future<void> _checkLocationStatus() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    setState(() {
+      _isLocationEnabled = serviceEnabled;
+    });
+  }
 
-    // 1. Check if location services are enabled
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
+  Future<void> _getCurrentPosition() async {
+    try {
+      Position position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high);
       setState(() {
-        locationStatusMessage = 'Location services are disabled on your device.';
-        locationEnabled = false;
+        _currentPosition = position;
       });
-      // User ko system settings mein jaane ke liye bolne ka logic yahan add kar sakte hain
-      return; 
+      print('User location: ${position.latitude}, ${position.longitude}');
+    } catch (e) {
+      print('Error getting location: $e');
     }
+  }
 
-    // 2. Check permission status
-    permission = await Geolocator.checkPermission();
-    
+  Future<void> _promptForLocation() async {
+    LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
-      // Permission maangein (Yeh system prompt dikhayega)
       permission = await Geolocator.requestPermission();
-      
-      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
-        setState(() {
-          locationStatusMessage = 'Location access denied.';
-          locationEnabled = false;
-        });
-        return;
-      }
     }
-    
     if (permission == LocationPermission.deniedForever) {
-      setState(() {
-        locationStatusMessage = 'Location access permanently denied. Please enable from app settings.';
-        locationEnabled = false;
-      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text(
+                'Location permission denied forever. Enable from settings.')),
+      );
       return;
     }
-
-    // 3. Permission granted: Fetch location (Optional, but good for confirmation)
-    if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
-      setState(() {
-        locationStatusMessage = 'Location access granted. Fetching nearest mechanics...';
-        locationEnabled = true;
-      });
-      
-      // Temporary: Location fetch karke confirmation message
-      try {
-        Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.low);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Location found: ${position.latitude.toStringAsFixed(2)}, ${position.longitude.toStringAsFixed(2)}', style: GoogleFonts.poppins())),
-        );
-      } catch (e) {
-         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not get current location.', style: GoogleFonts.poppins())),
-        );
-      }
-    }
+    _getCurrentPosition();
   }
 
-  void _onBottomNavTap(int index) {
-    setState(() {
-      selectedIndex = index;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Selected tab: $index', style: GoogleFonts.poppins())),
-      );
-      // Actual screens switching logic yahan aayega
-    });
+  @override
+  void dispose() {
+    _pageController.dispose();
+    _timer.cancel();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // Apni Orange Color
-    final Color kPrimaryColor = const Color(0xFFFB3300);
-
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            // User Name
-            Text('Hello, Ali!', style: GoogleFonts.poppins(color: Colors.black, fontWeight: FontWeight.w600, fontSize: 22)),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              if (!_isLocationEnabled) _buildLocationBanner(),
+              _buildHeader(),
+              const SizedBox(height: 20),
+              _buildTitleSection(),
+              const SizedBox(height: 15),
+              _buildMechanicProfileCard(),
+              const SizedBox(height: 25),
+              _buildServiceGrid(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
-            // Notification Icon
-            IconButton(
-              icon: const Icon(Icons.notifications_none, color: Colors.black, size: 28),
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Notifications clicked')),
+  Widget _buildLocationBanner() {
+    return Container(
+      color: contrastColor,
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      child: Row(
+        children: [
+          const Icon(Icons.location_off, color: Colors.white, size: 20),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text(
+              'Location is off. Tap to enable for better service.',
+              style: TextStyle(color: Colors.white, fontSize: 14),
+            ),
+          ),
+          GestureDetector(
+            onTap: _promptForLocation,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(5),
+              ),
+              child: Text(
+                'ON',
+                style: TextStyle(
+                  color: contrastColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            const Icon(Icons.menu, size: 30),
+            const SizedBox(width: 15),
+            const CircleAvatar(
+              radius: 15,
+              backgroundColor: Colors.grey,
+              child: Icon(Icons.person, color: Colors.white, size: 20),
+            ),
+            const SizedBox(width: 8),
+            const Text(
+              'User123',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        Icon(Icons.notifications_none, size: 30, color: contrastColor),
+      ],
+    );
+  }
+
+  Widget _buildTitleSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Mechanics',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        Container(
+          margin: const EdgeInsets.only(top: 4),
+          height: 2,
+          width: 100,
+          color: contrastColor,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMechanicProfileCard() {
+    const double cardHeight = 150;
+    return Column(
+      children: [
+        Container(
+          height: cardHeight,
+          padding: const EdgeInsets.all(15),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(color: Colors.grey.shade300),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                spreadRadius: 0,
+                blurRadius: 10,
+                offset: const Offset(0, 5),
+              ),
+            ],
+          ),
+          child: PageView.builder(
+            controller: _pageController,
+            itemCount: _mechanics.length,
+            itemBuilder: (context, index) {
+              return _buildMechanicDetails(_mechanics[index]);
+            },
+          ),
+        ),
+        const SizedBox(height: 25),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(
+            _mechanics.length,
+            (index) => Container(
+              margin: const EdgeInsets.symmetric(horizontal: 3),
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: index == _currentPage ? contrastColor : Colors.grey.shade300,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMechanicDetails(Map<String, dynamic> mechanic) {
+    final Color statusColor = mechanic['isOnline'] ? Colors.green : Colors.grey;
+    final String statusText = mechanic['isOnline'] ? 'Online' : 'Offline';
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const CircleAvatar(
+          radius: 30,
+          backgroundColor: Colors.grey,
+          child: Icon(Icons.person, color: Colors.white, size: 40),
+        ),
+        const SizedBox(width: 15),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                statusText,
+                style: TextStyle(
+                  color: statusColor,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                mechanic['name'],
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                mechanic['distance'],
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade400),
+                  borderRadius: BorderRadius.circular(5),
+                ),
+                child: Text(
+                  mechanic['type'],
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.star, color: Colors.amber, size: 20),
+                const SizedBox(width: 4),
+                Text(
+                  mechanic['rating'],
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildServiceGrid() {
+    return Column(
+      children: [
+        SizedBox(
+          height: 140,
+          child: _serviceBox(title: 'Car Mechanic', imagePath: 'assets/images/car.jpg', borderRadius: 20),
+        ),
+        const SizedBox(height: 15),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              flex: 1,
+              child: Column(
+                children: [
+                  SizedBox(height: 95, child: _serviceBox(title: 'Bike Puncher', imagePath: 'assets/images/bike_puncher.jpg', borderRadius: 16)),
+                  const SizedBox(height: 10),
+                  SizedBox(height: 95, child: _serviceBox(title: 'Car Puncher', imagePath: 'assets/images/car_puncher.jpg', borderRadius: 16)),
+                ],
+              ),
+            ),
+            const SizedBox(width: 15),
+            Expanded(
+              flex: 1,
+              child: SizedBox(height: 200, child: _serviceBox(title: 'Bike Mechanic', imagePath: 'assets/images/bike.jpg', borderRadius: 16)),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _serviceBox({required String title, required String imagePath, double borderRadius = 20}) {
+    const labelBg = Color(0xFFFB3300);
+    return Container(
+      decoration: BoxDecoration(
+        color: silverColor,
+        borderRadius: BorderRadius.circular(borderRadius),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.08),
+            spreadRadius: 1,
+            blurRadius: 6,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.hardEdge,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Image.asset(
+              imagePath,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return Container(
+                  color: Colors.grey.shade200,
+                  child: const Center(
+                    child: Icon(Icons.image_not_supported, size: 40, color: Colors.grey),
+                  ),
                 );
               },
             ),
-          ],
-        ),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 10),
-            
-            // Location Status/Message Display
-            Text(
-              locationEnabled
-                  ? 'Showing mechanics near you' // Agar Location Enabled hai
-                  : locationStatusMessage,        // Agar Disabled ya Pending hai
-              style: GoogleFonts.poppins(
-                fontSize: 15, 
-                color: locationEnabled ? Colors.green.shade600 : Colors.red.shade600,
-                fontWeight: FontWeight.w500
+          ),
+          Positioned.fill(child: Container(color: Colors.black.withOpacity(0.18))),
+          Positioned(
+            left: 10,
+            bottom: 10,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: labelBg,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                title,
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
               ),
             ),
-            
-            // 👇 Agar Location Enabled nahi hai, to re-try button dikhao
-            if (!locationEnabled)
-              Padding(
-                padding: const EdgeInsets.only(top: 8.0),
-                child: TextButton.icon(
-                  onPressed: _checkAndRequestLocationPermission, // Re-request karein
-                  icon: Icon(Icons.refresh, color: kPrimaryColor),
-                  label: Text(
-                    'Tap to enable location',
-                    style: GoogleFonts.poppins(color: kPrimaryColor, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ),
-
-            const SizedBox(height: 25),
-
-            Expanded(
-              child: ListView.builder(
-                itemCount: mechanics.length,
-                itemBuilder: (context, index) {
-                  final mechanic = mechanics[index];
-                  return Card(
-                    // ... Mechanic Card ka code wahi rahega ...
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    margin: const EdgeInsets.only(bottom: 15),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      title: Text(mechanic['name']!, style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
-                      subtitle: Text(
-                        '${mechanic['experience']} experience • Rating: ${mechanic['rating']} • ${mechanic['distance']} away',
-                        style: GoogleFonts.poppins(fontSize: 13, color: Colors.grey.shade600),
-                      ),
-                      trailing: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: kPrimaryColor,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Booking ${mechanic['name']}', style: GoogleFonts.poppins())),
-                          );
-                        },
-                        child: Text('Book', style: GoogleFonts.poppins(color: Colors.white)),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        // ... Bottom Nav Bar ka code wahi rahega ...
-        currentIndex: selectedIndex,
-        selectedItemColor: kPrimaryColor,
-        unselectedItemColor: Colors.grey,
-        type: BottomNavigationBarType.fixed,
-        onTap: _onBottomNavTap,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.book_online), label: 'Bookings'),
-          BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'AI Chatbot'),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+          ),
         ],
       ),
     );
