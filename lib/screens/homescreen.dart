@@ -70,7 +70,7 @@ class HomeScreen extends StatelessWidget {
                 style: GoogleFonts.poppins(
                     fontSize: 13, color: Colors.grey)),
             Text(
-              "Syeda Zainab",
+              "Muhammad Haris",
               style: GoogleFonts.poppins(
                   fontSize: 18, fontWeight: FontWeight.w600),
             ),

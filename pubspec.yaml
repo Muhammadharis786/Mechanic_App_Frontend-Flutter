@@ -13,28 +13,19 @@ dependencies:
     sdk: flutter
   google_fonts: ^6.0.0
   
+  # Firebase packages
+  firebase_core: ^3.12.1
+  firebase_auth: ^5.5.2
   
-  
-
   # OTP field package
   pinput: ^6.0.1 
 
-  # Google Fonts package flu
-  
-
   google_sign_in: ^7.2.0 
-  
-
-  
   geolocator: ^14.0.2 
   
   # Google Maps integration ke liye 
   google_maps_flutter: ^2.5.3
-  # For free map (OpenStreetMap) integration
- # flutter_map: ^8.2.2
-  #latlong2: ^0.9.0
   location: ^8.0.1
- # flutter_map: ^3.1.0
   latlong2: ^0.8.1
 
   # Cupertino Icons
