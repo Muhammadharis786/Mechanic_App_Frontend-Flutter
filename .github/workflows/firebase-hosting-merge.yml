@@ -14,14 +14,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 🔹 Setup Flutter
+      # 🔹 Remove old Flutter cache (force fresh download)
+      - name: Remove old Flutter
+        run: rm -rf $HOME/flutter
+
+      # 🔹 Setup Flutter (explicitly install latest stable 3.13.x)
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.13.3'  # Flutter version with Dart 3.8+
+          flutter-version: '3.13.3'
           channel: stable
+          cache: false  # avoid cached old version
 
-      # 🔹 Disable analytics (optional but prevents banner)
+      # 🔹 Disable analytics
       - name: Disable Flutter analytics
         run: flutter config --no-analytics
 
@@ -31,11 +36,11 @@ jobs:
           flutter --version
           dart --version
 
-      # 🔹 Clean previous builds (optional)
+      # 🔹 Clean project
       - name: Clean Flutter project
         run: flutter clean
 
-      # 🔹 Get dependencies
+      # 🔹 Install dependencies
       - name: Install dependencies
         run: flutter pub get
 
