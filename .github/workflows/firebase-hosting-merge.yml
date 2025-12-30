@@ -10,23 +10,38 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 🔹 Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 🔹 Flutter setup
+      # 🔹 Setup Flutter
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.13.3'
+          flutter-version: '3.13.3'  # Flutter version with Dart 3.8+
           channel: stable
 
-      # 🔹 Flutter dependencies
+      # 🔹 Disable analytics (optional but prevents banner)
+      - name: Disable Flutter analytics
+        run: flutter config --no-analytics
+
+      # 🔹 Verify Flutter and Dart version
+      - name: Check Flutter and Dart version
+        run: |
+          flutter --version
+          dart --version
+
+      # 🔹 Clean previous builds (optional)
+      - name: Clean Flutter project
+        run: flutter clean
+
+      # 🔹 Get dependencies
       - name: Install dependencies
         run: flutter pub get
 
       # 🔹 Build Flutter Web
       - name: Build Flutter Web
-        run: flutter build web
+        run: flutter build web --release
 
       # 🔹 Deploy to Firebase Hosting
       - name: Deploy to Firebase
