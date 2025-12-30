@@ -3,10 +3,10 @@ name: Flutter Web CI/CD
 on:
   push:
     branches:
-      - master   # Deploy to production only on master
+      - master
   pull_request:
     branches:
-      - '**'     # Build PR previews for any branch
+      - '**'
 
 jobs:
   build_and_deploy:
@@ -14,52 +14,46 @@ jobs:
 
     steps:
       # 🔹 Checkout repo
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # 🔹 Remove old Flutter to avoid version conflicts
+      # 🔹 Remove any old Flutter installation
       - name: Remove old Flutter
         run: rm -rf $HOME/flutter
 
-      # 🔹 Setup Flutter 3.13.3 (Dart 3.8+)
+      # 🔹 Install Flutter 3.13.3 fresh (Dart 3.8+)
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.13.3'
           channel: stable
-          cache: false
+          cache: false   # Disable cache to avoid old Flutter
 
-      # 🔹 Disable Flutter analytics
-      - name: Disable Flutter analytics
-        run: flutter config --no-analytics
+      # 🔹 Disable analytics to prevent banner
+      - run: flutter config --no-analytics
 
-      # 🔹 Verify Flutter and Dart versions
-      - name: Check Flutter and Dart version
-        run: |
+      # 🔹 Verify Flutter/Dart version
+      - run: |
           flutter --version
           dart --version
 
       # 🔹 Clean project
-      - name: Clean Flutter project
-        run: flutter clean
+      - run: flutter clean
 
       # 🔹 Install dependencies
-      - name: Install dependencies
-        run: flutter pub get
+      - run: flutter pub get
 
       # 🔹 Build Flutter Web
-      - name: Build Flutter Web
-        run: flutter build web --release
+      - run: flutter build web --release
 
-      # 🔹 Deploy to Firebase
-      - name: Deploy to Firebase Hosting
+      # 🔹 Deploy to Firebase Production
+      - name: Deploy to Firebase Hosting (Production)
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: "${{ secrets.GITHUB_TOKEN }}"
           firebaseServiceAccount: "${{ secrets.FIREBASE_SERVICE_ACCOUNT_ONFIX_MECHANIC_FINDER }}"
           projectId: onfix-mechanic-finder
-          channelId: live   # Production channel
+          channelId: live
 
       # 🔹 Deploy PR preview
       - name: Deploy PR preview
@@ -69,4 +63,4 @@ jobs:
           repoToken: "${{ secrets.GITHUB_TOKEN }}"
           firebaseServiceAccount: "${{ secrets.FIREBASE_SERVICE_ACCOUNT_ONFIX_MECHANIC_FINDER }}"
           projectId: onfix-mechanic-finder
-          channelId: pr-${{ github.event.pull_request.number }}  # Unique preview channel per PR
+          channelId: pr-${{ github.event.pull_request.number }}
