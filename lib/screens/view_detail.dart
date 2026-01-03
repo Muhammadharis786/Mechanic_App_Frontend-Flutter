@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class Mechanic {
   final String id;
@@ -159,10 +160,15 @@ class MechanicDetailScreen extends StatelessWidget {
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: mechanic.phone.trim().isNotEmpty
-                        ? () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Would open call to ${mechanic.phone}'))
-                            );
+                        ? () async {
+                             final Uri launchUri = Uri(scheme: 'tel', path: mechanic.phone);
+                             if (await canLaunchUrl(launchUri)) {
+                               await launchUrl(launchUri);
+                             } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Could not launch dialer for ${mechanic.phone}'))
+                                );
+                             }
                           }
                         : null,
                     style: ElevatedButton.styleFrom(
@@ -214,9 +220,11 @@ class MechanicDetailScreen extends StatelessWidget {
   Widget _buildAvatar() {
     return CircleAvatar(
       radius: 36,
-      backgroundImage: mechanic.avatarUrl.isNotEmpty
+      backgroundImage: mechanic.avatarUrl.startsWith('http')
           ? NetworkImage(mechanic.avatarUrl)
-          : const AssetImage('assets/images/car.jpg') as ImageProvider,
+          : (mechanic.avatarUrl.isNotEmpty
+              ? AssetImage(mechanic.avatarUrl)
+              : const AssetImage('assets/images/car.jpg')) as ImageProvider,
     );
   }
 

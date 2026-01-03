@@ -3,51 +3,89 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:mech_app/screens/view_detail.dart';
 import 'mechanic_list_screen.dart';
 import 'auto_assign.dart';
+import 'package:mech_app/screens/mechanic_login.dart';
 import 'service_chat_screen.dart'; 
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'user_session.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:shimmer/shimmer.dart';
 
-class HomeScreen extends StatelessWidget {
-  HomeScreen({super.key});
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
 
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
   final Color primaryColor = const Color(0xFFFB3300);
+  
+  String _userName = "Loading...";
+  bool _isLoading = true;
 
-  final List<Map<String, dynamic>> nearbyMechanics = [
-    {
-      "id": 1,
-      "name": "Ali Mechanic",
-      "rating": 4.8,
-      "distance": 2.5,
-      "available": true,
-      "image": "assets/images/m1.jpg",
-      "phone": "03001234567",
-    },
-    {
-      "id": 2,
-      "name": "Ahmed Auto Repair",
-      "rating": 4.6,
-      "distance": 4.0,
-      "available": false,
-      "image": "assets/images/m2.png",
-      "phone": "03009876543",
-    },
-    {
-      "id": 3,
-      "name": "Zain's Garage",
-      "rating": 4.7,
-      "distance": 3.2,
-      "available": true,
-      "image": "assets/images/m3.jpg",
-      "phone": "03001112233",
-    },
-    {
-      "id": 4,
-      "name": "John Auto",
-      "rating": 4.5,
-      "distance": 5.0,
-      "available": true,
-      "image": "assets/images/m4.png",
-      "phone": "03004445566",
-    },
-  ];
+  List<Map<String, dynamic>> nearbyMechanics = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchDashboardData();
+  }
+
+  Future<void> _fetchDashboardData() async {
+    // Using 10.0.2.2 for Android Emulator to access localhost
+    final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/user/dashboard");
+
+    try {
+      final response = await http.get(
+        url,
+        headers: UserSession().getAuthHeader(),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        
+        setState(() {
+          // Parsing nested user object
+          if (data['user'] != null) {
+            _userName = data['user']['username'] ?? "User";
+          }
+          
+          // Parsing mechanics list from response
+          if (data['mechanics'] != null) {
+             nearbyMechanics = List<Map<String, dynamic>>.from(
+              (data['mechanics'] as List).map((m) => {
+                "id": m['id'] ?? 0, // ID might not be in the DTO, check if needed or use index/random
+                "name": m['name'] ?? "Unknown Mechanic",
+                "rating": (m['averagerating'] as num?)?.toDouble() ?? 0.0,
+                "distance": (m['distance'] as num?)?.toDouble() ?? 0.0,
+                "available": m['isactive'] ?? false, 
+                // Use API image if available, else fallback to asset
+                "image": m['mechanicimgurl'] != null ? m['mechanicimgurl'] : "assets/images/m1.jpg", 
+                "phone": m['phonenumber'] ?? "",
+                "type": m['MechanicType'] ?? "", 
+                "experience": m['experience'] ?? 0,
+              })
+            );
+          }
+           
+          _isLoading = false;
+        });
+      } else {
+        debugPrint("Failed to fetch dashboard: ${response.statusCode}");
+        setState(() {
+          _userName = "USER";
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error fetching dashboard: $e");
+      setState(() {
+        _userName = "USER";
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -66,144 +104,158 @@ class HomeScreen extends StatelessWidget {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text("Hi 👋",
-                style: GoogleFonts.poppins(
-                    fontSize: 13, color: Colors.grey)),
             Text(
-              "Muhammad Haris",
-              style: GoogleFonts.poppins(
-                  fontSize: 18, fontWeight: FontWeight.w600),
+              "Hi 👋",
+              style: GoogleFonts.poppins(fontSize: 13, color: Colors.grey),
             ),
+            _isLoading
+                ? Shimmer.fromColors(
+                    baseColor: Colors.grey.shade300,
+                    highlightColor: Colors.grey.shade100,
+                    child: Container(
+                      width: 100,
+                      height: 20,
+                      color: Colors.white,
+                    ),
+                  )
+                : Text(
+                    _userName,
+                    style: GoogleFonts.poppins(
+                        fontSize: 18, fontWeight: FontWeight.w600),
+                  ),
           ],
         ),
       ),
 
       // ================= BODY =================
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // -------- Auto Assign --------
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(18),
-                gradient:
-                    LinearGradient(colors: [primaryColor, Colors.deepOrange]),
-              ),
+      // ================= BODY =================
+      body: _isLoading 
+          ? const _SkeletonHomeBody()
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text("Need a Mechanic Now?",
-                      style: GoogleFonts.poppins(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 6),
-                  Text("Nearest mechanic will be auto assigned",
-                      style: GoogleFonts.poppins(color: Colors.white70)),
-                  const SizedBox(height: 14),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: primaryColor,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                    ),
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const AutoAssignScreen()),
-                      );
-                    },
-                    child: Text("Auto Assign Mechanic",
-                        style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w500)),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 26),
-
-            // -------- Nearby Mechanics --------
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text("Nearby Mechanics",
-                    style: GoogleFonts.poppins(
-                        fontSize: 20, fontWeight: FontWeight.w600)),
-                InkWell(
-                  onTap: () {
-                    Navigator.push(
-  context,
-  MaterialPageRoute(
-    builder: (_) => MechanicListScreen(
-      serviceType: "Nearby Mechanics",
-      mechanics: nearbyMechanics, 
-    ),
-  ),
-);
-                  },
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 6),
+                  // -------- Auto Assign --------
+                  Container(
+                    padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Colors.black12,
-                          blurRadius: 4,
+                      borderRadius: BorderRadius.circular(18),
+                      gradient: LinearGradient(
+                          colors: [primaryColor, Colors.deepOrange]),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text("Need a Mechanic Now?",
+                            style: GoogleFonts.poppins(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 6),
+                        Text("Nearest mechanic will be auto assigned",
+                            style: GoogleFonts.poppins(color: Colors.white70)),
+                        const SizedBox(height: 14),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: primaryColor,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                          ),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const AutoAssignScreen()),
+                            );
+                          },
+                          child: Text("Auto Assign Mechanic",
+                              style: GoogleFonts.poppins(
+                                  fontWeight: FontWeight.w500)),
                         ),
                       ],
                     ),
-                    child: Text(
-                      "See All",
-                      style: GoogleFonts.poppins(
-                          color: Colors.deepOrange,
-                          fontWeight: FontWeight.w600),
-                    ),
                   ),
-                )
-              ],
-            ),
 
-            const SizedBox(height: 12),
+                  const SizedBox(height: 26),
 
-            SizedBox(
-              height: 165,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: nearbyMechanics.length,
-                itemBuilder: (context, index) {
-                  return _NearbyMechanicCompactCard(
-                    mechanic: nearbyMechanics[index],
-                    primaryColor: primaryColor,
-                  );
-                },
+                  // -------- Nearby Mechanics --------
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text("Nearby Mechanics",
+                          style: GoogleFonts.poppins(
+                              fontSize: 20, fontWeight: FontWeight.w600)),
+                      InkWell(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => MechanicListScreen(
+                                serviceType: "Nearby Mechanics",
+                                mechanics: nearbyMechanics, 
+                              ),
+                            ),
+                          );
+                        },
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black12,
+                                blurRadius: 4,
+                              ),
+                            ],
+                          ),
+                          child: Text(
+                            "See All",
+                            style: GoogleFonts.poppins(
+                                color: Colors.deepOrange,
+                                fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      )
+                    ],
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  SizedBox(
+                    height: 165,
+                    child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: nearbyMechanics.length,
+                        itemBuilder: (context, index) {
+                          return _NearbyMechanicCompactCard(
+                            mechanic: nearbyMechanics[index],
+                            primaryColor: primaryColor,
+                          );
+                        },
+                      ),
+                  ),
+
+                  const SizedBox(height: 30),
+
+                  // -------- Service Categories --------
+                  Text("Service Categories",
+                      style: GoogleFonts.poppins(
+                          fontSize: 20, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 16),
+
+                  _serviceCard(context, "Bike Mechanic", 2 ,'assets/images/bike.jpg' ),
+                  const SizedBox(height: 16),
+                  _serviceCard(context, "Car Mechanic", 3,'assets/images/car.jpg'),
+                  const SizedBox(height: 16),
+                  _serviceCard(context, "Puncher",4, 'assets/images/puncherr.jpg'),
+                ],
               ),
             ),
-
-            const SizedBox(height: 30),
-
-            // -------- Service Categories --------
-            Text("Service Categories",
-                style: GoogleFonts.poppins(
-                    fontSize: 20, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 16),
-
-            _serviceCard(context, "Bike Mechanic", 2 ,'assets/images/bike.jpg' ),
-            const SizedBox(height: 16),
-            _serviceCard(context, "Car Mechanic", 3,'assets/images/car.jpg'),
-            const SizedBox(height: 16),
-            _serviceCard(context, "Puncher",4, 'assets/images/puncherr.jpg'),
-          ],
-        ),
-      ),
     );
   }
 
@@ -262,7 +314,8 @@ class HomeScreen extends StatelessWidget {
                   backgroundImage: AssetImage('assets/images/user.jpg'),
                 ),
                 const SizedBox(height: 10),
-                Text("Syeda Zainab",
+                Text(
+                  _isLoading ? "Loading..." : _userName,
                     style: GoogleFonts.poppins(
                         color: Colors.white,
                         fontSize: 18,
@@ -289,6 +342,11 @@ class HomeScreen extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: ElevatedButton(
               onPressed: () {
+                   Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const MechanicLoginScreen()),
+                      );
                 // TODO: Navigate to Mechanic Registration screen
               },
               style: ElevatedButton.styleFrom(
@@ -355,7 +413,9 @@ class _NearbyMechanicCompactCard extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 24,
-                backgroundImage: AssetImage(mechanic['image']),
+                backgroundImage: mechanic['image'].toString().startsWith('http')
+                    ? NetworkImage(mechanic['image'])
+                    : AssetImage(mechanic['image']) as ImageProvider,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -365,6 +425,11 @@ class _NearbyMechanicCompactCard extends StatelessWidget {
                     Text(mechanic['name'],
                         style: GoogleFonts.poppins(
                             fontWeight: FontWeight.w600, fontSize: 14)),
+                    const SizedBox(height: 2),
+                    Text(mechanic['type'],
+                        style: GoogleFonts.poppins(
+                            color: Colors.grey.shade600, fontSize: 12)),
+                    const SizedBox(height: 4),         
                     Row(
                       children: [
                         const Icon(Icons.star,
@@ -399,7 +464,23 @@ class _NearbyMechanicCompactCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               _actionButton(
-                  Icons.call_rounded, "Call", Colors.green, () {}),
+                  Icons.call_rounded, "Call", Colors.green, () async {
+                   final phone = mechanic['phone'] as String?;
+                   if (phone != null && phone.isNotEmpty) {
+                     final Uri launchUri = Uri(scheme: 'tel', path: phone);
+                     if (await canLaunchUrl(launchUri)) {
+                       await launchUrl(launchUri);
+                     } else {
+                       ScaffoldMessenger.of(context).showSnackBar(
+                         SnackBar(content: Text('Could not launch dialer for $phone'))
+                       );
+                     }
+                   } else {
+                     ScaffoldMessenger.of(context).showSnackBar(
+                       const SnackBar(content: Text('Phone number not available'))
+                     );
+                   }
+                  }),
               _actionButton(Icons.remove_red_eye_rounded, "View",
                   primaryColor, () {
                 Navigator.push(
@@ -419,6 +500,7 @@ class _NearbyMechanicCompactCard extends StatelessWidget {
                         phone: mechanic['phone'],
                         lat: 0.0,
                         lng: 0.0,
+                        experienceYears: mechanic['experience'] ?? 0,
                       ),
                     ),
                   ),
@@ -452,6 +534,150 @@ class _NearbyMechanicCompactCard extends StatelessWidget {
                     color: color,
                     fontWeight: FontWeight.w500,
                     fontSize: 13)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ================= SKELETON CARD =================
+class _SkeletonMechanicCard extends StatelessWidget {
+  const _SkeletonMechanicCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 245,
+      margin: const EdgeInsets.only(right: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: const [
+          BoxShadow(color: Colors.black12, blurRadius: 6),
+        ],
+      ),
+      child: Shimmer.fromColors(
+        baseColor: Colors.grey.shade300,
+        highlightColor: Colors.grey.shade100,
+        child: Column(
+          children: [
+            Row(
+              children: [
+                const CircleAvatar(
+                  radius: 24,
+                  backgroundColor: Colors.white,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 100,
+                        height: 14,
+                        color: Colors.white,
+                      ),
+                      const SizedBox(height: 6),
+                      Container(
+                        width: 80,
+                        height: 12,
+                        color: Colors.white,
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Container(width: 20, height: 10, color: Colors.white),
+                          const SizedBox(width: 8),
+                          Container(width: 40, height: 10, color: Colors.white),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const Spacer(),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(width: 70, height: 30, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12))),
+                Container(width: 70, height: 30, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12))),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SkeletonHomeBody extends StatelessWidget {
+  const _SkeletonHomeBody();
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Shimmer.fromColors(
+        baseColor: Colors.grey.shade300,
+        highlightColor: Colors.grey.shade100,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Auto Assign Skeleton
+            Container(
+              height: 180,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+              ),
+            ),
+            const SizedBox(height: 26),
+
+            // Nearby Mechanics Title Skeleton
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(width: 150, height: 24, color: Colors.white),
+                Container(width: 60, height: 24, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12))),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // Nearby Mechanics List Skeleton
+            SizedBox(
+              height: 165,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: 3,
+                itemBuilder: (context, index) {
+                  return Container(
+                    width: 245,
+                    margin: const EdgeInsets.only(right: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                  );
+                },
+              ),
+            ),
+
+            const SizedBox(height: 30),
+
+            // Service Categories Title Skeleton
+            Container(width: 180, height: 24, color: Colors.white),
+            const SizedBox(height: 16),
+
+            // Service Cards Skeletons
+            Container(height: 120, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18))),
+            const SizedBox(height: 16),
+            Container(height: 120, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18))),
+            const SizedBox(height: 16),
+            Container(height: 120, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18))),
           ],
         ),
       ),

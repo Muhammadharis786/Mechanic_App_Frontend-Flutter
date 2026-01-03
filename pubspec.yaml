@@ -27,9 +27,12 @@ dependencies:
   google_maps_flutter: ^2.5.3
   location: ^8.0.1
   latlong2: ^0.8.1
+  url_launcher: ^6.3.1
+  shimmer: ^3.0.0
 
   # Cupertino Icons
   cupertino_icons: ^1.0.8
+  image_picker: ^1.2.1
 
 dev_dependencies:
   flutter_test:

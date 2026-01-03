@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'view_detail.dart';
 
 class MechanicListScreen extends StatelessWidget {
@@ -83,7 +84,9 @@ class _NearbyMechanicCardVertical extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 28,
-                backgroundImage: AssetImage(mechanic['image']),
+                backgroundImage: mechanic['image'].toString().startsWith('http')
+                    ? NetworkImage(mechanic['image'])
+                    : AssetImage(mechanic['image']) as ImageProvider,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -129,7 +132,23 @@ class _NearbyMechanicCardVertical extends StatelessWidget {
                 Icons.call_rounded,
                 "Call",
                 Colors.green,
-                () {},
+                () async {
+                  final phone = mechanic['phone'] as String?;
+                  if (phone != null && phone.isNotEmpty) {
+                     final Uri launchUri = Uri(scheme: 'tel', path: phone);
+                     if (await canLaunchUrl(launchUri)) {
+                       await launchUrl(launchUri);
+                     } else {
+                       ScaffoldMessenger.of(context).showSnackBar(
+                         SnackBar(content: Text('Could not launch dialer for $phone'))
+                       );
+                     }
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Phone number not available'))
+                    );
+                  }
+                },
               ),
               _actionButton(
                 Icons.remove_red_eye_rounded,
@@ -153,6 +172,7 @@ class _NearbyMechanicCardVertical extends StatelessWidget {
                           phone: mechanic['phone'],
                           lat: 0.0,
                           lng: 0.0,
+                          experienceYears: mechanic['experience'] ?? 0,
                         ),
                       ),
                     ),
