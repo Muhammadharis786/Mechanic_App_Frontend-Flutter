@@ -7,7 +7,11 @@ plugins {
 }
 dependencies {
   // Import the Firebase BoM
+
+  
   implementation(platform("com.google.firebase:firebase-bom:34.7.0"))
+
+
 
 
   // TODO: Add the dependencies for Firebase products you want to use
@@ -50,4 +54,12 @@ android {
 
 flutter {
     source = "../.."
+}
+configurations.all {
+    resolutionStrategy {
+        force("androidx.browser:browser:1.8.0")
+        force("androidx.core:core-ktx:1.16.0")
+        force("androidx.core:core:1.16.0")
+        force("androidx.activity:activity:1.10.0")
+    }
 }

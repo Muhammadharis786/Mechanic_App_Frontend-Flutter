@@ -541,77 +541,7 @@ class _NearbyMechanicCompactCard extends StatelessWidget {
   }
 }
 
-// ================= SKELETON CARD =================
-class _SkeletonMechanicCard extends StatelessWidget {
-  const _SkeletonMechanicCard();
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 245,
-      margin: const EdgeInsets.only(right: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: const [
-          BoxShadow(color: Colors.black12, blurRadius: 6),
-        ],
-      ),
-      child: Shimmer.fromColors(
-        baseColor: Colors.grey.shade300,
-        highlightColor: Colors.grey.shade100,
-        child: Column(
-          children: [
-            Row(
-              children: [
-                const CircleAvatar(
-                  radius: 24,
-                  backgroundColor: Colors.white,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 100,
-                        height: 14,
-                        color: Colors.white,
-                      ),
-                      const SizedBox(height: 6),
-                      Container(
-                        width: 80,
-                        height: 12,
-                        color: Colors.white,
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          Container(width: 20, height: 10, color: Colors.white),
-                          const SizedBox(width: 8),
-                          Container(width: 40, height: 10, color: Colors.white),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const Spacer(),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Container(width: 70, height: 30, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12))),
-                Container(width: 70, height: 30, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12))),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class _SkeletonHomeBody extends StatelessWidget {
   const _SkeletonHomeBody();

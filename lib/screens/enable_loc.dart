@@ -3,7 +3,7 @@ import 'dart:async'; // Required for Timer
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
-import 'package:geolocator_android/geolocator_android.dart'; 
+ 
 import 'homescreen.dart'; 
 import 'user_session.dart'; 
 
@@ -74,49 +74,26 @@ class _EnableLocationScreenState extends State<EnableLocationScreen> {
         return;
       }
 
-      // 3. Accuracy Filter Logic
+      // 3. Simple location fetch
       if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
-        Position? bestPosition;
-        int attempts = 0;
-        const int maxAttempts = 5; // 5 baar koshish karega behtar accuracy ke liye
+        setState(() => _statusMessage = "Getting location...");
 
         AndroidSettings androidSettings = AndroidSettings(
-          accuracy: LocationAccuracy.best,
+          accuracy: LocationAccuracy.high, // Changed to high for generally better results without loop
           forceLocationManager: true,
-          intervalDuration: const Duration(seconds: 2),
         );
 
-        while (attempts < maxAttempts) {
-          attempts++;
-          setState(() => _statusMessage = "Refining location... Attempt $attempts");
+        Position position = await Geolocator.getCurrentPosition(
+            locationSettings: androidSettings);
 
-          Position currentPos = await Geolocator.getCurrentPosition(
-            locationSettings: androidSettings,
-          );
+        setState(() => _statusMessage = "Saving location...");
+        await _updateLocationOnServer(position.latitude, position.longitude);
 
-          debugPrint("Current Accuracy: ${currentPos.accuracy} meters");
-
-          // Agar accuracy 20 meter se behtar hai toh loop break kar dein
-          if (currentPos.accuracy <= 20) {
-            bestPosition = currentPos;  
-            break; 
-          } else {
-            // Agar accuracy achi nahi hai toh thora wait karke dobara check karein
-            bestPosition = currentPos; // Phir bhi save karlein in case loop khatam ho jaye
-            await Future.delayed(const Duration(seconds: 2));
-          }
-        }
-
-        if (bestPosition != null) {
-          setState(() => _statusMessage = "Sending precise location...");
-          await _updateLocationOnServer(bestPosition.latitude, bestPosition.longitude);
-          
-          if (!mounted) return;
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const HomeScreen()),
-          );
-        }
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const HomeScreen()),
+        );
       }
     } catch (e) {
       _showSnackBar("Error: $e");
