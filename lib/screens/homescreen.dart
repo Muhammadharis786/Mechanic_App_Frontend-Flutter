@@ -10,6 +10,8 @@ import 'dart:convert';
 import 'user_session.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shimmer/shimmer.dart';
+import 'verify_screen.dart';
+import 'dart:ui';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -333,8 +335,74 @@ class _HomeScreenState extends State<HomeScreen> {
           _drawerItem(Icons.history_rounded, "History", context),
           const Divider(),
           _drawerItem(Icons.settings_rounded, "Settings", context),
-          _drawerItem(Icons.logout_rounded, "Logout", context,
-              isLogout: true),
+          _drawerItem(
+            Icons.logout_rounded,
+            "Logout",
+            context,
+            isLogout: true,
+            onTap: () async {
+              // 1. Close the drawer first
+              Navigator.pop(context);
+
+               // 2. Show Blur Dialog
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (context) {
+                  return Stack(
+                    children: [
+                      // Backdrop Filter for Blur
+                      Positioned.fill(
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                          child: Container(
+                            color: Colors.black.withOpacity(0.3),
+                          ),
+                        ),
+                      ),
+                      // Center Loader & Text
+                      Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const CircularProgressIndicator(
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              "Logging out..",
+                              style: GoogleFonts.poppins(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                                decoration: TextDecoration.none, 
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              );
+
+              // 3. Simulate delay or call API
+              await UserSession().logout(); 
+
+              // 4. Close Dialog & Navigate
+              if (context.mounted) {
+                // Pop the dialog
+                Navigator.pop(context); 
+
+                // Navigate to VerifyScreen cleanly
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (_) => const VerifyScreen()),
+                  (route) => false,
+                );
+              }
+            },
+          ),
 
           const SizedBox(height: 8),
           // ====== SWITCH TO MECHANIC MODE BUTTON AT BOTTOM ======
@@ -374,17 +442,19 @@ class _HomeScreenState extends State<HomeScreen> {
 
   ListTile _drawerItem(
       IconData icon, String title, BuildContext context,
-      {bool isLogout = false}) {
+      {bool isLogout = false, VoidCallback? onTap}) {
     return ListTile(
       leading:
           Icon(icon, color: isLogout ? Colors.red : primaryColor),
       title: Text(title,
           style: GoogleFonts.poppins(
               fontSize: 15, fontWeight: FontWeight.w500)),
-      onTap: () => Navigator.pop(context),
+      onTap: onTap ?? () => Navigator.pop(context),
     );
   }
 }
+
+
 
 // ================= MECHANIC CARD =================
 class _NearbyMechanicCompactCard extends StatelessWidget {

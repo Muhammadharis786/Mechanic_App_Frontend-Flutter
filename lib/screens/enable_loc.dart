@@ -1,9 +1,9 @@
 import 'dart:convert';
-import 'dart:async'; // Required for Timer
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
- 
+
 import 'homescreen.dart'; 
 import 'user_session.dart'; 
 
@@ -18,7 +18,6 @@ class _EnableLocationScreenState extends State<EnableLocationScreen> {
   bool _isLoading = false;
   String _statusMessage = 'Allow location access to continue using the app.';
 
-  // API Call to update location on server
   Future<void> _updateLocationOnServer(double lat, double lng) async {
     final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/current/location");
 
@@ -69,31 +68,57 @@ class _EnableLocationScreenState extends State<EnableLocationScreen> {
       }
 
       if (permission == LocationPermission.deniedForever) {
-        _showSnackBar("Permissions permanently denied");
+        _showSnackBar("Permissions permanently denied. Please enable them in settings.");
         setState(() => _isLoading = false);
         return;
       }
 
-      // 3. Simple location fetch
+      // 3. Location fetch with fallback and timeout
       if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
         setState(() => _statusMessage = "Getting location...");
 
-        AndroidSettings androidSettings = AndroidSettings(
-          accuracy: LocationAccuracy.high, // Changed to high for generally better results without loop
-          forceLocationManager: true,
-        );
+        Position? position;
+        
+        try {
+          // Try getting last known position first (very fast)
+          position = await Geolocator.getLastKnownPosition();
+          
+          // If last known is null or we want fresh data, try current position with timeout
+          position = await Geolocator.getCurrentPosition(
+            locationSettings:  AndroidSettings(
+              accuracy: LocationAccuracy.high,
+              // Try without forceLocationManager first as it can hang on some devices
+              forceLocationManager: false, 
+            ),
+          ).timeout(const Duration(seconds: 10));
+        } catch (e) {
+          debugPrint("Primary location fetch failed: $e. Trying fallback...");
+          
+          // Fallback: Try with forceLocationManager: true if the first one failed/timed out
+          try {
+            position = await Geolocator.getCurrentPosition(
+              locationSettings:  AndroidSettings(
+                accuracy: LocationAccuracy.low, // Lower accuracy is often faster
+                forceLocationManager: true,
+              ),
+            ).timeout(const Duration(seconds: 15));
+          } catch (fallbackError) {
+            debugPrint("Fallback location fetch failed: $fallbackError");
+          }
+        }
 
-        Position position = await Geolocator.getCurrentPosition(
-            locationSettings: androidSettings);
+        if (position != null) {
+          setState(() => _statusMessage = "Saving location...");
+          await _updateLocationOnServer(position.latitude, position.longitude);
 
-        setState(() => _statusMessage = "Saving location...");
-        await _updateLocationOnServer(position.latitude, position.longitude);
-
-        if (!mounted) return;
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
-        );
+          if (!mounted) return;
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const HomeScreen()),
+          );
+        } else {
+          _showSnackBar("Could not get location. Please ensure GPS is on and you are in an open area.");
+        }
       }
     } catch (e) {
       _showSnackBar("Error: $e");
@@ -144,4 +169,4 @@ class _EnableLocationScreenState extends State<EnableLocationScreen> {
       ),
     );
   }
-} 
+}

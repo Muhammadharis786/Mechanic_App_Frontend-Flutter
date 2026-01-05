@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'mechanic_login.dart';
+import 'user_session.dart';
 
 class MechanicDashboardScreen extends StatefulWidget {
   const MechanicDashboardScreen({super.key});
@@ -93,9 +95,19 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
             Padding(
               padding: const EdgeInsets.only(bottom: 20),
               child: ElevatedButton.icon(
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.swap_horiz),
-                label: const Text('Switch to User Mode'),
+                onPressed: () async {
+                  Navigator.pop(context);
+                  await UserSession().logout();
+                  if (context.mounted) {
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(builder: (_) => const MechanicLoginScreen()),
+                      (route) => false,
+                    );
+                  }
+                },
+                icon: const Icon(Icons.logout),
+                label: const Text('Logout'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: primaryColor,
                   foregroundColor: Colors.white,

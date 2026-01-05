@@ -95,6 +95,9 @@ class _VerifyScreenState extends State<VerifyScreen> {
       if (response.statusCode == 200) {
         UserSession().email = email;
         UserSession().password = password;
+        
+        // Save Session
+        await UserSession().saveSession(email, password, 'USER');
 
         if (!mounted) return;
         Navigator.pushReplacement(

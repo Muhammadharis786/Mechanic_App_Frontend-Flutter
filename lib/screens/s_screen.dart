@@ -3,6 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'onboarding_screen.dart';
 
+import 'user_session.dart';
+import 'homescreen.dart';
+import 'mechanic_dashboard.dart';
+
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -37,11 +41,29 @@ class _SplashScreenState extends State<SplashScreen>
 
     _controller.forward();
 
-    Timer(const Duration(seconds: 3), () {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const OnboardingScreen()),
-      );
+    Timer(const Duration(seconds: 3), () async {
+      bool isLoggedIn = await UserSession().loadSession();
+
+      if (!mounted) return;
+
+      if (isLoggedIn) {
+        if (UserSession().userType == 'MECHANIC') {
+           Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const MechanicDashboardScreen()),
+           );
+        } else {
+           Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const HomeScreen()),
+           );
+        }
+      } else {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+        );
+      }
     });
   }
 

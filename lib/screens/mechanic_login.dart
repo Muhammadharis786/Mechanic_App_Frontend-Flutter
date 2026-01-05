@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mech_app/screens/mechanic_registration_screen.dart';
+import 'mechanic_dashboard.dart';
+import 'user_session.dart';
 
 class MechanicLoginScreen extends StatefulWidget {
   const MechanicLoginScreen({super.key});
@@ -31,7 +33,17 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
     final password = passwordController.text.trim();
 
     // 🔌 Backend integration yahin hogi
+    // For now, simulating successful login for any non-empty input
     debugPrint("Phone: $phone | Password: $password");
+    
+    // Save Mechanic Session
+    UserSession().saveSession(phone, password, 'MECHANIC');
+
+    // Navigate to Mechanic Dashboard
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const MechanicDashboardScreen()),
+    );
   }
 
   @override
