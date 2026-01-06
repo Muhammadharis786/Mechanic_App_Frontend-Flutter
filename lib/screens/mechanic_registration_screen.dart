@@ -1,12 +1,20 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-// Import your dashboard screen
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:http_parser/http_parser.dart';
+import 'user_session.dart';
 import 'mechanic_dashboard.dart';
+import 'package:geolocator/geolocator.dart'; // Added geolocator import
+
+import 'package:mech_app/services/phone_auth_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class MechanicRegistrationScreen extends StatefulWidget {
   const MechanicRegistrationScreen({super.key});
@@ -28,15 +36,17 @@ class _MechanicRegistrationScreenState
   bool showPassword = false;
 
   // ==================== IMAGES ====================
-  File? profileImage;
-  File? cnicFrontImage;
-  File? cnicBackImage;
+  XFile? profileImage;
+  XFile? cnicFrontImage;
+  XFile? cnicBackImage;
 
   String name = '';
   String phone = '';
   String password = '';
   String shopAddress = '';
-  String homeAddress = '';
+  double? latitude; // Added latitude
+  double? longitude; // Added longitude
+
   String mechanicType = 'Bike Mechanic';
   String experience = '';
   String workingHours = '';
@@ -47,12 +57,178 @@ class _MechanicRegistrationScreenState
     final XFile? img = await _picker.pickImage(source: ImageSource.gallery);
     if (img != null) {
       setState(() {
-        if (type == 'profile') profileImage = File(img.path);
-        if (type == 'cnicFront') cnicFrontImage = File(img.path);
-        if (type == 'cnicBack') cnicBackImage = File(img.path);
+        if (type == 'profile') profileImage = img;
+        if (type == 'cnicFront') cnicFrontImage = img;
+        if (type == 'cnicBack') cnicBackImage = img;
       });
     }
   }
+
+  // ================= LOCATION =================
+  bool isGettingLocation = false;
+  String? locationMessage;
+
+  Future<void> _getCurrentLocation() async {
+    setState(() {
+      isGettingLocation = true;
+      locationMessage = null;
+    });
+
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    // Test if location services are enabled.
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      setState(() {
+        isGettingLocation = false;
+        locationMessage = 'Location services are disabled.';
+      });
+      return;
+    }
+
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        setState(() {
+          isGettingLocation = false;
+          locationMessage = 'Location permissions are denied';
+        });
+        return;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      setState(() {
+        isGettingLocation = false;
+        locationMessage = 'Location permissions are permanently denied.';
+      });
+      return;
+    }
+
+    // When we reach here, permissions are granted and we can
+    // continue accessing the position of the device.
+    try {
+      Position position = await Geolocator.getCurrentPosition();
+      setState(() {
+        latitude = position.latitude;
+        longitude = position.longitude;
+        locationMessage = "Location Acquired: ${latitude!.toStringAsFixed(4)}, ${longitude!.toStringAsFixed(4)}";
+        isGettingLocation = false;
+      });
+    } catch (e) {
+      setState(() {
+        isGettingLocation = false;
+        locationMessage = 'Error getting location: $e';
+      });
+    }
+  }
+
+  // ================= SUBMIT =================
+  bool isSubmitting = false;
+
+  Future<void> submitRegistration() async {
+    setState(() => isSubmitting = true);
+    
+    try {
+      var uri = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/register");
+      var request = http.MultipartRequest("POST", uri);
+
+
+
+
+      // 1. Create JSON Data (mirroring JS mechanicData)
+      Map<String, dynamic> mechanicData = {
+        'userid':    UserSession().userId ?? 0, 
+        'name': name,
+        'phonenumber': phone,
+        'password': password,
+        'shopaddress': shopAddress,
+        'mechanictype': mechanicType,
+        'experienceyears': experience,
+        'workinghours': workingHours,
+        'otpVerified': true, 
+        'latitude': latitude, // Added latitude
+        'longitude': longitude // Added longitude
+      };
+
+      // 2. Add 'userData' as a JSON Part (application/json)
+      request.files.add(http.MultipartFile.fromString(
+        'userData',
+        jsonEncode(mechanicData),
+        contentType: MediaType('application', 'json'),
+      ));
+
+      // 3. Add Files with CORRECT keys (matching JS: mechanicprofilePicture, cnicfrontimg, cnicbackimg)
+      if (profileImage != null) {
+        if (kIsWeb) {
+          request.files.add(http.MultipartFile.fromBytes(
+            'mechanicprofilePicture',
+            await profileImage!.readAsBytes(),
+            filename: 'profile.jpg'
+          ));
+        } else {
+          request.files.add(await http.MultipartFile.fromPath('mechanicprofilePicture', profileImage!.path));
+        }
+      }
+      if (cnicFrontImage != null) {
+        if (kIsWeb) {
+           request.files.add(http.MultipartFile.fromBytes(
+            'cnicfrontimg',
+            await cnicFrontImage!.readAsBytes(),
+            filename: 'cnic_front.jpg'
+          ));
+        } else {
+           request.files.add(await http.MultipartFile.fromPath('cnicfrontimg', cnicFrontImage!.path));
+        }
+      }
+      if (cnicBackImage != null) {
+        if (kIsWeb) {
+           request.files.add(http.MultipartFile.fromBytes(
+            'cnicbackimg',
+            await cnicBackImage!.readAsBytes(),
+            filename: 'cnic_back.jpg'
+          ));
+        } else {
+           request.files.add(await http.MultipartFile.fromPath('cnicbackimg', cnicBackImage!.path));
+        }
+      }
+
+      // Send
+      var response = await request.send();
+
+      if (response.statusCode == 200) {
+        // Success
+         ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Registration Successful!'), backgroundColor: Colors.green),
+        );
+        
+        // Auto Login Session save (optional but good UX)
+        await UserSession().saveSession(phone, password, 'MECHANIC');
+
+        // Navigate
+        if (mounted) {
+           Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const MechanicDashboardScreen()),
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Registration Failed: ${response.statusCode}'), backgroundColor: Colors.red),
+        );
+      }
+
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
+    } finally {
+      setState(() => isSubmitting = false);
+    }
+  }
+
 
   // ================= NAVIGATION =================
   void nextPage() {
@@ -63,11 +239,8 @@ class _MechanicRegistrationScreenState
         curve: Curves.easeInOut,
       );
     } else {
-      // Last step -> Submit -> Navigate to dashboard
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => MechanicDashboardScreen()),
-      );
+      // Last step -> Submit
+      submitRegistration();
     }
   }
 
@@ -228,8 +401,12 @@ class _MechanicRegistrationScreenState
                   const SizedBox(width: 16),
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(backgroundColor: primary),
-                    onPressed: nextPage,
-                    child: Text(
+                    onPressed: isSubmitting
+                        ? null 
+                        : nextPage,
+                    child: isSubmitting 
+                     ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
+                     : Text(
                       currentStep == totalSteps - 1 ? 'Submit' : 'Next',
                       style: GoogleFonts.poppins(
                           color: Colors.white, fontWeight: FontWeight.w600),
@@ -250,6 +427,115 @@ class _MechanicRegistrationScreenState
     'Professional Information',
     'Documents'
   ];
+
+  // ================= PHONE CHECK =================
+  bool isCheckingPhone = false;
+  String? phoneStatusMessage;
+  bool isPhoneOk = false;
+  bool isOtpVerified = false;
+  
+  // OTP logic placeholders
+  TextEditingController otpController = TextEditingController();
+
+  Future<void> _checkPhoneNumber(String number) async {
+    if (number.length < 10) return; // Basic length check for +92...
+
+    setState(() {
+      isCheckingPhone = true;
+      phoneStatusMessage = null;
+      isPhoneOk = false;
+    });
+
+    try {
+      // 10.0.2.2 for Android Emulator localhost
+      // Real device: Use your PC IP e.g. 192.168.x.x
+      final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/checknumber");
+      
+      final response = await http.post(
+        url,
+        body: {'phonenumber': number},
+      );
+
+      if (response.statusCode == 200) {
+        setState(() {
+          isPhoneOk = true;
+          phoneStatusMessage = "Number Available (200)";
+        });
+      } else {
+        setState(() {
+          isPhoneOk = false;
+          phoneStatusMessage = "Number Status: ${response.statusCode} (Not Available)";
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          isPhoneOk = false;
+          phoneStatusMessage = "Error checking number";
+        });
+      }
+    } finally {
+      if (mounted) {
+         setState(() => isCheckingPhone = false);
+      }
+    }
+  }
+
+  // ================= OTP LOGIC =================
+  String? verificationId;
+  final PhoneAuthService _authService = PhoneAuthService();
+
+  Future<void> _sendOTP() async {
+    if (phone.isEmpty) return;
+    
+    // Show spinner or loading
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Sending OTP...')),
+    );
+
+    await _authService.sendOTP(
+      phoneNumber: phone,
+      onCodeSent: (id) {
+        setState(() {
+          verificationId = id;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('OTP Sent! Check SMS.')),
+        );
+      },
+      onError: (msg) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), backgroundColor: Colors.red),
+        );
+      },
+      onAutoVerified: (credential) async {
+        // Auto sign-in logic if needed
+        setState(() => isOtpVerified = true);
+      },
+    );
+  }
+
+  Future<void> _verifyOTP() async {
+    String code = otpController.text.trim();
+    if (code.isEmpty || verificationId == null) return;
+
+    final credential = await _authService.verifyOTP(
+      verificationId: verificationId!,
+      smsCode: code,
+      onError: (msg) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), backgroundColor: Colors.red),
+        );
+      },
+    );
+
+    if (credential != null && credential.user != null) {
+      setState(() => isOtpVerified = true);
+       ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Phone Verified!'), backgroundColor: Colors.green),
+        );
+    }
+  }
 
   // ================= STEP 1 =================
   Widget personalInfo() {
@@ -278,8 +564,11 @@ class _MechanicRegistrationScreenState
                 child: CircleAvatar(
                   radius: 45,
                   backgroundColor: Colors.grey.shade200,
-                  backgroundImage:
-                      profileImage != null ? FileImage(profileImage!) : null,
+                  backgroundImage: profileImage != null
+                      ? (kIsWeb
+                          ? NetworkImage(profileImage!.path)
+                          : FileImage(File(profileImage!.path)) as ImageProvider)
+                      : null,
                   child: profileImage == null
                       ? Icon(Icons.add, size: 30, color: primary)
                       : null,
@@ -290,6 +579,8 @@ class _MechanicRegistrationScreenState
           const SizedBox(height: 24),
           input('Full Name', onChanged: (v) => name = v),
           const SizedBox(height: 12),
+          
+          // Phone Input with Check Logic
           input(
             'Phone Number',
             type: TextInputType.phone,
@@ -298,9 +589,90 @@ class _MechanicRegistrationScreenState
               child: Text('+92',
                   style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
             ),
-            onChanged: (v) => phone = '+92$v',
+            onChanged: (v) {
+              phone = '+92$v';
+              if (v.length >= 10) {
+                // Debounce could be good, but direct call for now
+                _checkPhoneNumber(phone);
+              }
+            },
           ),
+          
+          // Status Message
+          if (isCheckingPhone)
+            const Padding(
+              padding: EdgeInsets.only(top: 5),
+              child: LinearProgressIndicator(minHeight: 2),
+            ),
+          if (phoneStatusMessage != null)
+             Padding(
+              padding: const EdgeInsets.only(top: 5, left: 5),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  phoneStatusMessage!,
+                  style: GoogleFonts.poppins(
+                    color: isPhoneOk ? Colors.green : Colors.red,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500
+                  ),
+                ),
+              ),
+            ),
+
           const SizedBox(height: 12),
+          
+          // OTP Section (Only if phone is OK)
+          if (isPhoneOk)
+            Padding(
+               padding: const EdgeInsets.only(bottom: 12),
+               child: Column(
+                 children: [
+                   Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: primary,
+                              foregroundColor: Colors.white,
+                              disabledBackgroundColor: Colors.grey,
+                            ),
+                            onPressed: (isOtpVerified || phone.length < 10) ? null : _sendOTP,
+                            child: Text(isOtpVerified ? "Verified" : "Get OTP"),
+                          ),
+                        ),
+                        if (!isOtpVerified) ...[
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: TextField(
+                              controller: otpController,
+                              decoration: const InputDecoration(
+                                hintText: "Enter Code",
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(horizontal: 10),
+                              ),
+                              keyboardType: TextInputType.number,
+                            ),
+                          ),
+                        ]
+                      ],
+                   ),
+                   if (!isOtpVerified && verificationId != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: ElevatedButton(
+                            onPressed: _verifyOTP, 
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+                            child: const Text("Verify Code")
+                          ),
+                        ),
+                      )
+                 ],
+               ),
+            ),
+
           input('Password', isPassword: true, onChanged: (v) => password = v),
           const SizedBox(height: 80),
         ],
@@ -315,8 +687,50 @@ class _MechanicRegistrationScreenState
       child: Column(
         children: [
           input('Shop Address', onChanged: (v) => shopAddress = v),
-          const SizedBox(height: 12),
-          input('Home Address', onChanged: (v) => homeAddress = v),
+          const SizedBox(height: 20),
+
+          // Location Button
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: isGettingLocation ? null : _getCurrentLocation,
+              icon: isGettingLocation 
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                : const Icon(Icons.my_location, color: Colors.white),
+              label: Text(
+                isGettingLocation ? 'Getting Location...' : 'Allow Current Location',
+                 style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primary,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ),
+          
+          if (locationMessage != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8.0),
+              child: Text(
+                locationMessage!,
+                style: GoogleFonts.poppins(
+                  color: (latitude != null && longitude != null) ? Colors.green : Colors.red,
+                  fontSize: 12,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+
+          if (latitude != null && longitude != null)
+             Padding(
+               padding: const EdgeInsets.only(top: 4.0),
+               child: Text(
+                 "Lat: $latitude, Lng: $longitude",
+                 style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey),
+               ),
+             ),
+
           const SizedBox(height: 80),
         ],
       ),
@@ -380,7 +794,9 @@ class _MechanicRegistrationScreenState
           if (cnicFrontImage != null)
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: Image.file(cnicFrontImage!, height: 150, fit: BoxFit.cover),
+              child: kIsWeb
+                  ? Image.network(cnicFrontImage!.path, height: 150, fit: BoxFit.cover)
+                  : Image.file(File(cnicFrontImage!.path), height: 150, fit: BoxFit.cover),
             ),
           const SizedBox(height: 24),
 
@@ -398,7 +814,9 @@ class _MechanicRegistrationScreenState
           if (cnicBackImage != null)
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: Image.file(cnicBackImage!, height: 150, fit: BoxFit.cover),
+              child: kIsWeb
+                  ? Image.network(cnicBackImage!.path, height: 150, fit: BoxFit.cover)
+                  : Image.file(File(cnicBackImage!.path), height: 150, fit: BoxFit.cover),
             ),
           const SizedBox(height: 80),
         ],

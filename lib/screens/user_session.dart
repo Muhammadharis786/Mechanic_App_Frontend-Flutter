@@ -11,7 +11,9 @@ class UserSession {
 
   String? email;
   String? password;
+
   String? userType; // 'USER' or 'MECHANIC'
+  int? userId;
   
   // Basic Auth Header generate karne ke liye function
   Map<String, String> getAuthHeader() {

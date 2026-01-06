@@ -24,6 +24,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final Color primaryColor = const Color(0xFFFB3300);
   
   String _userName = "Loading...";
+  int? _userId;
   bool _isLoading = true;
 
   List<Map<String, dynamic>> nearbyMechanics = [];
@@ -51,6 +52,8 @@ class _HomeScreenState extends State<HomeScreen> {
           // Parsing nested user object
           if (data['user'] != null) {
             _userName = data['user']['username'] ?? "User";
+            _userId = data['user']['userid'];
+            UserSession().userId = data['user']['userid'];
           }
           
           // Parsing mechanics list from response
@@ -107,7 +110,7 @@ class _HomeScreenState extends State<HomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              "Hi 👋",
+              "Hello 👋",
               style: GoogleFonts.poppins(fontSize: 13, color: Colors.grey),
             ),
             _isLoading
@@ -125,6 +128,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     style: GoogleFonts.poppins(
                         fontSize: 18, fontWeight: FontWeight.w600),
                   ),
+            if (!_isLoading && _userId != null)
+              Text(
+                "ID: $_userId",
+                style: GoogleFonts.poppins(fontSize: 11, color: Colors.grey.shade600),
+              ),
           ],
         ),
       ),
@@ -322,6 +330,13 @@ class _HomeScreenState extends State<HomeScreen> {
                         color: Colors.white,
                         fontSize: 18,
                         fontWeight: FontWeight.w600)),
+                if (!_isLoading && _userId != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text("ID: $_userId",
+                        style: GoogleFonts.poppins(
+                            color: Colors.white70, fontSize: 12)),
+                  ),
                 Text("User",
                     style: GoogleFonts.poppins(
                         color: Colors.white70, fontSize: 13)),

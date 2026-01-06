@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'verify_screen.dart'; // Replace with your actual import
 
 class OnboardingScreen extends StatefulWidget {
@@ -87,12 +88,16 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     );
   }
 
-  void _nextPage() {
+  void _nextPage() async {
     if (_currentPage < onboardingData.length - 1) {
       _pageController.nextPage(
           duration: const Duration(milliseconds: 400),
           curve: Curves.easeInOut);
     } else {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isFirstTime', false);
+
+      if (!mounted) return;
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const VerifyScreen()),
@@ -168,7 +173,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               child: Padding(
                 padding: const EdgeInsets.only(top: 10, right: 20),
                 child: TextButton(
-                  onPressed: () {
+                  onPressed: () async {
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setBool('isFirstTime', false);
+
+                    if (!context.mounted) return;
                     Navigator.pushReplacement(
                       context,
                       MaterialPageRoute(

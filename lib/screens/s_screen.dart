@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'onboarding_screen.dart';
 
+import 'package:shared_preferences/shared_preferences.dart';
+import 'verify_screen.dart';
 import 'user_session.dart';
 import 'homescreen.dart';
 import 'mechanic_dashboard.dart';
@@ -42,6 +44,7 @@ class _SplashScreenState extends State<SplashScreen>
     _controller.forward();
 
     Timer(const Duration(seconds: 3), () async {
+      // 1. Check Login Session
       bool isLoggedIn = await UserSession().loadSession();
 
       if (!mounted) return;
@@ -59,10 +62,23 @@ class _SplashScreenState extends State<SplashScreen>
            );
         }
       } else {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const OnboardingScreen()),
-        );
+        // 2. Check if First Time User
+        final prefs = await SharedPreferences.getInstance();
+        bool isFirstTime = prefs.getBool('isFirstTime') ?? true;
+
+        if (isFirstTime) {
+          // Go to Onboarding
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+          );
+        } else {
+          // Not first time -> Go straight to Login
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const VerifyScreen()),
+          );
+        }
       }
     });
   }

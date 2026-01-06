@@ -4,6 +4,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'mechanic_login.dart';
 import 'user_session.dart';
 
+
+// Screens imports
+import 'mechanic_bookingrequest.dart';
+import 'mechanic_earnings.dart';
+import 'mechanic_profile.dart';
+import 'mechanic_login.dart';
 class MechanicDashboardScreen extends StatefulWidget {
   const MechanicDashboardScreen({super.key});
 
@@ -39,13 +45,12 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Calculate total earnings
-    double totalEarnings = requests.fold(0, (sum, r) => sum + r['earnings']);
+    // Total earnings
+    double totalEarnings =
+        requests.fold(0, (sum, r) => sum + r['earnings']);
 
     return Scaffold(
       backgroundColor: Colors.grey.shade100,
-
-      /// APP BAR
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 1,
@@ -68,60 +73,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
           ),
         ],
       ),
-
-      /// DRAWER
-      drawer: Drawer(
-        child: Column(
-          children: [
-            DrawerHeader(
-              decoration: BoxDecoration(color: primaryColor),
-              child: Center(
-                child: Text(
-                  'Mechanic Menu',
-                  style: GoogleFonts.poppins(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-            _drawerItem(Icons.dashboard, 'Dashboard'),
-            _drawerItem(Icons.history, 'Booking History'),
-            _drawerItem(Icons.payment, 'Earnings'),
-            _drawerItem(Icons.person, 'Profile'),
-            _drawerItem(Icons.settings, 'Settings'),
-            const Spacer(),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 20),
-              child: ElevatedButton.icon(
-                onPressed: () async {
-                  Navigator.pop(context);
-                  await UserSession().logout();
-                  if (context.mounted) {
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (_) => const MechanicLoginScreen()),
-                      (route) => false,
-                    );
-                  }
-                },
-                icon: const Icon(Icons.logout),
-                label: const Text('Logout'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: primaryColor,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-
-      /// BODY: Total Earnings Card
+      drawer: _buildDrawer(),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Container(
@@ -159,7 +111,119 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
     );
   }
 
-  /// 🔔 OPEN SERVICE REQUESTS MODAL
+  // ================= DRAWER =================
+  Drawer _buildDrawer() {
+    return Drawer(
+      child: Column(
+        children: [
+          DrawerHeader(
+            decoration: BoxDecoration(color: primaryColor),
+            child: Center(
+              child: Text(
+                'Mechanic Menu',
+                style: GoogleFonts.poppins(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+          _drawerItem(Icons.dashboard, 'Dashboard'),
+          _drawerItem(
+            Icons.history,
+            'Booking Requests',
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const MechanicBookingRequestScreen(),
+                ),
+              );
+            },
+          ),
+          _drawerItem(
+            Icons.payment,
+            'Earnings',
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const MechanicEarningsScreen(),
+                ),
+              );
+            },
+          ),
+          _drawerItem(
+            Icons.person,
+            'Profile',
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const MechanicProfileScreen(),
+                ),
+              );
+            },
+          ),
+          _drawerItem(Icons.settings, 'Settings'),
+          const Spacer(),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const MechanicLoginScreen(),
+                  ),
+                  (route) => false,
+                );
+              },
+              icon: const Icon(Icons.logout),
+              label: const Text('Logout'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryColor,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 48),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 20),
+            child: ElevatedButton.icon(
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.swap_horiz),
+              label: const Text('Switch to User Mode'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _drawerItem(IconData icon, String title, {VoidCallback? onTap}) {
+    return ListTile(
+      leading: Icon(icon, color: primaryColor),
+      title: Text(title, style: GoogleFonts.poppins()),
+      onTap: onTap ?? () => Navigator.pop(context),
+    );
+  }
+
+  // ================= NOTIFICATIONS MODAL =================
   void _openNotifications() {
     showModalBottomSheet(
       context: context,
@@ -172,7 +236,6 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
 
         return StatefulBuilder(
           builder: (context, setModalState) {
-            // Start the timer inside modal
             modalTimer ??= Timer.periodic(const Duration(seconds: 1), (_) {
               setModalState(() {
                 for (var r in requests) {
@@ -185,7 +248,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
 
             return WillPopScope(
               onWillPop: () async {
-                modalTimer?.cancel(); // stop timer when modal closes
+                modalTimer?.cancel();
                 return true;
               },
               child: Padding(
@@ -217,7 +280,6 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
     );
   }
 
-  /// REQUEST CARD
   Widget _requestCard(Map<String, dynamic> r, VoidCallback refresh) {
     bool pending = r['status'] == 'Pending';
 
@@ -289,21 +351,11 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
     );
   }
 
-  /// UPDATE STATUS
   void _updateStatus(Map<String, dynamic> r, String status) {
     setState(() {
       r['status'] = status;
       r['actionTaken'] = true;
-      r['timer'] = 0; // stop timer visually
+      r['timer'] = 0;
     });
-  }
-
-  /// DRAWER ITEM
-  Widget _drawerItem(IconData icon, String title) {
-    return ListTile(
-      leading: Icon(icon, color: primaryColor),
-      title: Text(title, style: GoogleFonts.poppins()),
-      onTap: () => Navigator.pop(context),
-    );
   }
 }
