@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'view_detail.dart';
+import 'user/view_detail.dart';
 
 class MechanicListScreen extends StatelessWidget {
   final String serviceType;
@@ -10,7 +10,7 @@ class MechanicListScreen extends StatelessWidget {
   const MechanicListScreen({
     super.key,
     required this.serviceType,
-    required this.mechanics,
+    required this.mechanics, required bool showViewOption,
   });
 
   final Color primaryColor = const Color(0xFFFB3300);

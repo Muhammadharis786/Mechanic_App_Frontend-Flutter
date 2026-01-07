@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'auto_assign.dart';
+import '../auto_assign.dart';
 import 'user_session.dart'; 
 
 class ServiceChatScreen extends StatefulWidget {

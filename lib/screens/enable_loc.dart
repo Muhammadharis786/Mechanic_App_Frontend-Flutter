@@ -5,7 +5,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 
 import 'homescreen.dart'; 
-import 'user_session.dart'; 
+import 'authentication/user_session.dart'; 
 
 class EnableLocationScreen extends StatefulWidget {
   const EnableLocationScreen({super.key});

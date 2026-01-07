@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:mech_app/screens/mechanic_registration_screen.dart';
+import 'package:mech_app/screens/mechanic/mechanic_registration_screen.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'mechanic_dashboard.dart';
-import 'user_session.dart';
+import '../authentication/user_session.dart';
 
 class MechanicLoginScreen extends StatefulWidget {
   const MechanicLoginScreen({super.key});
@@ -19,6 +21,7 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
 
   bool _obscurePassword = true;
   bool _isButtonEnabled = false;
+  bool _isLoading = false;
 
   void _checkFields() {
     setState(() {
@@ -28,22 +31,67 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
     });
   }
 
-  void _onLogin() {
+  Future<void> _onLogin() async {
+    setState(() => _isLoading = true);
+
     final phone = '+92${phoneController.text.trim()}';
     final password = passwordController.text.trim();
 
-    // 🔌 Backend integration yahin hogi
-    // For now, simulating successful login for any non-empty input
-    debugPrint("Phone: $phone | Password: $password");
-    
-    // Save Mechanic Session
-    UserSession().saveSession(phone, password, 'MECHANIC');
+    try {
+      final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/login");
+      
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'phonenumber': phone,
+          'password': password,
+        }),
+      );
 
-    // Navigate to Mechanic Dashboard
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const MechanicDashboardScreen()),
-    );
+      if (response.statusCode == 200) {
+        // Parse user data if needed, for now just expecting success
+        // final data = jsonDecode(response.body); 
+
+        // Save Mechanic Session
+        await UserSession().saveSession(phone, password, 'MECHANIC');
+
+        debugPrint("Login Success: ${response.body}");
+
+        if (mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Login Successful!'), backgroundColor: Colors.green),
+          );
+
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const MechanicDashboardScreen()),
+          );
+        }
+      } else {
+        debugPrint("Login Failed: ${response.body}");
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Login Failed (${response.statusCode}): ${response.body}'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint("Login Error: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   @override
@@ -179,7 +227,7 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
-                  onPressed: _isButtonEnabled ? _onLogin : null,
+                  onPressed: (_isButtonEnabled && !_isLoading) ? _onLogin : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _isButtonEnabled
                         ? primaryColor
@@ -190,7 +238,9 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
                       borderRadius: BorderRadius.circular(14),
                     ),
                   ),
-                  child: Text(
+                  child: _isLoading 
+                    ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : Text(
                     "Login",
                     style: GoogleFonts.poppins(
                       fontSize: 16,

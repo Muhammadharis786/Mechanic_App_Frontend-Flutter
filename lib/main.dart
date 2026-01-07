@@ -3,6 +3,15 @@ import 'package:flutter/material.dart';
 import 'screens/s_screen.dart';
 import 'firebase_options.dart';
 
+// ===== GLOBAL THEME NOTIFIER =====
+class ThemeNotifier extends ValueNotifier<ThemeMode> {
+  ThemeNotifier() : super(ThemeMode.light);
+
+  void setDark() => value = ThemeMode.dark;
+  void setLight() => value = ThemeMode.light;
+}
+
+final themeNotifier = ThemeNotifier();
 
 void main() async {
    WidgetsFlutterBinding.ensureInitialized();
@@ -17,14 +26,31 @@ class MechConnectApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'MechConnect',
-      theme: ThemeData(
-        primaryColor: Colors.orange,
-        fontFamily: 'Poppins',
-      ),
-      home: const SplashScreen(), // 👈 Splash se start hoga
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: 'MechConnect',
+
+          // ===== THEMES =====
+          theme: ThemeData(
+            brightness: Brightness.light,
+            primaryColor: Colors.orange,
+            scaffoldBackgroundColor: Colors.white,
+            fontFamily: 'Poppins',
+          ),
+          darkTheme: ThemeData(
+            brightness: Brightness.dark,
+            primaryColor: Colors.deepOrange,
+            scaffoldBackgroundColor: Colors.black,
+            fontFamily: 'Poppins',
+          ),
+          themeMode: currentMode, // <-- GLOBAL CONTROL
+
+          home: const SplashScreen(), // ya home screen
+        );
+      },
     );
   }
 }

@@ -9,8 +9,11 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:http_parser/http_parser.dart';
-import 'user_session.dart';
+import '../authentication/user_session.dart';
 import 'mechanic_dashboard.dart';
+import '../authentication/user_session.dart';
+import 'mechanic_dashboard.dart';
+import 'mechanic_login.dart'; // Import MechanicLoginScreen
 import 'package:geolocator/geolocator.dart'; // Added geolocator import
 
 import 'package:mech_app/services/phone_auth_service.dart';
@@ -197,6 +200,7 @@ class _MechanicRegistrationScreenState
 
       // Send
       var response = await request.send();
+      var responseBody = await response.stream.bytesToString(); // Read response
 
       if (response.statusCode == 200) {
         // Success
@@ -214,9 +218,27 @@ class _MechanicRegistrationScreenState
             MaterialPageRoute(builder: (_) => const MechanicDashboardScreen()),
           );
         }
+      } else if (response.statusCode == 409) {
+         // Mechanic Already Exists
+         ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('You are already registered! Logging you in...'), backgroundColor: Colors.orange),
+        );
+        
+        // Navigate to Login
+        if (mounted) {
+           Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const MechanicLoginScreen()), // Import MechanicLoginScreen if needed
+          );
+        }
       } else {
+        debugPrint("Registration Error: $responseBody");
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Registration Failed: ${response.statusCode}'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Registration Failed (${response.statusCode}): $responseBody'), 
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
         );
       }
 
@@ -459,12 +481,12 @@ class _MechanicRegistrationScreenState
       if (response.statusCode == 200) {
         setState(() {
           isPhoneOk = true;
-          phoneStatusMessage = "Number Available (200)";
+          phoneStatusMessage = "Number Available ";
         });
       } else {
         setState(() {
           isPhoneOk = false;
-          phoneStatusMessage = "Number Status: ${response.statusCode} (Not Available)";
+          phoneStatusMessage = "Number Status: ${response.statusCode } (Not Available)";
         });
       }
     } catch (e) {

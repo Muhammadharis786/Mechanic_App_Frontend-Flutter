@@ -13,24 +13,6 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> {
 
-  final List<Marker> _markers = [
-    const Marker(
-      markerId: MarkerId('mechanic1'),
-      position: LatLng(24.8607, 67.0011),
-      infoWindow: InfoWindow(title: "Mechanic 1"),
-    ),
-    const Marker(
-      markerId: MarkerId('mechanic2'),
-      position: LatLng(24.8700, 67.0100),
-      infoWindow: InfoWindow(title: "Mechanic 2"),
-    ),
-    const Marker(
-      markerId: MarkerId('mechanic3'),
-      position: LatLng(24.8550, 67.0200),
-      infoWindow: InfoWindow(title: "Mechanic 3"),
-    ),
-  ];
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -38,16 +20,55 @@ class _MapScreenState extends State<MapScreen> {
         title: Text("${widget.serviceType} Mechanic Location"),
         backgroundColor: Colors.deepOrange,
       ),
-      body: GoogleMap(
-        initialCameraPosition: const CameraPosition(
-          target: LatLng(24.8607, 67.0011),
-          zoom: 12,
-        ),
-        markers: Set<Marker>.of(_markers),
-        onMapCreated: (controller) {
-        },
-        myLocationEnabled: true,
-        myLocationButtonEnabled: true,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // 1. Static Image Placeholder (Simulating Map)
+          Image.asset(
+            'assets/images/google_map.jpg', // Ensure this asset exists or use a network image/container
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              return Container(
+                color: Colors.grey[200],
+                child: const Center(
+                  child: Icon(Icons.map, size: 80, color: Colors.grey),
+                ),
+              );
+            },
+          ),
+          
+          // 2. Overlay for "Finding Mechanics"
+          Positioned(
+            bottom: 30,
+            left: 20,
+            right: 20,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10)],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(color: Colors.deepOrange),
+                  const SizedBox(height: 12),
+                  Text(
+                    "Finding nearby ${widget.serviceType}...",
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    "Please wait while we locate available mechanics.",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey, fontSize: 13),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
