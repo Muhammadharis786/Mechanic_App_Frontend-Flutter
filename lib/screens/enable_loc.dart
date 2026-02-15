@@ -44,86 +44,35 @@ class _EnableLocationScreenState extends State<EnableLocationScreen> {
   Future<void> handleLocationPermission() async {
     setState(() {
       _isLoading = true;
-      _statusMessage = "Checking permissions...";
+      _statusMessage = "Getting location...";
     });
 
     try {
-      // 1. Service check
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        await Geolocator.openLocationSettings();
+      // Request permission
+      LocationPermission permission = await Geolocator.requestPermission();
+      
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        _showSnackBar("Location permission is required");
         setState(() => _isLoading = false);
         return;
       }
 
-      // 2. Permission check
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          _showSnackBar("Location permission denied");
-          setState(() => _isLoading = false);
-          return;
-        }
-      }
+      // Get current location
+      Position position = await Geolocator.getCurrentPosition();
+      
+      // Save to database
+      setState(() => _statusMessage = "Saving location...");
+      await _updateLocationOnServer(position.latitude, position.longitude);
 
-      if (permission == LocationPermission.deniedForever) {
-        _showSnackBar("Permissions permanently denied. Please enable them in settings.");
-        setState(() => _isLoading = false);
-        return;
-      }
-
-      // 3. Location fetch with fallback and timeout
-      if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
-        setState(() => _statusMessage = "Getting location...");
-
-        Position? position;
-        
-        try {
-          // Try getting last known position first (very fast)
-          position = await Geolocator.getLastKnownPosition();
-          
-          // If last known is null or we want fresh data, try current position with timeout
-          position = await Geolocator.getCurrentPosition(
-            locationSettings:  AndroidSettings(
-              accuracy: LocationAccuracy.high,
-              // Try without forceLocationManager first as it can hang on some devices
-              forceLocationManager: false, 
-            ),
-          ).timeout(const Duration(seconds: 10));
-        } catch (e) {
-          debugPrint("Primary location fetch failed: $e. Trying fallback...");
-          
-          // Fallback: Try with forceLocationManager: true if the first one failed/timed out
-          try {
-            position = await Geolocator.getCurrentPosition(
-              locationSettings:  AndroidSettings(
-                accuracy: LocationAccuracy.low, // Lower accuracy is often faster
-                forceLocationManager: true,
-              ),
-            ).timeout(const Duration(seconds: 15));
-          } catch (fallbackError) {
-            debugPrint("Fallback location fetch failed: $fallbackError");
-          }
-        }
-
-        if (position != null) {
-          setState(() => _statusMessage = "Saving location...");
-          await _updateLocationOnServer(position.latitude, position.longitude);
-
-          if (!mounted) return;
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const HomeScreen()),
-          );
-        } else {
-          _showSnackBar("Could not get location. Please ensure GPS is on and you are in an open area.");
-        }
-      }
+      // Navigate to home screen
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+      );
     } catch (e) {
       _showSnackBar("Error: $e");
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
+      setState(() => _isLoading = false);
     }
   }
 

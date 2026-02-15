@@ -1,18 +1,19 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shimmer/shimmer.dart';
 
 // Screens imports
 import 'mechanic_bookingrequest.dart';
 import 'mechanic_earnings.dart';
 import 'mechanic_profile.dart';
 import 'mechanic_login.dart';
-import 'mechanic_settings.dart'; 
+import 'mechanic_settings.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../authentication/user_session.dart';
+import '../authentication/user_session.dart'; // Farz hai ke is file mein getPhoneNumber( ) aur getAuthHeader() hain
 import '../homescreen.dart';
-import '../verify_screen.dart'; 
+import '../verify_screen.dart';
 
 class MechanicDashboardScreen extends StatefulWidget {
   const MechanicDashboardScreen({super.key});
@@ -25,6 +26,7 @@ class MechanicDashboardScreen extends StatefulWidget {
 class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
   final Color primaryColor = const Color(0xFFFB3300);
 
+  // Hardcoded requests, jaisa aapke original code mein tha
   List<Map<String, dynamic>> requests = [
     {
       'user': 'Ali Khan',
@@ -44,10 +46,13 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
     },
   ];
 
-  double totalEarnings = 3500.0;
-  double todaysEarnings = 2000.0;
-  double mechanicRating = 4.8;
-  String mechanicName = "Aslam Mechanic";
+  // --- TABDEELI #1: State Variables ko API ke mutabiq update kiya ---
+  bool _isLoading = true;
+  double totalEarnings = 0;
+  double todaysEarnings = 0; // Note: API se yeh field nahi aa raha
+  double mechanicRating = 0;
+  String mechanicName = "Mechanic";
+  String mechanicImageUrl = ''; // Profile image ka URL save karne ke liye
 
   @override
   void initState() {
@@ -55,27 +60,51 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
     _fetchDashboardData();
   }
 
+  // --- TABDEELI #2: API call ko theek kiya ---
   Future<void> _fetchDashboardData() async {
-    final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/dashboard");
+    // Farz hai ke UserSession se phone number mil jayega
+    
+    debugPrint("🔄 Mechanic Dashboard: Starting to fetch data, _isLoading = $_isLoading");
+
+    // API URL mein phone number as a query parameter bhejein
+    // **IMPORTANT**: Agar aap physical device par test kar rahe hain to 'localhost' ke bajaye apne computer ka IP address likhein
+    final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/dashboard" );
+
     try {
-      final response = await http.get(url, headers: UserSession().getAuthHeader());
+      // Basic Auth header UserSession se aayega
+      final response = await http.get(url, headers: UserSession( ).getAuthHeader());
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
+
+        // setState ke andar UI update karein
         setState(() {
-           if (data['mechanic'] != null) {
-             mechanicName = data['mechanic']['name'] ?? mechanicName;
-             mechanicRating = (data['mechanic']['averagerating'] as num?)?.toDouble() ?? mechanicRating;
-             // Add other fields if available
-           }
-           if (data['earnings'] != null) {
-              totalEarnings = (data['earnings']['total'] as num?)?.toDouble() ?? totalEarnings;
-              todaysEarnings = (data['earnings']['today'] as num?)?.toDouble() ?? todaysEarnings;
-           }
-           // Preserving requests logic for now as API response for requests is unknown/complex to map blind
+          // API se aane wale data ko state variables mein save karein
+          mechanicName = data['name'] ?? mechanicName;
+          mechanicRating = (data['averageRating'] as num?)?.toDouble() ?? mechanicRating;
+          totalEarnings = (data['totalearning'] as num?)?.toDouble() ?? totalEarnings;
+
+          // Image URL ko state variable mein save karein
+          mechanicImageUrl = data['mechanicimgurl'] ?? '';
+          _isLoading = false;
+          debugPrint("✅ Mechanic Dashboard: Data loaded successfully, _isLoading = $_isLoading");
+        });
+      } else {
+        // Agar server se error aaye (jaise 404 Not Found ya 401 Unauthorized)
+        debugPrint("Failed to load dashboard data. Status code: ${response.statusCode}");
+        debugPrint("Response body: ${response.body}");
+        setState(() {
+          _isLoading = false;
+          debugPrint("❌ Mechanic Dashboard: Error loading data, _isLoading = $_isLoading");
         });
       }
     } catch (e) {
-      debugPrint("Error: $e");
+      // Connection error ya doosre masail ke liye
+      debugPrint("Error fetching dashboard data: $e");
+      setState(() {
+        _isLoading = false;
+        debugPrint("❌ Mechanic Dashboard: Exception occurred, _isLoading = $_isLoading");
+      });
     }
   }
 
@@ -112,126 +141,137 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
         ],
       ),
       drawer: _buildDrawer(),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Hello, $mechanicName',
-                      style: GoogleFonts.poppins(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black,
-                      ),
-                    ),
-                    Row(
-                      children: [
-                        const Icon(Icons.star_rounded,
-                            color: Colors.amber, size: 20),
-                        const SizedBox(width: 4),
-                        Text(
-                          '$mechanicRating Rating',
-                          style: GoogleFonts.poppins(
-                            fontSize: 14,
-                            color: Colors.grey[700],
-                            fontWeight: FontWeight.w500,
+      body: _isLoading
+          ? const _SkeletonMechanicDashboard()
+          : SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Hello, $mechanicName',
+                            style: GoogleFonts.poppins(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black,
+                            ),
                           ),
-                        ),
+                          Row(
+                            children: [
+                              const Icon(Icons.star_rounded,
+                                  color: Colors.amber, size: 20),
+                              const SizedBox(width: 4),
+                              Text(
+                                '$mechanicRating Rating',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 14,
+                                  color: Colors.grey[700],
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      // --- TABDEELI #3: Profile Image ko display kiya ---
+                      CircleAvatar(
+                        radius: 30,
+                        backgroundColor: Colors.grey[200],
+                        // Agar image URL khaali hai to Icon dikhayein, warna NetworkImage load karein
+                        backgroundImage: mechanicImageUrl.isNotEmpty
+                            ? NetworkImage(mechanicImageUrl)
+                            : null,
+                        child: mechanicImageUrl.isEmpty
+                            ? const Icon(Icons.person, color: Colors.grey, size: 35)
+                            : null,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 25),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [primaryColor, const Color(0xFFFF6A00)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: primaryColor.withOpacity(0.3),
+                          blurRadius: 12,
+                          offset: const Offset(0, 6),
+                        )
                       ],
                     ),
-                  ],
-                ),
-                CircleAvatar(
-                  radius: 30,
-                  backgroundColor: Colors.grey[200],
-                  child: const Icon(Icons.person, color: Colors.grey, size: 35),
-                ),
-              ],
-            ),
-            const SizedBox(height: 25),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [primaryColor, const Color(0xFFFF6A00)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: primaryColor.withOpacity(0.3),
-                    blurRadius: 12,
-                    offset: const Offset(0, 6),
-                  )
-                ],
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _statItem('Total Earnings', totalEarnings),
-                  Container(width: 1, height: 40, color: Colors.white24),
-                  _statItem("Today's Profit", todaysEarnings),
-                ],
-              ),
-            ),
-            const SizedBox(height: 30),
-            Text(
-              'Quick Actions',
-              style:
-                  GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 15),
-            Row(
-              children: [
-                _actionCard('Requests', Icons.pending_actions, Colors.blue, () {
-                  Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const MechanicBookingRequestScreen()));
-                }),
-                const SizedBox(width: 15),
-                _actionCard('My Wallet', Icons.account_balance_wallet,
-                    Colors.green, () {
-                  Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const MechanicEarningsScreen()));
-                }),
-              ],
-            ),
-            const SizedBox(height: 30),
-            Text(
-              'Recent Jobs',
-              style:
-                  GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 15),
-            requests.isEmpty
-                ? Center(
-                    child: Text("No jobs found",
-                        style: GoogleFonts.poppins(color: Colors.grey)))
-                : ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: requests.length,
-                      separatorBuilder: (context, _) => const SizedBox(height: 12),
-                    itemBuilder: (context, index) =>
-                        _jobTile(requests[index]),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _statItem('Total Earnings', totalEarnings),
+                        Container(width: 1, height: 40, color: Colors.white24),
+                        _statItem("Today's Earnings", todaysEarnings),
+                      ],
+                    ),
                   ),
-          ],
-        ),
-      ),
+                  const SizedBox(height: 30),
+                  Text(
+                    'Quick Actions',
+                    style:
+                        GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 15),
+                  Row(
+                    children: [
+                      _actionCard('Requests', Icons.pending_actions, Colors.blue, () {
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const MechanicBookingRequestScreen()));
+                      }),
+                      const SizedBox(width: 15),
+                      _actionCard('My Wallet', Icons.account_balance_wallet,
+                          Colors.green, () {
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const MechanicEarningsScreen()));
+                      }),
+                    ],
+                  ),
+                  const SizedBox(height: 30),
+                  Text(
+                    'Recent Jobs',
+                    style:
+                        GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 15),
+                  requests.isEmpty
+                      ? Center(
+                          child: Text("No jobs found",
+                              style: GoogleFonts.poppins(color: Colors.grey)))
+                      : ListView.separated(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: requests.length,
+                            separatorBuilder: (context, _) => const SizedBox(height: 12),
+                          itemBuilder: (context, index) =>
+                              _jobTile(requests[index]),
+                        ),
+                ],
+              ),
+            ),
     );
   }
+
+  // Baaki ka code (widgets, drawer, etc.) bilkul waisa hi hai, usmein koi tabdeeli nahi ki.
 
   Widget _statItem(String label, double val) {
     return Column(
@@ -570,6 +610,124 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
           );
         });
       },
+    );
+  }
+}
+
+// ================= SKELETON LOADING =================
+class _SkeletonMechanicDashboard extends StatelessWidget {
+  const _SkeletonMechanicDashboard();
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Shimmer.fromColors(
+        baseColor: Colors.grey.shade300,
+        highlightColor: Colors.grey.shade100,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Profile Header Skeleton
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 150,
+                      height: 24,
+                      color: Colors.white,
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: 100,
+                      height: 16,
+                      color: Colors.white,
+                    ),
+                  ],
+                ),
+                const CircleAvatar(
+                  radius: 30,
+                  backgroundColor: Colors.white,
+                ),
+              ],
+            ),
+            const SizedBox(height: 25),
+            
+            // Earnings Card Skeleton
+            Container(
+              width: double.infinity,
+              height: 100,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+            const SizedBox(height: 30),
+            
+            // Quick Actions Title
+            Container(
+              width: 120,
+              height: 20,
+              color: Colors.white,
+            ),
+            const SizedBox(height: 15),
+            
+            // Action Cards Skeleton
+            Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    height: 60,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 15),
+                Expanded(
+                  child: Container(
+                    height: 60,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 30),
+            
+            // Recent Jobs Title
+            Container(
+              width: 100,
+              height: 20,
+              color: Colors.white,
+            ),
+            const SizedBox(height: 15),
+            
+            // Job Cards Skeleton
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: 3,
+              separatorBuilder: (context, _) => const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                return Container(
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

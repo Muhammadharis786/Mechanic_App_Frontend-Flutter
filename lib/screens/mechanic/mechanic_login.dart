@@ -69,13 +69,30 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
           );
         }
       } else {
+        // Parse backend error message
+        String errorMessage = 'Login Failed';
+        try {
+          final responseData = jsonDecode(response.body);
+          if (responseData is Map && responseData.containsKey('message')) {
+            errorMessage = responseData['message'];
+          } else if (responseData is Map && responseData.containsKey('error')) {
+            errorMessage = responseData['error'];
+          } else if (responseData is String) {
+            errorMessage = responseData;
+          }
+        } catch (e) {
+          // If parsing fails, use response body as is (but keep it clean)
+          errorMessage = response.body.isNotEmpty && response.body.length < 100 
+              ? response.body 
+              : 'Login failed. Please check your credentials.';
+        }
+        
         debugPrint("Login Failed: ${response.body}");
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Login Failed (${response.statusCode}): ${response.body}'),
+              content: Text(errorMessage),
               backgroundColor: Colors.red,
-              duration: const Duration(seconds: 4),
             ),
           );
         }

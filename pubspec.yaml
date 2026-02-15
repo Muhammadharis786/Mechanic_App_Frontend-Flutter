@@ -26,6 +26,7 @@ dependencies:
   
   # Google Maps integration ke liye 
   google_maps_flutter: ^2.5.3
+  google_maps_flutter_web: ^0.5.12
   location: ^8.0.1
   latlong2: ^0.8.1
   url_launcher: ^6.3.1

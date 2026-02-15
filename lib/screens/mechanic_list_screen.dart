@@ -84,9 +84,9 @@ class _NearbyMechanicCardVertical extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 28,
-                backgroundImage: mechanic['image'].toString().startsWith('http')
-                    ? NetworkImage(mechanic['image'])
-                    : AssetImage(mechanic['image']) as ImageProvider,
+                backgroundImage: mechanic['mechanicimgurl'].toString().startsWith('http')
+                    ? NetworkImage(mechanic['mechanicimgurl'])
+                    : AssetImage(mechanic['mechanicimgurl']) as ImageProvider,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -100,7 +100,7 @@ class _NearbyMechanicCardVertical extends StatelessWidget {
                       children: [
                         const Icon(Icons.star,
                             size: 14, color: Colors.amber),
-                        Text("${mechanic['rating']}"),
+                        Text("${mechanic['averagerating']}"),
                         const SizedBox(width: 8),
                         Icon(Icons.location_on,
                             size: 14, color: primaryColor),
@@ -115,7 +115,7 @@ class _NearbyMechanicCardVertical extends StatelessWidget {
                 height: 10,
                 decoration: BoxDecoration(
                   color:
-                      mechanic['available'] ? Colors.green : Colors.red,
+                      mechanic['isactive'] ? Colors.green : Colors.red,
                   shape: BoxShape.circle,
                 ),
               )
@@ -133,7 +133,7 @@ class _NearbyMechanicCardVertical extends StatelessWidget {
                 "Call",
                 Colors.green,
                 () async {
-                  final phone = mechanic['phone'] as String?;
+                  final phone = mechanic['phonenumber'] as String?;
                   if (phone != null && phone.isNotEmpty) {
                      final Uri launchUri = Uri(scheme: 'tel', path: phone);
                      if (await canLaunchUrl(launchUri)) {
@@ -162,17 +162,19 @@ class _NearbyMechanicCardVertical extends StatelessWidget {
                         serviceType: "View Mechanic",
                         mechanic: Mechanic(
                           id: mechanic['id'].toString(),
+                          mechanictype: mechanic['MechanicType'] ?? 'Mechanic',
                           name: mechanic['name'],
-                          avatarUrl: mechanic['image'],
+                          avatarUrl: mechanic['mechanicimgurl'],
                           rating:
-                              (mechanic['rating'] as num).toDouble(),
+                              (mechanic['averagerating'] as num).toDouble(),
                           distanceKm:
                               (mechanic['distance'] as num).toDouble(),
-                          isOnline: mechanic['available'],
-                          phone: mechanic['phone'],
-                          lat: 0.0,
-                          lng: 0.0,
+                          isOnline: mechanic['isactive'],
+                          phone: mechanic['phonenumber'],
+                          lat: (mechanic['latitude'] is String) ? double.tryParse(mechanic['latitude']) ?? 0.0 : (mechanic['latitude'] as num?)?.toDouble() ?? 0.0,
+                          lng: (mechanic['longitude'] is String) ? double.tryParse(mechanic['longitude']) ?? 0.0 : (mechanic['longitude'] as num?)?.toDouble() ?? 0.0,
                           experienceYears: mechanic['experience'] ?? 0,
+                          mechanicLocName: mechanic['mechaniclocname'] ?? "Unknown Location",
                         ),
                       ),
                     ),

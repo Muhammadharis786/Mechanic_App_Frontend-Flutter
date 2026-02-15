@@ -24,7 +24,7 @@ import 'mechanic_list_screen.dart';
 import 'verify_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key} );
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -33,11 +33,11 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final Color primaryColor = const Color(0xFFFB3300);
   
-  // State variables from both versions
+  // State variables
   String _userName = "Loading...";
-  int? _userId; // From User's version
+  int? _userId;
   bool _isLoading = true;
-  File? _profileImage; // From Friend's version
+  File? _profileImage;
   List<Map<String, dynamic>> nearbyMechanics = [];
 
   @override
@@ -46,40 +46,41 @@ class _HomeScreenState extends State<HomeScreen> {
     _fetchDashboardData();
   }
 
-  // Integrated API Logic from User's version
   Future<void> _fetchDashboardData() async {
-    final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/user/dashboard");
+    final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/user/dashboard" );
 
     try {
       final response = await http.get(
         url,
-        headers: UserSession().getAuthHeader(),
+        headers: UserSession( ).getAuthHeader(),
       );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         
         setState(() {
-          // Parsing nested user object
           if (data['user'] != null) {
             _userName = data['user']['username'] ?? "User";
             _userId = data['user']['userid'];
             UserSession().userId = data['user']['userid'];
           }
           
-          // Parsing mechanics list from response
           if (data['mechanics'] != null) {
              nearbyMechanics = List<Map<String, dynamic>>.from(
               (data['mechanics'] as List).map((m) => {
                 "id": m['id'] ?? 0,
                 "name": m['name'] ?? "Unknown Mechanic",
-                "rating": (m['averagerating'] as num?)?.toDouble() ?? 0.0,
+                "averagerating": (m['averagerating'] as num?)?.toDouble() ?? 0.0,
                 "distance": (m['distance'] as num?)?.toDouble() ?? 0.0,
-                "available": m['isactive'] ?? false, 
-                "image": m['mechanicimgurl'] != null ? m['mechanicimgurl'] : "assets/images/m1.jpg", 
-                "phone": m['phonenumber'] ?? "",
-                "type": m['MechanicType'] ?? "", 
+                "isactive": m['isactive'] ?? false, 
+                "mechanicimgurl": m['mechanicimgurl'] ?? "assets/images/m1.jpg",
+                "phonenumber": m['phonenumber'] ?? "",
+                "MechanicType": m['MechanicType'] ?? "N/A",
                 "experience": m['experience'] ?? 0,
+                "isengaged": m['isengaged'] ?? false,
+                "mechaniclocname": m['mechaniclocname'] ?? "",
+                "latitude": (m['latitude'] is String) ? double.tryParse(m['latitude']) ?? 0.0 : (m['latitude'] as num?)?.toDouble() ?? 0.0,
+                "longitude": (m['longitude'] is String) ? double.tryParse(m['longitude']) ?? 0.0 : (m['longitude'] as num?)?.toDouble() ?? 0.0,
               })
             );
           }
@@ -395,13 +396,11 @@ class _HomeScreenState extends State<HomeScreen> {
             }),
             _drawerItem(Icons.build_circle_rounded, "Request History", context, onTap: () {
               Navigator.pop(context);
-              // Note: Ensure RequestHistoryScreen is imported or defined
-               Navigator.pushAndRemoveUntil(
+              Navigator.pushAndRemoveUntil(
                    context, MaterialPageRoute(builder: (_) => const RequestHistoryScreen()), (route) => false);
             }),
             _drawerItem(Icons.book_online, "Book Appointments", context, onTap: () {
               Navigator.pop(context);
-              // Note: Ensure BookAppointmentScreen is imported or defined
                Navigator.pushAndRemoveUntil(
                   context, MaterialPageRoute(builder: (_) => const BookAppointmentScreen()), (route) => false);
             }),
@@ -556,7 +555,7 @@ class _SkeletonHomeBody extends StatelessWidget {
   }
 }
 
-// ================= MECHANIC CARD =================
+// ================= MECHANIC CARD (UPDATED) =================
 class _NearbyMechanicCompactCard extends StatelessWidget {
   final Map<String, dynamic> mechanic;
   final Color primaryColor;
@@ -570,6 +569,8 @@ class _NearbyMechanicCompactCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final imageUrl = mechanic['mechanicimgurl']?.toString() ?? '';
+
     return Container(
       width: 245,
       margin: const EdgeInsets.only(right: 12),
@@ -583,12 +584,43 @@ class _NearbyMechanicCompactCard extends StatelessWidget {
         children: [
           Row(
             children: [
+              // ===== YEH HISSA TABDEEL HUA HAI =====
               CircleAvatar(
                 radius: 24,
-                backgroundImage: mechanic['image'].toString().startsWith('http')
-                    ? NetworkImage(mechanic['image'])
-                    : AssetImage(mechanic['image']) as ImageProvider,
+                backgroundColor: Colors.grey.shade200,
+                child: ClipOval(
+                  child: imageUrl.startsWith('http' )
+                      ? Image.network(
+                          imageUrl,
+                          fit: BoxFit.cover,
+                          width: 48,
+                          height: 48,
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) return child;
+                            return Center(
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                value: loadingProgress.expectedTotalBytes != null
+                                    ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                                    : null,
+                              ),
+                            );
+                          },
+                          errorBuilder: (context, error, stackTrace) {
+                            // Error ko console mein print karein
+                            debugPrint('Image Load Error for ${mechanic['name']}: $error');
+                            return Icon(Icons.person, size: 24, color: Colors.grey.shade400);
+                          },
+                        )
+                      : Image.asset( // Fallback agar URL nahi hai
+                          'assets/images/m1.jpg',
+                          fit: BoxFit.cover,
+                          width: 48,
+                          height: 48,
+                        ),
+                ),
               ),
+              // =====================================
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -600,7 +632,7 @@ class _NearbyMechanicCompactCard extends StatelessWidget {
                             fontSize: 14,
                             color: isDark ? Colors.white : Colors.black)),
                     const SizedBox(height: 2),
-                    Text(mechanic['type'],
+                    Text(mechanic['MechanicType'],
                         style: GoogleFonts.poppins(
                             color: isDark ? Colors.white70 : Colors.grey.shade600, 
                             fontSize: 12)),
@@ -608,7 +640,7 @@ class _NearbyMechanicCompactCard extends StatelessWidget {
                     Row(
                       children: [
                         const Icon(Icons.star, size: 14, color: Colors.amber),
-                        Text("${mechanic['rating']}",
+                        Text("${mechanic['averagerating']}",
                             style: GoogleFonts.poppins(
                                 fontSize: 12,
                                 color: isDark ? Colors.white : Colors.black)),
@@ -627,7 +659,7 @@ class _NearbyMechanicCompactCard extends StatelessWidget {
                 width: 10,
                 height: 10,
                 decoration: BoxDecoration(
-                  color: mechanic['available'] ? Colors.green : Colors.red,
+                  color: mechanic['isactive'] ? Colors.green : Colors.red,
                   shape: BoxShape.circle,
                 ),
               )
@@ -638,7 +670,7 @@ class _NearbyMechanicCompactCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               _actionButton(Icons.call_rounded, "Call", Colors.green, () async {
-                final phone = mechanic['phone'] as String?;
+                final phone = mechanic['phonenumber'] as String?;
                 if (phone != null && phone.isNotEmpty) {
                   final Uri launchUri = Uri(scheme: 'tel', path: phone);
                   if (await canLaunchUrl(launchUri)) {
@@ -654,14 +686,16 @@ class _NearbyMechanicCompactCard extends StatelessWidget {
                       mechanic: Mechanic(
                         id: mechanic['id'].toString(),
                         name: mechanic['name'],
-                        avatarUrl: mechanic['image'],
-                        rating: (mechanic['rating'] as num).toDouble(),
+                        mechanictype : mechanic['MechanicType'],
+                        avatarUrl: mechanic['mechanicimgurl'],
+                        rating: (mechanic['averagerating'] as num).toDouble(),
                         distanceKm: (mechanic['distance'] as num).toDouble(),
-                        isOnline: mechanic['available'] ?? false,
-                        phone: mechanic['phone'] ?? "",
-                        lat: 0.0, // Defaulting as not available in map
-                        lng: 0.0, // Defaulting as not available in map
+                        isOnline: mechanic['isactive'] ?? false,
+                        phone: mechanic['phonenumber'] ?? "",
+                        lat: mechanic['latitude'] ?? 0.0,
+                        lng: mechanic['longitude'] ?? 0.0,
                         experienceYears: mechanic['experience'] ?? 0,
+                        mechanicLocName: mechanic['mechaniclocname'] ?? "Unknown Location",
                       ),
                     ),
                   ),

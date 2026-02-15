@@ -11,13 +11,16 @@ import 'dart:convert';
 import 'package:http_parser/http_parser.dart';
 import '../authentication/user_session.dart';
 import 'mechanic_dashboard.dart';
-import '../authentication/user_session.dart';
-import 'mechanic_dashboard.dart';
+
 import 'mechanic_login.dart'; // Import MechanicLoginScreen
 import 'package:geolocator/geolocator.dart'; // Added geolocator import
 
 import 'package:mech_app/services/phone_auth_service.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+
+
+
+
+
 
 class MechanicRegistrationScreen extends StatefulWidget {
   const MechanicRegistrationScreen({super.key});
@@ -128,22 +131,28 @@ class _MechanicRegistrationScreenState
     }
   }
 
-  // ================= SUBMIT =================
+   // ================= SUBMIT =================
   bool isSubmitting = false;
 
   Future<void> submitRegistration() async {
+    final userId = UserSession().userId;
+    if (userId == null || userId == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('User session expired. Please login again.'), backgroundColor: Colors.red),
+      );
+      return;
+    }
+
     setState(() => isSubmitting = true);
     
     try {
+      debugPrint('DEBUG - Mechanic Registration UserID: $userId');
       var uri = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/register");
       var request = http.MultipartRequest("POST", uri);
 
-
-
-
-      // 1. Create JSON Data (mirroring JS mechanicData)
+      // 1. Create JSON Data
       Map<String, dynamic> mechanicData = {
-        'userid':    UserSession().userId ?? 0, 
+        'userid':    userId, 
         'name': name,
         'phonenumber': phone,
         'password': password,
@@ -152,97 +161,128 @@ class _MechanicRegistrationScreenState
         'experienceyears': experience,
         'workinghours': workingHours,
         'otpVerified': true, 
-        'latitude': latitude, // Added latitude
-        'longitude': longitude // Added longitude
+        'latitude': latitude,
+        'longitude': longitude
       };
-
-      // 2. Add 'userData' as a JSON Part (application/json)
+      
+      // Print complete data being sent (like Postman)
+      debugPrint('═══════════════════════════════════════════════════');
+      debugPrint('📤 MECHANIC REGISTRATION DATA BEING SENT:');
+      debugPrint(JsonEncoder.withIndent('  ').convert(mechanicData));
+      debugPrint('Images:');
+      debugPrint('  - Profile Image: ${profileImage != null ? "✓ Selected" : "✗ Not Selected"}');
+      debugPrint('  - CNIC Front: ${cnicFrontImage != null ? "✓ Selected" : "✗ Not Selected"}');
+      debugPrint('  - CNIC Back: ${cnicBackImage != null ? "✓ Selected" : "✗ Not Selected"}');
+      debugPrint('═══════════════════════════════════════════════════');
+      
+      // 2. Add 'userData' as a JSON Part
       request.files.add(http.MultipartFile.fromString(
         'userData',
         jsonEncode(mechanicData),
         contentType: MediaType('application', 'json'),
       ));
 
-      // 3. Add Files with CORRECT keys (matching JS: mechanicprofilePicture, cnicfrontimg, cnicbackimg)
-      if (profileImage != null) {
+      // 3. Add Files with Web/Mobile Compatibility
+      // Helper function to add files correctly
+      Future<void> addMultipartFile(String fieldName, XFile? file, String defaultName) async {
+        if (file == null) return;
+        
         if (kIsWeb) {
+          // For Web: Use fromBytes
+          final bytes = await file.readAsBytes();
           request.files.add(http.MultipartFile.fromBytes(
-            'mechanicprofilePicture',
-            await profileImage!.readAsBytes(),
-            filename: 'profile.jpg'
+            fieldName,
+            bytes,
+            filename: file.name.isNotEmpty ? file.name : defaultName,
+            contentType: MediaType('image', 'jpeg'), // Adjust if needed
           ));
         } else {
-          request.files.add(await http.MultipartFile.fromPath('mechanicprofilePicture', profileImage!.path));
-        }
-      }
-      if (cnicFrontImage != null) {
-        if (kIsWeb) {
-           request.files.add(http.MultipartFile.fromBytes(
-            'cnicfrontimg',
-            await cnicFrontImage!.readAsBytes(),
-            filename: 'cnic_front.jpg'
+          // For Mobile: Use fromPath
+          request.files.add(await http.MultipartFile.fromPath(
+            fieldName, 
+            file.path,
+            contentType: MediaType('image', 'jpeg'),
           ));
-        } else {
-           request.files.add(await http.MultipartFile.fromPath('cnicfrontimg', cnicFrontImage!.path));
         }
       }
-      if (cnicBackImage != null) {
-        if (kIsWeb) {
-           request.files.add(http.MultipartFile.fromBytes(
-            'cnicbackimg',
-            await cnicBackImage!.readAsBytes(),
-            filename: 'cnic_back.jpg'
-          ));
-        } else {
-           request.files.add(await http.MultipartFile.fromPath('cnicbackimg', cnicBackImage!.path));
-        }
-      }
+
+      await addMultipartFile('mechanicprofilePicture', profileImage, 'profile.jpg');
+      await addMultipartFile('cnicfrontimg', cnicFrontImage, 'cnic_front.jpg');
+      await addMultipartFile('cnicbackimg', cnicBackImage, 'cnic_back.jpg');
 
       // Send
       var response = await request.send();
-      var responseBody = await response.stream.bytesToString(); // Read response
+      var responseBody = await response.stream.bytesToString();
 
       if (response.statusCode == 200) {
-        // Success
-         ScaffoldMessenger.of(context).showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Registration Successful!'), backgroundColor: Colors.green),
         );
-        
-        // Auto Login Session save (optional but good UX)
         await UserSession().saveSession(phone, password, 'MECHANIC');
-
-        // Navigate
         if (mounted) {
            Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (_) => const MechanicDashboardScreen()),
           );
         }
-      } else if (response.statusCode == 409) {
-         // Mechanic Already Exists
-         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('You are already registered! Logging you in...'), backgroundColor: Colors.orange),
+      } else if (response.statusCode == 409 || responseBody.contains("already exists")) {
+        // Handle "Already Registered" case
+        // Try to parse backend message
+        String errorMessage = 'You are already registered as a mechanic!';
+        try {
+          final responseData = jsonDecode(responseBody);
+          if (responseData is Map && responseData.containsKey('message')) {
+            errorMessage = responseData['message'];
+          } else if (responseData is String) {
+            errorMessage = responseData;
+          }
+        } catch (e) {
+          // Use default message if parsing fails
+        }
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage), 
+            backgroundColor: const Color.fromARGB(255, 250, 61, 3),
+          ),
         );
         
-        // Navigate to Login
         if (mounted) {
-           Navigator.pushReplacement(
+          Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (_) => const MechanicLoginScreen()), // Import MechanicLoginScreen if needed
+            MaterialPageRoute(builder: (_) => const MechanicLoginScreen()),
           );
         }
       } else {
+        // Parse backend error message
+        String errorMessage = 'Registration Failed';
+        try {
+          final responseData = jsonDecode(responseBody);
+          if (responseData is Map && responseData.containsKey('message')) {
+            errorMessage = responseData['message'];
+          } else if (responseData is Map && responseData.containsKey('error')) {
+            errorMessage = responseData['error'];
+          } else if (responseData is String) {
+            errorMessage = responseData;
+          }
+        } catch (e) {
+          // If parsing fails, use response body as is (but keep it clean)
+          errorMessage = responseBody.isNotEmpty && responseBody.length < 100 
+              ? responseBody 
+              : 'Registration failed. Please try again.';
+        }
+        
         debugPrint("Registration Error: $responseBody");
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Registration Failed (${response.statusCode}): $responseBody'), 
+            content: Text(errorMessage), 
             backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
           ),
         );
       }
 
     } catch (e) {
+      debugPrint("Submit Error: $e");
       ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
       );
@@ -475,7 +515,7 @@ class _MechanicRegistrationScreenState
       
       final response = await http.post(
         url,
-        body: {'phonenumber': number},
+        body: {'number': number}, // Changed from 'phonenumber' to 'number' based on backend DTO
       );
 
       if (response.statusCode == 200) {
@@ -484,9 +524,23 @@ class _MechanicRegistrationScreenState
           phoneStatusMessage = "Number Available ";
         });
       } else {
+        // Try to parse backend error message
+        String errorMessage = "Not Available";
+        try {
+          final responseData = jsonDecode(response.body);
+          if (responseData is Map && responseData.containsKey('message')) {
+            errorMessage = responseData['message'];
+          } else if (responseData is String) {
+            errorMessage = responseData;
+          }
+        } catch (e) {
+          // If parsing fails, use response body as is
+          errorMessage = response.body.isNotEmpty ? response.body : "Number not available";
+        }
+        
         setState(() {
           isPhoneOk = false;
-          phoneStatusMessage = "Number Status: ${response.statusCode } (Not Available)";
+          phoneStatusMessage = errorMessage;
         });
       }
     } catch (e) {
