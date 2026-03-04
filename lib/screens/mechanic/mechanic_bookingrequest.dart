@@ -71,7 +71,7 @@ class _MechanicBookingRequestScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey.shade100,
+      backgroundColor: Colors.white,
 
       /// APP BAR WITH TABS
       appBar: AppBar(
@@ -115,19 +115,41 @@ class _MechanicBookingRequestScreenState
     );
   }
 
+  Future<void> _refresh() async {
+    await Future.delayed(const Duration(seconds: 2));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Bookings refreshed")),
+      );
+    }
+  }
+
   /// ================= REQUESTS TAB =================
   Widget _requestsTab() {
+     // NOTE: Added RefreshIndicator even for empty view to allow refresh attempt
     if (bookingRequests.isEmpty) {
-      return _emptyView('No booking requests');
+      return RefreshIndicator(
+          onRefresh: _refresh,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: [
+               SizedBox(height: MediaQuery.of(context).size.height * 0.3),
+               _emptyView('No booking requests')
+            ],
+          ));
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: bookingRequests.length,
-      itemBuilder: (context, index) {
-        final r = bookingRequests[index];
-        return _requestCard(r, index);
-      },
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      color: primaryColor,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: bookingRequests.length,
+        itemBuilder: (context, index) {
+          final r = bookingRequests[index];
+          return _requestCard(r, index);
+        },
+      ),
     );
   }
 
@@ -187,30 +209,43 @@ class _MechanicBookingRequestScreenState
 
   /// ================= HISTORY TAB =================
   Widget _historyTab() {
+    // NOTE: Added RefreshIndicator
     if (bookingHistory.isEmpty) {
-      return _emptyView('No booking history');
+       return RefreshIndicator(
+          onRefresh: _refresh,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: [
+               SizedBox(height: MediaQuery.of(context).size.height * 0.3),
+               _emptyView('No booking history')
+            ],
+          ));
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: bookingHistory.length,
-      itemBuilder: (context, index) {
-        final h = bookingHistory[index];
-        return _cardContainer(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _titleRow(h['userName'], h['status']),
-              const SizedBox(height: 6),
-              _infoRow(Icons.location_on, h['address']),
-              const Divider(),
-              _infoRow(Icons.build, h['service']),
-              _infoRow(Icons.calendar_today, '${h['date']} • ${h['time']}'),
-              _infoRow(Icons.attach_money, 'PKR ${h['amount']}'),
-            ],
-          ),
-        );
-      },
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      color: primaryColor,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: bookingHistory.length,
+        itemBuilder: (context, index) {
+          final h = bookingHistory[index];
+          return _cardContainer(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _titleRow(h['userName'], h['status']),
+                const SizedBox(height: 6),
+                _infoRow(Icons.location_on, h['address']),
+                const Divider(),
+                _infoRow(Icons.build, h['service']),
+                _infoRow(Icons.calendar_today, '${h['date']} • ${h['time']}'),
+                _infoRow(Icons.attach_money, 'PKR ${h['amount']}'),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 

@@ -36,6 +36,15 @@ class _MechanicEarningsScreenState extends State<MechanicEarningsScreen> {
 
   String today = '13 Jan 2026'; // example today date
 
+  Future<void> _refresh() async {
+    await Future.delayed(const Duration(seconds: 2));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Earnings updated")),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     int totalEarnings = completedBookings.fold(
@@ -46,7 +55,7 @@ class _MechanicEarningsScreenState extends State<MechanicEarningsScreen> {
     int completedCount = completedBookings.length;
 
     return Scaffold(
-      backgroundColor: Colors.grey.shade100,
+      backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
         iconTheme: IconThemeData(color: primaryColor),
@@ -59,10 +68,14 @@ class _MechanicEarningsScreenState extends State<MechanicEarningsScreen> {
           ),
         ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        color: primaryColor,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
             // Summary Cards
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -171,6 +184,7 @@ class _MechanicEarningsScreenState extends State<MechanicEarningsScreen> {
             ),
           ],
         ),
+      ),
       ),
     );
   }

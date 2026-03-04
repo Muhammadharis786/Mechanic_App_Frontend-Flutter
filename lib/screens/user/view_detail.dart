@@ -4,6 +4,9 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'dart:ui' as ui;
 import 'dart:typed_data';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 
 class Mechanic {
@@ -55,6 +58,15 @@ class _MechanicDetailScreenState extends State<MechanicDetailScreen> {
   void initState() {
     super.initState();
     _loadCustomMarker();
+  }
+
+  Future<void> _refresh() async {
+    await Future.delayed(const Duration(seconds: 2));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Mechanic details updated")),
+      );
+    }
   }
 
   Future<void> _loadCustomMarker() async {
@@ -202,191 +214,377 @@ class _MechanicDetailScreenState extends State<MechanicDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // debugPrint("Mechanic Detail: ${widget.mechanic.name}");
-    // debugPrint("Lat: ${widget.mechanic.lat}, Lng: ${widget.mechanic.lng}");
-
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        title: const Text('Mechanic Details', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-        elevation: 1,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black, size: 22),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+      body: Stack(
+        children: [
+          // 1. Background Map (Full Screen)
+          Positioned.fill(
+            child: GoogleMap(
+              key: ValueKey(widget.mechanic.id),
+              initialCameraPosition: CameraPosition(
+                target: LatLng(widget.mechanic.lat, widget.mechanic.lng),
+                zoom: 15,
+              ),
+              markers: {
+                Marker(
+                  markerId: const MarkerId('mechanic_loc'),
+                  position: LatLng(widget.mechanic.lat, widget.mechanic.lng),
+                  icon: _markerIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+                ),
+              },
+              zoomControlsEnabled: false,
+              mapToolbarEnabled: false,
+              myLocationButtonEnabled: false,
+              // Re-enable gestures with EagerGestureRecognizer to handle specific map interactions
+              scrollGesturesEnabled: true,
+              zoomGesturesEnabled: true,
+              tiltGesturesEnabled: true,
+              rotateGesturesEnabled: true,
+              gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+                Factory<OneSequenceGestureRecognizer>(() => EagerGestureRecognizer()),
+              },
+              onTap: (_) => _openFullScreenMap(context),
+            ),
+          ),
+
+          // 2. Custom Back Button (Floating)
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 10,
+            left: 16,
+            child: CircleAvatar(
+              backgroundColor: Colors.white,
+              child: IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black, size: 20),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ),
+          ),
+
+          // 3. Floating Bottom Panel
+          DraggableScrollableSheet(
+            initialChildSize: 0.45,
+            minChildSize: 0.35,
+            maxChildSize: 0.85,
+            builder: (context, scrollController) {
+              return Container(
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black12,
+                      blurRadius: 10,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: SingleChildScrollView(
+                  controller: scrollController,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 1. Top Section with Contrast Color
+                      Container(
+                        padding: const EdgeInsets.only(bottom: 25),
+                        decoration: BoxDecoration(
+                          color: primaryColor,
+                          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+                        ),
+                        child: Column(
+                          children: [
+                            // Handle Bar (White on colored bg)
+                            Center(
+                              child: Container(
+                                margin: const EdgeInsets.only(top: 12),
+                                width: 40,
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.3),
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                            ),
+
+                            // Profile Header
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+                              child: Row(
+                                children: [
+                                  _buildAvatarLarge(),
+                                  const SizedBox(width: 15),
+                                  Expanded(child: _buildHeaderInfo(isHeaderFilled: true)),
+                                ],
+                              ),
+                            ),
+
+                            // Quick Info Chips
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 10),
+                              child: IntrinsicHeight(
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                  children: [
+                                    _buildCapsuleTag(
+                                      icon: Icons.star_rounded, 
+                                      label: widget.mechanic.rating.toStringAsFixed(1),
+                                      color: Colors.white,
+                                      iconColor: Colors.yellowAccent,
+                                      bgColor: Colors.transparent
+                                    ),
+                                    _buildVerticalDivider(),
+                                    _buildCapsuleTag(
+                                      icon: Icons.location_on_rounded, 
+                                      label: '${widget.mechanic.distanceKm.toStringAsFixed(1)} KM',
+                                      color: Colors.white,
+                                      bgColor: Colors.transparent
+                                    ),
+                                    _buildVerticalDivider(),
+                                    _buildCapsuleTag(
+                                      icon: Icons.history_rounded, 
+                                      label: '${widget.mechanic.experienceYears} Years',
+                                      color: Colors.white,
+                                      bgColor: Colors.transparent
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 20),
+
+                      // Details Section
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              "Service Details",
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                            const SizedBox(height: 15),
+                            _buildDetailRow(Icons.settings_outlined, "Service Type", widget.mechanic.mechanictype),
+                            const SizedBox(height: 12),
+                            _buildDetailRow(Icons.map_outlined, "Location", widget.mechanic.mechanicLocName),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 30),
+
+                      // Action Buttons
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              flex: 1,
+                              child: OutlinedButton(
+                                onPressed: widget.mechanic.phone.trim().isNotEmpty
+                                    ? () async {
+                                        final Uri launchUri = Uri(scheme: 'tel', path: widget.mechanic.phone);
+                                        if (await canLaunchUrl(launchUri)) {
+                                          await launchUrl(launchUri);
+                                        }
+                                      }
+                                    : null,
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 15),
+                                  side: BorderSide(color: primaryColor, width: 1.5),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                                ),
+                                child: Icon(Icons.call_rounded, color: primaryColor),
+                              ),
+                            ),
+                            const SizedBox(width: 15),
+                            Expanded(
+                              flex: 3,
+                              child: ElevatedButton(
+                                onPressed: () {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Request sent to mechanic'))
+                                  );
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: primaryColor,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 15),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                                  elevation: 0,
+                                ),
+                                child: const Text(
+                                  'Send Request', 
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      
+                      const SizedBox(height: 30),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.only(bottom: 18),
+    );
+  }
+
+  Widget _buildAvatarLarge() {
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.grey.shade200, width: 1),
+      ),
+      child: CircleAvatar(
+        radius: 40,
+        backgroundImage: widget.mechanic.avatarUrl.startsWith('http')
+            ? NetworkImage(widget.mechanic.avatarUrl)
+            : (widget.mechanic.avatarUrl.isNotEmpty
+                ? AssetImage(widget.mechanic.avatarUrl)
+                : const AssetImage('assets/images/car.jpg')) as ImageProvider,
+      ),
+    );
+  }
+
+  Widget _buildHeaderInfo({bool isHeaderFilled = false}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Text(
+                widget.mechanic.name,
+                style: GoogleFonts.luckiestGuy(
+                  fontSize: 24, 
+                  fontWeight: FontWeight.normal, 
+                  color: isHeaderFilled ? Colors.white : Colors.black87,
+                  letterSpacing: 1.2,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            _buildOnlineBadge(isHeaderFilled: isHeaderFilled),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          widget.mechanic.mechanictype,
+          style: TextStyle(
+            fontSize: 14, 
+            color: isHeaderFilled ? Colors.white.withOpacity(0.9) : Colors.grey.shade600, 
+            fontWeight: FontWeight.w500
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildOnlineBadge({bool isHeaderFilled = false}) {
+    final bool isOnline = widget.mechanic.isOnline;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: isHeaderFilled 
+            ? (isOnline ? Colors.green.shade400.withOpacity(0.3) : Colors.white.withOpacity(0.2))
+            : (isOnline ? Colors.green.shade50 : Colors.grey.shade50),
+        borderRadius: BorderRadius.circular(8),
+        border: isHeaderFilled ? Border.all(color: Colors.white.withOpacity(0.5), width: 0.5) : null,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isOnline ? (isHeaderFilled ? Colors.greenAccent : Colors.green) : (isHeaderFilled ? Colors.white70 : Colors.grey),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            isOnline ? "Online" : "Offline",
+            style: TextStyle(
+              fontSize: 11, 
+              fontWeight: FontWeight.bold, 
+              color: isHeaderFilled ? Colors.white : (isOnline ? Colors.green.shade700 : Colors.grey.shade700)
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCapsuleTag({required IconData icon, required String label, required Color color, Color? bgColor, Color? iconColor}) {
+    return Expanded(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 22, color: iconColor ?? color),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: color, 
+              fontWeight: FontWeight.bold, 
+              fontSize: 13,
+              letterSpacing: 0.5
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVerticalDivider() {
+    return Container(
+      width: 1,
+      height: 30,
+      margin: const EdgeInsets.symmetric(horizontal: 5),
+      color: Colors.white.withOpacity(0.3),
+    );
+  }
+
+  Widget _buildDetailRow(IconData icon, String title, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade50,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, size: 20, color: Colors.grey.shade600),
+        ),
+        const SizedBox(width: 15),
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Mechanic Avatar & Info Row
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildAvatar(),
-                    const SizedBox(width: 12),
-                    Flexible(child: _buildMechanicInfo()),
-                    const SizedBox(width: 8),
-                    _buildStatusTag(),
-                  ],
-                ),
+              Text(title, style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+              const SizedBox(height: 2),
+              Text(
+                value.isNotEmpty ? value : "Not specified",
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.black87),
               ),
-
-              const Divider(height: 1, color: Colors.grey),
-
-              // Rating, Distance & Experience
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        _buildRatingChip(),
-                        const SizedBox(width: 12),
-                        _buildDistanceTile(),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    _buildExperienceTag(),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 8),
-
-              // Map Section
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: Column(
-                  children: [
-                    Stack(
-                      children: [
-                        SizedBox(
-                           height: 200, 
-                           child: Container(
-                              decoration: BoxDecoration(
-                                color: Colors.grey.shade100,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: Colors.grey.shade300),
-                              ),
-                              child: ClipRRect( 
-                                 borderRadius: BorderRadius.circular(12),
-                                 child: GoogleMap(
-                                    key: ValueKey(widget.mechanic.id), 
-                                    initialCameraPosition: CameraPosition(
-                                      target: LatLng(widget.mechanic.lat, widget.mechanic.lng),
-                                      zoom: 15,
-                                    ),
-                                    markers: {
-                                      Marker(
-                                        markerId: const MarkerId('mechanic_loc'),
-                                        position: LatLng(widget.mechanic.lat, widget.mechanic.lng),
-                                        icon: _markerIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-                                      ),
-                                    },
-                                    zoomControlsEnabled: false,
-                                    mapToolbarEnabled: false,
-                                    liteModeEnabled: false, 
-                                    myLocationButtonEnabled: false,
-                                    onTap: (_) => _openFullScreenMap(context),
-                                  ),
-                              ),
-                           ),
-                        ),
-                        // Overlay to capture tap if map doesn't
-                        Positioned.fill(
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: () => _openFullScreenMap(context),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 5),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton.icon(
-                        onPressed: () => _openFullScreenMap(context),
-                        icon: const Icon(Icons.fullscreen, size: 18, color: Colors.grey),
-                        label: const Text("View Full Map", style: TextStyle(fontSize: 12, color: Colors.grey)),
-                      ),
-                    )
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // Call Mechanic Button
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: widget.mechanic.phone.trim().isNotEmpty
-                        ? () async {
-                             final Uri launchUri = Uri(scheme: 'tel', path: widget.mechanic.phone);
-                             if (await canLaunchUrl(launchUri)) {
-                               await launchUrl(launchUri);
-                             } else {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Could not launch dialer for ${widget.mechanic.phone}'))
-                                );
-                             }
-                          }
-                        : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryColor,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      textStyle: const TextStyle(fontFamily: 'Poppins'),
-                    ),
-                    child: const Text('Call Mechanic', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 10),
-
-              // Request Mechanic Button
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Request sent to mechanic'))
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: primaryColor,
-                      side: BorderSide(color: primaryColor, width: 1.5),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      textStyle: const TextStyle(fontFamily: 'Poppins'),
-                    ),
-                    child: const Text('Request Mechanic', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 20),
             ],
           ),
         ),
-      ),
+      ],
     );
   }
 
@@ -399,105 +597,6 @@ class _MechanicDetailScreenState extends State<MechanicDetailScreen> {
           markerIcon: _markerIcon,
         ),
       ),
-    );
-  }
-
-  Widget _buildAvatar() {
-    return CircleAvatar(
-      radius: 36,
-      backgroundImage: widget.mechanic.avatarUrl.startsWith('http')
-          ? NetworkImage(widget.mechanic.avatarUrl)
-          : (widget.mechanic.avatarUrl.isNotEmpty
-              ? AssetImage(widget.mechanic.avatarUrl)
-              : const AssetImage('assets/images/car.jpg')) as ImageProvider,
-    );
-  }
-
-  Widget _buildMechanicInfo() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          widget.mechanic.name,
-          style: const TextStyle(fontFamily: 'Poppins', fontSize: 17, fontWeight: FontWeight.normal, color: Colors.black87),
-        ),
-        const SizedBox(height: 6),
-        Row(
-          children: [
-            const Icon(Icons.work_outline, size: 16, color: Colors.grey),
-            const SizedBox(width: 6),
-            Text(widget.mechanic.mechanictype, style: TextStyle(fontFamily: 'Poppins', fontSize: 13, color: Colors.grey.shade700)),
-          ],
-        ),
-        const SizedBox(height: 6),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Icon(Icons.location_on_outlined, size: 16, color: Colors.redAccent),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                '${widget.mechanic.mechanicLocName.isNotEmpty ? "${widget.mechanic.mechanicLocName} • " : ""}${widget.mechanic.distanceKm.toStringAsFixed(1)} km away',
-                style: TextStyle(fontFamily: 'Poppins', fontSize: 13, color: Colors.grey.shade700),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRatingChip() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: primaryColor.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.star, size: 16, color: primaryColor),
-          const SizedBox(width: 6),
-          Text(widget.mechanic.rating.toStringAsFixed(1), style: TextStyle(fontWeight: FontWeight.w600, color: primaryColor)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDistanceTile() {
-    return Row(
-      children: [
-        Icon(Icons.place_outlined, size: 16, color: primaryColor),
-        const SizedBox(width: 6),
-        Text('${widget.mechanic.distanceKm.toStringAsFixed(1)} km', style: const TextStyle(fontWeight: FontWeight.w500, color: Colors.black87)),
-      ],
-    );
-  }
-
-  Widget _buildStatusTag() {
-    final color = widget.mechanic.isOnline ? Colors.green.shade600 : Colors.grey.shade600;
-    final text = widget.mechanic.isOnline ? 'Online' : 'Offline';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.14)),
-      ),
-      child: Text(text, style: TextStyle(color: color, fontWeight: FontWeight.w600)),
-    );
-  }
-
-  Widget _buildExperienceTag() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: primaryColor.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text('${widget.mechanic.experienceYears} yrs experience', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: primaryColor)),
     );
   }
 }

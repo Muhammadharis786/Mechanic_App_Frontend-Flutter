@@ -39,21 +39,52 @@ class MechConnectApp extends StatelessWidget {
             primaryColor: Colors.orange,
             scaffoldBackgroundColor: Colors.white,
             fontFamily: 'Poppins',
+            colorScheme: const ColorScheme.light(
+              primary: Color(0xFFFB3300),
+              secondary: Colors.deepOrange,
+              surface: Colors.white,
+              background: Colors.white,
+              onPrimary: Colors.white,
+              surfaceTint: Colors.transparent,
+            ),
           ),
           darkTheme: ThemeData(
             brightness: Brightness.dark,
             primaryColor: Colors.deepOrange,
             scaffoldBackgroundColor: Colors.black,
             fontFamily: 'Poppins',
+            colorScheme: const ColorScheme.dark(
+              primary: Colors.deepOrange,
+              secondary: Colors.orange,
+              surface: Colors.black,
+              background: Colors.black,
+              onPrimary: Colors.white,
+              surfaceTint: Colors.transparent,
+            ),
           ),
-          themeMode: currentMode, // <-- GLOBAL CONTROL
+          themeMode: currentMode,
 
-          home: const SplashScreen(), // ya home screen
+          // ===== REMOVE OVERSCROLL GREY GLOW =====
+          scrollBehavior: const _NoGlowScrollBehavior(),
+
+          home: const SplashScreen(),
         );
       },
     );
   }
 }
+
+// Removes the grey/blue glow on overscroll (Android)
+class _NoGlowScrollBehavior extends ScrollBehavior {
+  const _NoGlowScrollBehavior();
+
+  @override
+  Widget buildOverscrollIndicator(
+      BuildContext context, Widget child, ScrollableDetails details) {
+    return child; // No glow indicator
+  }
+}
+
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});

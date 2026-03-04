@@ -143,129 +143,134 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
       drawer: _buildDrawer(),
       body: _isLoading
           ? const _SkeletonMechanicDashboard()
-          : SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Hello, $mechanicName',
-                            style: GoogleFonts.poppins(
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black,
-                            ),
-                          ),
-                          Row(
-                            children: [
-                              const Icon(Icons.star_rounded,
-                                  color: Colors.amber, size: 20),
-                              const SizedBox(width: 4),
-                              Text(
-                                '$mechanicRating Rating',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  color: Colors.grey[700],
-                                  fontWeight: FontWeight.w500,
-                                ),
+          : RefreshIndicator(
+              onRefresh: _fetchDashboardData,
+              color: primaryColor,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Hello, $mechanicName',
+                              style: GoogleFonts.poppins(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black,
                               ),
-                            ],
-                          ),
+                            ),
+                            Row(
+                              children: [
+                                const Icon(Icons.star_rounded,
+                                    color: Colors.amber, size: 20),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '$mechanicRating Rating',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 14,
+                                    color: Colors.grey[700],
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        // --- TABDEELI #3: Profile Image ko display kiya ---
+                        CircleAvatar(
+                          radius: 30,
+                          backgroundColor: Colors.grey[200],
+                          // Agar image URL khaali hai to Icon dikhayein, warna NetworkImage load karein
+                          backgroundImage: mechanicImageUrl.isNotEmpty
+                              ? NetworkImage(mechanicImageUrl)
+                              : null,
+                          child: mechanicImageUrl.isEmpty
+                              ? const Icon(Icons.person, color: Colors.grey, size: 35)
+                              : null,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 25),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [primaryColor, const Color(0xFFFF6A00)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: primaryColor.withOpacity(0.3),
+                            blurRadius: 12,
+                            offset: const Offset(0, 6),
+                          )
                         ],
                       ),
-                      // --- TABDEELI #3: Profile Image ko display kiya ---
-                      CircleAvatar(
-                        radius: 30,
-                        backgroundColor: Colors.grey[200],
-                        // Agar image URL khaali hai to Icon dikhayein, warna NetworkImage load karein
-                        backgroundImage: mechanicImageUrl.isNotEmpty
-                            ? NetworkImage(mechanicImageUrl)
-                            : null,
-                        child: mechanicImageUrl.isEmpty
-                            ? const Icon(Icons.person, color: Colors.grey, size: 35)
-                            : null,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          _statItem('Total Earnings', totalEarnings),
+                          Container(width: 1, height: 40, color: Colors.white24),
+                          _statItem("Today's Earnings", todaysEarnings),
+                        ],
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 25),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [primaryColor, const Color(0xFFFF6A00)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: primaryColor.withOpacity(0.3),
-                          blurRadius: 12,
-                          offset: const Offset(0, 6),
-                        )
-                      ],
                     ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    const SizedBox(height: 30),
+                    Text(
+                      'Quick Actions',
+                      style:
+                          GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 15),
+                    Row(
                       children: [
-                        _statItem('Total Earnings', totalEarnings),
-                        Container(width: 1, height: 40, color: Colors.white24),
-                        _statItem("Today's Earnings", todaysEarnings),
+                        _actionCard('Requests', Icons.pending_actions, Colors.blue, () {
+                          Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const MechanicBookingRequestScreen()));
+                        }),
+                        const SizedBox(width: 15),
+                        _actionCard('My Wallet', Icons.account_balance_wallet,
+                            Colors.green, () {
+                          Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const MechanicEarningsScreen()));
+                        }),
                       ],
                     ),
-                  ),
-                  const SizedBox(height: 30),
-                  Text(
-                    'Quick Actions',
-                    style:
-                        GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 15),
-                  Row(
-                    children: [
-                      _actionCard('Requests', Icons.pending_actions, Colors.blue, () {
-                        Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const MechanicBookingRequestScreen()));
-                      }),
-                      const SizedBox(width: 15),
-                      _actionCard('My Wallet', Icons.account_balance_wallet,
-                          Colors.green, () {
-                        Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const MechanicEarningsScreen()));
-                      }),
-                    ],
-                  ),
-                  const SizedBox(height: 30),
-                  Text(
-                    'Recent Jobs',
-                    style:
-                        GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 15),
-                  requests.isEmpty
-                      ? Center(
-                          child: Text("No jobs found",
-                              style: GoogleFonts.poppins(color: Colors.grey)))
-                      : ListView.separated(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: requests.length,
-                            separatorBuilder: (context, _) => const SizedBox(height: 12),
-                          itemBuilder: (context, index) =>
-                              _jobTile(requests[index]),
-                        ),
-                ],
+                    const SizedBox(height: 30),
+                    Text(
+                      'Recent Jobs',
+                      style:
+                          GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 15),
+                    requests.isEmpty
+                        ? Center(
+                            child: Text("No jobs found",
+                                style: GoogleFonts.poppins(color: Colors.grey)))
+                        : ListView.separated(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: requests.length,
+                              separatorBuilder: (context, _) => const SizedBox(height: 12),
+                            itemBuilder: (context, index) =>
+                                _jobTile(requests[index]),
+                          ),
+                  ],
+                ),
               ),
             ),
     );

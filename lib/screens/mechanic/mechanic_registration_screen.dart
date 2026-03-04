@@ -14,6 +14,7 @@ import 'mechanic_dashboard.dart';
 
 import 'mechanic_login.dart'; // Import MechanicLoginScreen
 import 'package:geolocator/geolocator.dart'; // Added geolocator import
+import 'mechanic_map_selection_screen.dart'; // Added map selection screen import
 
 import 'package:mech_app/services/phone_auth_service.dart';
 
@@ -50,6 +51,7 @@ class _MechanicRegistrationScreenState
   String phone = '';
   String password = '';
   String shopAddress = '';
+  final TextEditingController addressController = TextEditingController();
   double? latitude; // Added latitude
   double? longitude; // Added longitude
 
@@ -158,7 +160,7 @@ class _MechanicRegistrationScreenState
         'password': password,
         'shopaddress': shopAddress,
         'mechanictype': mechanicType,
-        'experienceyears': experience,
+        'experienceyears': int.tryParse(experience) ?? 0,
         'workinghours': workingHours,
         'otpVerified': true, 
         'latitude': latitude,
@@ -272,7 +274,8 @@ class _MechanicRegistrationScreenState
               : 'Registration failed. Please try again.';
         }
         
-        debugPrint("Registration Error: $responseBody");
+        debugPrint("Registration Error Status: ${response.statusCode}");
+        debugPrint("Registration Error Body: $responseBody");
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(errorMessage), 
@@ -292,8 +295,86 @@ class _MechanicRegistrationScreenState
   }
 
 
+  // ================= VALIDATION =================
+  bool _validateCurrentStep() {
+    if (currentStep == 0) {
+      if (profileImage == null) {
+        _showError('Please upload a profile picture.');
+        return false;
+      }
+      if (name.trim().isEmpty) {
+        _showError('Please enter your full name.');
+        return false;
+      }
+      if (phone.isEmpty || phone.length < 10) {
+        _showError('Please enter a valid phone number.');
+        return false;
+      }
+      if (!isPhoneOk) {
+        _showError('Phone number is not available. Please use a different number.');
+        return false;
+      }
+      /*
+      if (!isOtpVerified) {
+        _showError('Please verify your phone number with OTP.');
+        return false;
+      }
+      */
+      if (password.isEmpty || password.length < 6) {
+        _showError('Please enter a valid password (min 6 characters).');
+        return false;
+      }
+      return true;
+    } else if (currentStep == 1) {
+      if (shopAddress.trim().isEmpty) {
+        _showError('Please provide your shop address.');
+        return false;
+      }
+      if (latitude == null || longitude == null) {
+        _showError('Please select a location from the map.');
+        return false;
+      }
+      return true;
+    } else if (currentStep == 2) {
+      if (mechanicType.isEmpty) {
+        _showError('Please select a mechanic type.');
+        return false;
+      }
+      if (experience.trim().isEmpty) {
+        _showError('Please enter your experience in years.');
+        return false;
+      }
+      if (workingHours.trim().isEmpty) {
+        _showError('Please specify your working hours.');
+        return false;
+      }
+      return true;
+    } else if (currentStep == 3) {
+      if (cnicFrontImage == null) {
+        _showError('Please upload CNIC Front Image.');
+        return false;
+      }
+      if (cnicBackImage == null) {
+        _showError('Please upload CNIC Back Image.');
+        return false;
+      }
+      return true;
+    }
+    return true;
+  }
+
+  void _showError(String msg) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg), backgroundColor: Colors.red),
+      );
+    }
+  }
+
   // ================= NAVIGATION =================
   void nextPage() {
+    if (!_validateCurrentStep()) return;
+
     if (currentStep < totalSteps - 1) {
       setState(() => currentStep++);
       _pageController.nextPage(
@@ -762,29 +843,64 @@ class _MechanicRegistrationScreenState
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          input('Shop Address', onChanged: (v) => shopAddress = v),
-          const SizedBox(height: 20),
-
-          // Location Button
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: isGettingLocation ? null : _getCurrentLocation,
-              icon: isGettingLocation 
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                : const Icon(Icons.my_location, color: Colors.white),
-              label: Text(
-                isGettingLocation ? 'Getting Location...' : 'Allow Current Location',
-                 style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: addressController,
+                  style: GoogleFonts.poppins(),
+                  onChanged: (v) => shopAddress = v,
+                  decoration: InputDecoration(
+                    hintText: 'Shop Address',
+                    hintStyle: GoogleFonts.poppins(),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: primary),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: primary, width: 2),
+                    ),
+                  ),
+                ),
               ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: primary,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              const SizedBox(width: 8),
+              Container(
+                decoration: BoxDecoration(
+                  color: primary,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.map, color: Colors.white),
+                  onPressed: () async {
+                    FocusScope.of(context).unfocus(); // Close keyboard before opening map
+                    final result = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => MechanicMapSelectionScreen(
+                          initialLat: latitude,
+                          initialLng: longitude,
+                        ),
+                      ),
+                    );
+                    if (result != null && result is Map<String, dynamic>) {
+                      setState(() {
+                        latitude = result['latitude'];
+                        longitude = result['longitude'];
+                        if (result['address'] != null && 
+                            result['address'].toString().isNotEmpty && 
+                            result['address'].toString() != "Move map to select location") {
+                          shopAddress = result['address'];
+                          addressController.text = shopAddress;
+                        }
+                        locationMessage = "Location Selected from Map";
+                      });
+                    }
+                  },
+                ),
               ),
-            ),
+            ],
           ),
-          
           if (locationMessage != null)
             Padding(
               padding: const EdgeInsets.only(top: 8.0),
@@ -797,6 +913,7 @@ class _MechanicRegistrationScreenState
                 textAlign: TextAlign.center,
               ),
             ),
+
 
           if (latitude != null && longitude != null)
              Padding(

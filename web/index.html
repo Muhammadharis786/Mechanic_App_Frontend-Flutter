@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html style="background-color: #ffffff;">
 
 <head>
   <!--
@@ -33,12 +33,38 @@
   <title>mech_app</title>
   <link rel="manifest" href="manifest.json">
 
+  <!-- Force white background everywhere (removes blue overscroll on web) -->
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #ffffff !important;
+      overscroll-behavior: none;
+    }
+
+    flt-glass-pane,
+    flt-scene-host,
+    flt-scene,
+    flutter-view,
+    flt-rendering-backend,
+    flt-canvas-container {
+      background-color: #ffffff !important;
+    }
+  </style>
+
   <!-- Google Maps API -->
   <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBpyZg2i30gOLUKK0furYdGDbWXe4lqpkU"></script>
 
 </head>
 
-<body>
+<body style="background-color: #ffffff; margin: 0; padding: 0;">
   <script src="flutter_bootstrap.js" async></script>
 </body>
 

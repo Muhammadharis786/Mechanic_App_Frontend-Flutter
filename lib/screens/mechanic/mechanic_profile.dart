@@ -121,10 +121,19 @@ class _MechanicProfileScreenState extends State<MechanicProfileScreen> {
     );
   }
 
+  Future<void> _refresh() async {
+    await Future.delayed(const Duration(seconds: 2));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Profile data refreshed")),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey.shade100,
+      backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
         iconTheme: IconThemeData(color: primaryColor),
@@ -138,11 +147,15 @@ class _MechanicProfileScreenState extends State<MechanicProfileScreen> {
           ),
         ),
       ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        color: primaryColor,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
               // Profile Header
               Container(
                 width: double.infinity,
@@ -259,6 +272,7 @@ class _MechanicProfileScreenState extends State<MechanicProfileScreen> {
             ],
           ),
         ),
+      ),
       ),
     );
   }

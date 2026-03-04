@@ -3,22 +3,40 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'user/view_detail.dart';
 
-class MechanicListScreen extends StatelessWidget {
+
+class MechanicListScreen extends StatefulWidget {
   final String serviceType;
   final List<Map<String, dynamic>> mechanics;
+  final bool showViewOption;
 
   const MechanicListScreen({
     super.key,
     required this.serviceType,
-    required this.mechanics, required bool showViewOption,
+    required this.mechanics,
+    required this.showViewOption,
   });
 
+  @override
+  State<MechanicListScreen> createState() => _MechanicListScreenState();
+}
+
+class _MechanicListScreenState extends State<MechanicListScreen> {
   final Color primaryColor = const Color(0xFFFB3300);
+
+  Future<void> _refresh() async {
+    // Simulated delay for refresh
+    await Future.delayed(const Duration(seconds: 2));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Mechanic list updated")),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey.shade100,
+      backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 1,
@@ -35,22 +53,26 @@ class MechanicListScreen extends StatelessWidget {
                     color: Colors.black,
                     fontSize: 18,
                     fontWeight: FontWeight.bold)),
-            Text(serviceType,
+            Text(widget.serviceType,
                 style: TextStyle(fontSize: 13, color: Colors.grey)),
           ],
         ),
       ),
 
       // 🔥 SAME CARDS – JUST VERTICAL
-      body: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: mechanics.length,
-        itemBuilder: (context, index) {
-          return _NearbyMechanicCardVertical(
-            mechanic: mechanics[index],
-            primaryColor: primaryColor,
-          );
-        },
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        color: primaryColor,
+        child: ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: widget.mechanics.length,
+          itemBuilder: (context, index) {
+            return _NearbyMechanicCardVertical(
+              mechanic: widget.mechanics[index],
+              primaryColor: primaryColor,
+            );
+          },
+        ),
       ),
     );
   }

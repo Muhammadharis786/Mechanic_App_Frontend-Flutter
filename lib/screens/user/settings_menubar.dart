@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:mech_app/main.dart';
 import 'package:mech_app/screens/homescreen.dart';
 import 'package:mech_app/screens/verify_screen.dart';
+import 'package:mech_app/screens/authentication/user_session.dart';
 
 class SettingsMenuBar extends StatefulWidget {
   const SettingsMenuBar({super.key});
@@ -30,7 +33,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
       "next": "Next",
       "logoutQ": "Do you want to log out?",
       "deleteQ": "Delete Account?",
-      "deleteSub": "All data associated with your account will be erased",
+      "deleteSub": "All data associated with your account also mechanic data will be erased",
     },
     "Urdu": {
       "settings": "سیٹنگز",
@@ -315,63 +318,159 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
   void _deleteAccountSheet() {
     final isDark = themeNotifier.value == ThemeMode.dark;
 
-    showModalBottomSheet(
+    showDialog(
       context: context,
-      builder: (_) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Align(
-                alignment: Alignment.topRight,
-                child: IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.pop(context),
-                ),
+      builder: (_) => AlertDialog(
+        backgroundColor: isDark ? Colors.grey[900] : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
+            const SizedBox(width: 10),
+            Text(
+              t("deleteQ"),
+              style: GoogleFonts.poppins(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white : Colors.black,
               ),
-              Text(
-                t("deleteQ"),
-                style: GoogleFonts.poppins(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: isDark ? Colors.white : Colors.black,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                t("deleteSub"),
-                textAlign: TextAlign.center,
-                style: GoogleFonts.poppins(
-                  fontSize: 13,
-                  color: isDark ? Colors.white70 : Colors.black54,
-                ),
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size(double.infinity, 45),
-                ),
-                onPressed: () {
-                  // 🔴 BACKEND TASK:
-                  // - Delete user account permanently
-                  // - Block this phone number from re-login
-                  // - Force user to register again with new number
-
-                  Navigator.pushAndRemoveUntil(
-                    context,
-                    MaterialPageRoute(builder: (_) => const VerifyScreen()),
-                    (_) => false,
-                  );
-                },
-                child: const Text("Delete"),
-              ),
-            ],
+            ),
+          ],
+        ),
+        content: Text(
+          t("deleteSub"),
+          style: GoogleFonts.poppins(
+            fontSize: 13,
+            color: isDark ? Colors.white70 : Colors.black54,
           ),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              "Cancel",
+              style: GoogleFonts.poppins(
+                color: isDark ? Colors.white70 : Colors.black54,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => _performDeleteAccount(),
+            child: Text(
+              "Delete",
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
       ),
     );
+  }
+
+  Future<void> _performDeleteAccount() async {
+    final userId = UserSession().userId;
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("User ID not found. Please re-login.")),
+      );
+      return;
+    }
+
+    // Close the dialog first
+    Navigator.pop(context);
+
+    // Show loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: Colors.red),
+      ),
+    );
+
+    try {
+      final url = Uri.parse(
+        "https://mechanicapp-service-621632382478.asia-south1.run.app/api/user/delete/$userId",
+      );
+
+      final response = await http.delete(
+        url,
+        headers: UserSession().getAuthHeader(),
+      );
+
+      // Close loading dialog
+      if (context.mounted) Navigator.pop(context);
+
+      // Parse backend message from response body
+      String backendMessage;
+      try {
+        final body = jsonDecode(response.body);
+        backendMessage = body['message'] ??
+            body['error'] ??
+            body.toString();
+      } catch (_) {
+        backendMessage = response.body.isNotEmpty
+            ? response.body
+            : (response.statusCode == 200 || response.statusCode == 204
+                ? "Account deleted successfully"
+                : "Failed to delete account (${response.statusCode})");
+      }
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        // Show green success SnackBar BEFORE navigating
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                backendMessage,
+                style: GoogleFonts.poppins(color: Colors.white),
+              ),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+
+        await Future.delayed(const Duration(seconds: 2));
+
+        // Clear session data
+        await UserSession().logout();
+
+        if (context.mounted) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => const VerifyScreen()),
+            (_) => false,
+          );
+        }
+      } else {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                backendMessage,
+                style: GoogleFonts.poppins(color: Colors.white),
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (context.mounted) Navigator.pop(context);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Error: $e"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }

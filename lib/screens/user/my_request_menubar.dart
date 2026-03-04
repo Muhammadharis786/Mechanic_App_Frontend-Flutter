@@ -2,17 +2,31 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mech_app/screens/homescreen.dart';
 
-class RequestHistoryScreen extends StatelessWidget {
+class RequestHistoryScreen extends StatefulWidget {
   const RequestHistoryScreen({super.key});
 
+  @override
+  State<RequestHistoryScreen> createState() => _RequestHistoryScreenState();
+}
+
+class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
   final Color primaryColor = const Color(0xFFFB3300);
+
+  Future<void> _refresh() async {
+    await Future.delayed(const Duration(seconds: 2));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("History updated")),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark ? Colors.black : Colors.grey.shade100,
+      backgroundColor: isDark ? Colors.black : Colors.white,
       appBar: AppBar(
         backgroundColor: isDark ? Colors.black : Colors.white,
         elevation: 1,
@@ -60,16 +74,20 @@ class RequestHistoryScreen extends StatelessWidget {
           )
         ],
       ),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: dummyRequests.length,
-        itemBuilder: (context, index) {
-          return RequestHistoryCard(
-            data: dummyRequests[index],
-            primaryColor: primaryColor,
-            isDark: isDark,
-          );
-        },
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        color: primaryColor,
+        child: ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: dummyRequests.length,
+          itemBuilder: (context, index) {
+            return RequestHistoryCard(
+              data: dummyRequests[index],
+              primaryColor: primaryColor,
+              isDark: isDark,
+            );
+          },
+        ),
       ),
     );
   }

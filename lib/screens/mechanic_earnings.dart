@@ -50,7 +50,7 @@ class _MechanicEarningsScreenState extends State<MechanicEarningsScreen> {
     int completedCount = completedBookings.length;
 
     return Scaffold(
-      backgroundColor: Colors.grey.shade100,
+      backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
         iconTheme: IconThemeData(color: primaryColor),

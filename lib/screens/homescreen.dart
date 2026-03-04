@@ -36,8 +36,8 @@ class _HomeScreenState extends State<HomeScreen> {
   // State variables
   String _userName = "Loading...";
   int? _userId;
+  String _userImgUrl = "";
   bool _isLoading = true;
-  File? _profileImage;
   List<Map<String, dynamic>> nearbyMechanics = [];
 
   @override
@@ -62,6 +62,7 @@ class _HomeScreenState extends State<HomeScreen> {
           if (data['user'] != null) {
             _userName = data['user']['username'] ?? "User";
             _userId = data['user']['userid'];
+            _userImgUrl = data['user']['userimgurl'] ?? "";
             UserSession().userId = data['user']['userid'];
           }
           
@@ -102,21 +103,13 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _pickImage() async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
-    if (pickedFile != null) {
-      setState(() {
-        _profileImage = File(pickedFile.path);
-      });
-    }
-  }
+
 
   @override
   Widget build(BuildContext context) {
     final isDark = themeNotifier.value == ThemeMode.dark;
     return Scaffold(
-      backgroundColor: isDark ? Colors.black : Colors.grey.shade100,
+      backgroundColor: isDark ? Colors.black : Colors.white,
       drawer: _buildDrawer(context, isDark),
       appBar: AppBar(
         backgroundColor: isDark ? Colors.grey[900] : Colors.white,
@@ -162,136 +155,141 @@ class _HomeScreenState extends State<HomeScreen> {
 
       body: _isLoading 
           ? const _SkeletonHomeBody()
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // -------- Auto Assign --------
-                  Container(
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(18),
-                      gradient: LinearGradient(
-                          colors: [primaryColor, Colors.deepOrange]),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text("Need a Mechanic Now?",
-                            style: GoogleFonts.poppins(
-                                color: Colors.white,
-                                fontSize: 20,
-                                fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 6),
-                        Text("Nearest mechanic will be auto assigned",
-                            style: GoogleFonts.poppins(color: Colors.white70)),
-                        const SizedBox(height: 14),
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: primaryColor,
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12)),
-                          ),
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) => const AutoAssignScreen()),
-                            );
-                          },
-                          child: Text("Auto Assign Mechanic",
+          : RefreshIndicator(
+              onRefresh: _fetchDashboardData,
+              color: primaryColor,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // -------- Auto Assign --------
+                    Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(18),
+                        gradient: LinearGradient(
+                            colors: [primaryColor, Colors.deepOrange]),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text("Need a Mechanic Now?",
                               style: GoogleFonts.poppins(
-                                  fontWeight: FontWeight.w500)),
-                        ),
+                                  color: Colors.white,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 6),
+                          Text("Nearest mechanic will be auto assigned",
+                              style: GoogleFonts.poppins(color: Colors.white70)),
+                          const SizedBox(height: 14),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: primaryColor,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12)),
+                            ),
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) => const AutoAssignScreen()),
+                              );
+                            },
+                            child: Text("Auto Assign Mechanic",
+                                style: GoogleFonts.poppins(
+                                    fontWeight: FontWeight.w500)),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 26),
+
+                    // -------- Nearby Mechanics --------
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text("Nearby Mechanics",
+                            style: GoogleFonts.poppins(
+                                fontSize: 20, 
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? Colors.white : Colors.black)),
+                        InkWell(
+                          onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => MechanicListScreen(
+                                    serviceType: "Nearby Mechanics",
+                                    mechanics: nearbyMechanics,
+                                    showViewOption: true,
+                                  ),
+                                ),
+                              );
+                          },
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.grey[850] : Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Colors.black12,
+                                  blurRadius: 4,
+                                ),
+                              ],
+                            ),
+                            child: Text(
+                              "See All",
+                              style: GoogleFonts.poppins(
+                                  color: Colors.deepOrange,
+                                  fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        )
                       ],
                     ),
-                  ),
 
-                  const SizedBox(height: 26),
+                    const SizedBox(height: 12),
 
-                  // -------- Nearby Mechanics --------
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text("Nearby Mechanics",
-                          style: GoogleFonts.poppins(
-                              fontSize: 20, 
-                              fontWeight: FontWeight.w600,
-                              color: isDark ? Colors.white : Colors.black)),
-                      InkWell(
-                        onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => MechanicListScreen(
-                                  serviceType: "Nearby Mechanics",
-                                  mechanics: nearbyMechanics,
-                                  showViewOption: true,
-                                ),
-                              ),
+                    SizedBox(
+                      height: 165,
+                      child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: nearbyMechanics.length,
+                          itemBuilder: (context, index) {
+                            return _NearbyMechanicCompactCard(
+                              mechanic: nearbyMechanics[index],
+                              primaryColor: primaryColor,
+                              isDark: isDark,
                             );
-                        },
-                        borderRadius: BorderRadius.circular(12),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: isDark ? Colors.grey[850] : Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: const [
-                              BoxShadow(
-                                color: Colors.black12,
-                                blurRadius: 4,
-                              ),
-                            ],
-                          ),
-                          child: Text(
-                            "See All",
-                            style: GoogleFonts.poppins(
-                                color: Colors.deepOrange,
-                                fontWeight: FontWeight.w600),
-                          ),
+                          },
                         ),
-                      )
-                    ],
-                  ),
+                    ),
 
-                  const SizedBox(height: 12),
+                    const SizedBox(height: 30),
 
-                  SizedBox(
-                    height: 165,
-                    child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: nearbyMechanics.length,
-                        itemBuilder: (context, index) {
-                          return _NearbyMechanicCompactCard(
-                            mechanic: nearbyMechanics[index],
-                            primaryColor: primaryColor,
-                            isDark: isDark,
-                          );
-                        },
-                      ),
-                  ),
+                    // -------- Service Categories --------
+                    Text("Service Categories",
+                        style: GoogleFonts.poppins(
+                            fontSize: 20, 
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? Colors.white : Colors.black)),
+                    const SizedBox(height: 16),
 
-                  const SizedBox(height: 30),
-
-                  // -------- Service Categories --------
-                  Text("Service Categories",
-                      style: GoogleFonts.poppins(
-                          fontSize: 20, 
-                          fontWeight: FontWeight.w600,
-                          color: isDark ? Colors.white : Colors.black)),
-                  const SizedBox(height: 16),
-
-                  _serviceCard(context, "Bike Mechanic", 2 ,'assets/images/bike.jpg', isDark),
-                  const SizedBox(height: 16),
-                  _serviceCard(context, "Car Mechanic", 3,'assets/images/car.jpg', isDark),
-                  const SizedBox(height: 16),   
-                   
-                  _serviceCard(context, "Puncher", 4, 'assets/images/puncherr.jpg', isDark),
-                ],
+                    _serviceCard(context, "Bike Mechanic", 2 ,'assets/images/bike.jpg', isDark),
+                    const SizedBox(height: 16),
+                    _serviceCard(context, "Car Mechanic", 3,'assets/images/car.jpg', isDark),
+                    const SizedBox(height: 16),   
+                     
+                    _serviceCard(context, "Puncher", 4, 'assets/images/puncherr.jpg', isDark),
+                  ],
+                ),
               ),
             ),
     );
@@ -346,26 +344,12 @@ class _HomeScreenState extends State<HomeScreen> {
               decoration: BoxDecoration(color: isDark ? Colors.grey[900] : Colors.white),
               child: Column(
                 children: [
-                  GestureDetector(
-                    onTap: _pickImage,
-                    child: Stack(
-                      children: [
-                        CircleAvatar(
-                          radius: 36,
-                          backgroundImage: _profileImage != null
-                              ? FileImage(_profileImage!)
-                              : const AssetImage('assets/images/user.jpg') as ImageProvider,
-                        ),
-                        Positioned(
-                          bottom: 0,
-                          right: 0,
-                          child: Container(
-                            decoration: const BoxDecoration(color: Colors.deepOrange, shape: BoxShape.circle),
-                            child: const Icon(Icons.add, color: Colors.white, size: 20),
-                          ),
-                        ),
-                      ],
-                    ),
+                  CircleAvatar(
+                    radius: 36,
+                    backgroundColor: Colors.grey.shade200,
+                    backgroundImage: _userImgUrl.isNotEmpty && _userImgUrl.startsWith('http')
+                        ? NetworkImage(_userImgUrl)
+                        : const AssetImage('assets/images/user.jpg') as ImageProvider,
                   ),
                   const SizedBox(height: 10),
                   Text(
