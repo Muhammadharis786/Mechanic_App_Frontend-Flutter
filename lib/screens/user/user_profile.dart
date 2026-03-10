@@ -52,7 +52,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
   // ===== LOAD PROFILE FROM BACKEND =====
   Future<void> _loadProfile() async {
-    setState(() => _isLoading = true);
+    setState(() => _isLoading = true);  
     try {
       final url = Uri.parse(
         'https://mechanicapp-service-621632382478.asia-south1.run.app/api/user/dashboard',
@@ -61,12 +61,13 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final user = data['user'];
+        // Handle both flat and nested response
+        final user = data['user'] ?? data;
         if (user != null) {
           setState(() {
             _nameController.text = user['username'] ?? '';
-            _emailController.text = user['email'] ?? '';
             _phoneController.text = user['phonenumber'] ?? '';
+            _emailController.text = user['email'] ?? '';
             _imageUrl = user['userimgurl'] ?? '';
             _pickedImage = null;
             _pickedImageBytes = null;
@@ -96,6 +97,14 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   // ===== SAVE ALL — one multipart request (like mechanic registration) =====
   Future<void> _saveProfile() async {
     setState(() => _isSaving = true);
+    
+    // Validation: Must have at least some image (picked or existing)
+    if (_pickedImage == null && _imageUrl.isEmpty) {
+      setState(() => _isSaving = false);
+      _showSnack('Please select a profile image', isError: true);
+      return;
+    }
+
     try {
       final uri = Uri.parse(
         'https://mechanicapp-service-621632382478.asia-south1.run.app/api/save/user/userimage',
@@ -108,10 +117,16 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       final Map<String, dynamic> userData = {
         'username': _nameController.text.trim(),
         'email': _emailController.text.trim(),
-        'phonenumber': _phoneController.text.trim(),
       };
       if (_passwordController.text.isNotEmpty) {
         userData['password'] = _passwordController.text;
+      } else {
+        // Send existing password from session if left blank
+        userData['password'] = UserSession().password;
+      }
+      // Send existing image URL if no new image picked
+      if (_pickedImage == null && _imageUrl.isNotEmpty) {
+        userData['userimgurl'] = _imageUrl;
       }
 
       request.files.add(http.MultipartFile.fromString(
@@ -120,7 +135,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         contentType: MediaType('application', 'json'),
       ));
 
-      // 2. userimage file part (web vs mobile — same as mechanic registration)
+      // 2. userimage file part - Only added if a NEW image is picked
       if (_pickedImage != null) {
         if (kIsWeb) {
           final bytes = await _pickedImage!.readAsBytes();
@@ -279,9 +294,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                     // ===== FIELDS =====
                     _buildField('Full Name', _nameController, Icons.person_outline),
                     const SizedBox(height: 20),
-                    _buildField('Phone Number', _phoneController, Icons.phone_outlined, isPhone: true),
+                    _buildField('Phone Number', _phoneController, Icons.phone_outlined, isPhone: true, alwaysDisabled: true),
                     const SizedBox(height: 20),
-                    _buildField('Email', _emailController, Icons.email_outlined, isEmail: true),
+                    _buildField('Email (Optional)', _emailController, Icons.email_outlined, isEmail: true),
                     const SizedBox(height: 20),
 
                     if (_isEditing) ...[
@@ -339,7 +354,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   }
 
   Widget _buildField(String label, TextEditingController controller, IconData icon,
-      {bool isPhone = false, bool isEmail = false}) {
+      {bool isPhone = false, bool isEmail = false, bool alwaysDisabled = false}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -351,17 +366,21 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         const SizedBox(height: 8),
         TextFormField(
           controller: controller,
-          enabled: _isEditing,
+          enabled: alwaysDisabled ? false : _isEditing,
           keyboardType: isPhone
               ? TextInputType.phone
               : isEmail
                   ? TextInputType.emailAddress
                   : TextInputType.text,
-          style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w500, color: Colors.black87),
+          style: GoogleFonts.poppins(
+            fontSize: 15, 
+            fontWeight: FontWeight.w500, 
+            color: alwaysDisabled ? Colors.black54 : Colors.black87
+          ),
           decoration: InputDecoration(
-            prefixIcon: Icon(icon, color: _isEditing ? primaryColor : Colors.grey),
+            prefixIcon: Icon(icon, color: (!alwaysDisabled && _isEditing) ? primaryColor : Colors.grey),
             filled: true,
-            fillColor: Colors.white,
+            fillColor: alwaysDisabled ? Colors.grey.shade100 : Colors.white,
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),

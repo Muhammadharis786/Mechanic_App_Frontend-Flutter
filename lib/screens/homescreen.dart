@@ -21,7 +21,7 @@ import './authentication/service_chat_screen.dart';
 import './authentication/user_session.dart';
 import 'auto_assign.dart';
 import 'mechanic_list_screen.dart';
-import 'verify_screen.dart';
+import 'role_selection_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key} );
@@ -39,6 +39,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _userImgUrl = "";
   bool _isLoading = true;
   List<Map<String, dynamic>> nearbyMechanics = [];
+  String? _mechanicsMessage;
 
   @override
   void initState() {
@@ -50,45 +51,63 @@ class _HomeScreenState extends State<HomeScreen> {
     final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/user/dashboard" );
 
     try {
+      final headers = UserSession().getAuthHeader();
+      debugPrint('🔑 Auth Header: ${headers['Authorization']}');
+      debugPrint('🔑 UserSession: email=${UserSession().email}, userType=${UserSession().userType}');
+      
       final response = await http.get(
         url,
-        headers: UserSession( ).getAuthHeader(),
+        headers: headers,
       );
+
+      debugPrint('📡 Dashboard Response Status: ${response.statusCode}');
+      debugPrint('📡 Dashboard Response Body: ${response.body.length > 200 ? response.body.substring(0, 200) : response.body}');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         
+        // Handle both flat and nested response formats
+        final user = data['user'] ?? data; // If no 'user' key, data itself is the user object
+        debugPrint('✅ Dashboard data parsed. User: ${user['username']}');
+        
         setState(() {
-          if (data['user'] != null) {
-            _userName = data['user']['username'] ?? "User";
-            _userId = data['user']['userid'];
-            _userImgUrl = data['user']['userimgurl'] ?? "";
-            UserSession().userId = data['user']['userid'];
+          if (user['username'] != null || user['userid'] != null) {
+            _userName = user['username'] ?? "User";
+            _userId = user['userid'];
+            _userImgUrl = user['userimgurl'] ?? "";
+            UserSession().userId = user['userid'];
           }
           
           if (data['mechanics'] != null) {
-             nearbyMechanics = List<Map<String, dynamic>>.from(
-              (data['mechanics'] as List).map((m) => {
-                "id": m['id'] ?? 0,
-                "name": m['name'] ?? "Unknown Mechanic",
-                "averagerating": (m['averagerating'] as num?)?.toDouble() ?? 0.0,
-                "distance": (m['distance'] as num?)?.toDouble() ?? 0.0,
-                "isactive": m['isactive'] ?? false, 
-                "mechanicimgurl": m['mechanicimgurl'] ?? "assets/images/m1.jpg",
-                "phonenumber": m['phonenumber'] ?? "",
-                "MechanicType": m['MechanicType'] ?? "N/A",
-                "experience": m['experience'] ?? 0,
-                "isengaged": m['isengaged'] ?? false,
-                "mechaniclocname": m['mechaniclocname'] ?? "",
-                "latitude": (m['latitude'] is String) ? double.tryParse(m['latitude']) ?? 0.0 : (m['latitude'] as num?)?.toDouble() ?? 0.0,
-                "longitude": (m['longitude'] is String) ? double.tryParse(m['longitude']) ?? 0.0 : (m['longitude'] as num?)?.toDouble() ?? 0.0,
-              })
-            );
+            if (data['mechanics'] is String) {
+              _mechanicsMessage = data['mechanics'];
+              nearbyMechanics = [];
+            } else if (data['mechanics'] is List) {
+              _mechanicsMessage = null;
+              nearbyMechanics = List<Map<String, dynamic>>.from(
+                (data['mechanics'] as List).map((m) => {
+                  "id": m['id'] ?? 0,
+                  "name": m['name'] ?? "Unknown Mechanic",
+                  "averagerating": (m['averagerating'] as num?)?.toDouble() ?? 0.0,
+                  "distance": (m['distance'] as num?)?.toDouble() ?? 0.0,
+                  "isactive": m['isactive'] ?? false, 
+                  "mechanicimgurl": m['mechanicimgurl'] ?? "assets/images/m1.jpg",
+                  "phonenumber": m['phonenumber'] ?? "",
+                  "MechanicType": m['MechanicType'] ?? "N/A",
+                  "experience": m['experience'] ?? 0,
+                  "isengaged": m['isengaged'] ?? false,
+                  "mechaniclocname": m['mechaniclocname'] ?? "",
+                  "latitude": (m['latitude'] is String) ? double.tryParse(m['latitude']) ?? 0.0 : (m['latitude'] as num?)?.toDouble() ?? 0.0,
+                  "longitude": (m['longitude'] is String) ? double.tryParse(m['longitude']) ?? 0.0 : (m['longitude'] as num?)?.toDouble() ?? 0.0,
+                })
+              );
+            }
           }
           _isLoading = false;
         });
       } else {
-        debugPrint("Failed to fetch dashboard: ${response.statusCode}");
+        debugPrint("❌ Failed to fetch dashboard: ${response.statusCode}");
+        debugPrint("❌ Response body: ${response.body}");
         setState(() {
           _userName = "USER";
           _isLoading = false;
@@ -217,60 +236,88 @@ class _HomeScreenState extends State<HomeScreen> {
                                 fontSize: 20, 
                                 fontWeight: FontWeight.w600,
                                 color: isDark ? Colors.white : Colors.black)),
-                        InkWell(
-                          onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => MechanicListScreen(
-                                    serviceType: "Nearby Mechanics",
-                                    mechanics: nearbyMechanics,
-                                    showViewOption: true,
+                        if (_mechanicsMessage == null)
+                          InkWell(
+                            onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => MechanicListScreen(
+                                      serviceType: "Nearby Mechanics",
+                                      mechanics: nearbyMechanics,
+                                      showViewOption: true,
+                                    ),
                                   ),
-                                ),
-                              );
-                          },
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 14, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: isDark ? Colors.grey[850] : Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Colors.black12,
-                                  blurRadius: 4,
-                                ),
-                              ],
+                                );
+                            },
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: isDark ? Colors.grey[850] : Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Colors.black12,
+                                    blurRadius: 4,
+                                  ),
+                                ],
+                              ),
+                              child: Text(
+                                "See All",
+                                style: GoogleFonts.poppins(
+                                    color: Colors.deepOrange,
+                                    fontWeight: FontWeight.w600),
+                              ),
                             ),
-                            child: Text(
-                              "See All",
-                              style: GoogleFonts.poppins(
-                                  color: Colors.deepOrange,
-                                  fontWeight: FontWeight.w600),
-                            ),
-                          ),
-                        )
+                          )
                       ],
                     ),
 
                     const SizedBox(height: 12),
 
-                    SizedBox(
-                      height: 165,
-                      child: ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: nearbyMechanics.length,
-                          itemBuilder: (context, index) {
-                            return _NearbyMechanicCompactCard(
-                              mechanic: nearbyMechanics[index],
-                              primaryColor: primaryColor,
-                              isDark: isDark,
-                            );
-                          },
+                    if (_mechanicsMessage != null || nearbyMechanics.isEmpty)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.handyman_outlined, 
+                              size: 44, 
+                              color: isDark ? Colors.white54 : Colors.grey.shade400,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              _mechanicsMessage ?? "No mechanics available right now",
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w400,
+                                color: isDark ? Colors.white54 : Colors.grey.shade500,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          ],
                         ),
-                    ),
+                      )
+                    else 
+                      SizedBox(
+                        height: 165,
+                        child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: nearbyMechanics.length,
+                            itemBuilder: (context, index) {
+                              return _NearbyMechanicCompactCard(
+                                mechanic: nearbyMechanics[index],
+                                primaryColor: primaryColor,
+                                isDark: isDark,
+                              );
+                            },
+                          ),
+                      ),
 
                     const SizedBox(height: 30),
 
@@ -335,150 +382,258 @@ class _HomeScreenState extends State<HomeScreen> {
   // ================= DRAWER =================
   Drawer _buildDrawer(BuildContext context, bool isDark) {
     return Drawer(
-      child: Container(
-        color: isDark ? Colors.grey[900] : Colors.white,
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            DrawerHeader(
-              decoration: BoxDecoration(color: isDark ? Colors.grey[900] : Colors.white),
-              child: Column(
-                children: [
-                  CircleAvatar(
-                    radius: 36,
+      backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.grey.shade50,
+      child: Column(
+        children: [
+          Container(
+            padding: EdgeInsets.only(
+              top: MediaQuery.of(context).padding.top + 20,
+              bottom: 24,
+              left: 20,
+              right: 20,
+            ),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [primaryColor, Colors.deepOrange],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: primaryColor.withOpacity(0.3),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                )
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 8,
+                      )
+                    ],
+                  ),
+                  child: CircleAvatar(
+                    radius: 32,
                     backgroundColor: Colors.grey.shade200,
                     backgroundImage: _userImgUrl.isNotEmpty && _userImgUrl.startsWith('http')
                         ? NetworkImage(_userImgUrl)
                         : const AssetImage('assets/images/user.jpg') as ImageProvider,
                   ),
-                  const SizedBox(height: 10),
-                  Text(
-                    _isLoading ? "Loading..." : _userName,
-                    style: GoogleFonts.poppins(
-                      color: isDark ? Colors.white : Colors.black,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  Text(
-                    "User",
-                    style: GoogleFonts.poppins(color: isDark ? Colors.white70 : Colors.black54, fontSize: 13),
-                  ),
-                ],
-              ),
-            ),
-            _drawerItem(Icons.dashboard_customize_rounded, "DashBoard", context,
-                onTap: () {
-              Navigator.pop(context);
-              Navigator.pushAndRemoveUntil(
-                  context, MaterialPageRoute(builder: (_) => const HomeScreen()), (route) => false);
-            }),
-            _drawerItem(Icons.person_rounded, "My Profile", context, onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                  context, MaterialPageRoute(builder: (_) => const UserProfileScreen()));
-            }),
-            _drawerItem(Icons.build_circle_rounded, "Request History", context, onTap: () {
-              Navigator.pop(context);
-              Navigator.pushAndRemoveUntil(
-                   context, MaterialPageRoute(builder: (_) => const RequestHistoryScreen()), (route) => false);
-            }),
-            _drawerItem(Icons.book_online, "Book Appointments", context, onTap: () {
-              Navigator.pop(context);
-               Navigator.pushAndRemoveUntil(
-                  context, MaterialPageRoute(builder: (_) => const BookAppointmentScreen()), (route) => false);
-            }),
-            const Divider(),
-            _drawerItem(Icons.settings_rounded, "Settings", context, onTap: () {
-              Navigator.pop(context);
-              Navigator.pushAndRemoveUntil(
-                  context, MaterialPageRoute(builder: (_) => const SettingsMenuBar()), (route) => false);
-            }),
-            _drawerItem(Icons.logout_rounded, "Logout", context, isLogout: true, onTap: () async {
-              Navigator.pop(context);
-              showDialog(
-                context: context,
-                barrierDismissible: false,
-                builder: (context) {
-                  return Stack(
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Positioned.fill(
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-                          child: Container(color: Colors.black.withOpacity(0.3)),
+                      Text(
+                        _isLoading ? "Loading..." : _userName,
+                        style: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const CircularProgressIndicator(
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              "Logging out..",
-                              style: GoogleFonts.poppins(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
-                                decoration: TextDecoration.none,
-                              ),
-                            ),
-                          ],
+                      const SizedBox(height: 2),
+                      Text(
+                        "User Account",
+                        style: GoogleFonts.poppins(
+                          color: Colors.white.withOpacity(0.8), 
+                          fontSize: 13,
+                          fontWeight: FontWeight.w400,
                         ),
                       ),
                     ],
-                  );
-                },
-              );
-              await UserSession().logout();
-              if (context.mounted) {
-                Navigator.pop(context);
-                Navigator.pushAndRemoveUntil(
-                    context, MaterialPageRoute(builder: (_) => const VerifyScreen()), (route) => false);
-              }
-            }),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: ElevatedButton(
-                onPressed: () async {
-                  if (await UserSession().trySwitchTo('MECHANIC')) {
-                    Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const MechanicDashboardScreen()), (route) => false);
-                  } else {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => const MechanicLoginScreen()));
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepOrange,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+                  ),
                 ),
-                child: Text(
-                  "Switch to Mechanic Mode",
-                  style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w500),
+              ],
+            ),
+          ),
+          
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              children: [
+                _drawerItem(Icons.dashboard_customize_rounded, "DashBoard", context, isDark: isDark, isSelected: true, onTap: () {
+                  Navigator.pop(context);
+                }),
+                _drawerItem(Icons.person_outline_rounded, "My Profile", context, isDark: isDark, onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const UserProfileScreen()));
+                }),
+                _drawerItem(Icons.history_rounded, "Request History", context, isDark: isDark, onTap: () {
+                  Navigator.pop(context);
+                  Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const RequestHistoryScreen()), (route) => false);
+                }),
+                _drawerItem(Icons.calendar_today_rounded, "Book Appointments", context, isDark: isDark, onTap: () {
+                  Navigator.pop(context);
+                  Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const BookAppointmentScreen()), (route) => false);
+                }),
+                
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Divider(color: isDark ? Colors.grey.shade800 : Colors.grey.shade300, thickness: 1),
+                ),
+                
+                _drawerItem(Icons.settings_outlined, "Settings", context, isDark: isDark, onTap: () {
+                  Navigator.pop(context);
+                  Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const SettingsMenuBar()), (route) => false);
+                }),
+                _drawerItem(Icons.logout_rounded, "Logout", context, isDark: isDark, isLogout: true, onTap: () async {
+                  Navigator.pop(context);
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (context) {
+                      return Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Positioned.fill(
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                              child: Container(color: Colors.black.withOpacity(0.3)),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.all(24),
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.grey[900] : Colors.white,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Column(
+                               mainAxisSize: MainAxisSize.min,
+                               children: [
+                                 const CircularProgressIndicator(color: Color(0xFFFB3300)),
+                                 const SizedBox(height: 16),
+                                 Text("Logging out...", 
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 14, 
+                                    fontWeight: FontWeight.w500,
+                                    decoration: TextDecoration.none,
+                                    color: isDark ? Colors.white : Colors.black
+                                  )
+                                 )
+                               ],
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+
+                  await Future.delayed(const Duration(seconds: 1)); 
+                  await UserSession().logout();
+
+                  if (context.mounted) {
+                    Navigator.pop(context); 
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
+                      (route) => false,
+                    );
+                  }
+                }),
+              ],
+            ),
+          ),
+
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+            child: InkWell(
+              onTap: () async {
+                if (await UserSession().trySwitchTo('MECHANIC')) {
+                  if (context.mounted) {
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(builder: (_) => const MechanicDashboardScreen()),
+                      (route) => false,
+                    );
+                  }
+                } else {
+                  if (context.mounted) {
+                    Navigator.push(
+                      context, 
+                      MaterialPageRoute(builder: (_) => const MechanicLoginScreen())
+                    );
+                  }
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.grey[850] : Colors.white,
+                  border: Border.all(color: primaryColor.withOpacity(0.3), width: 1.5),
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: primaryColor.withOpacity(0.05),
+                      blurRadius: 10, offset: const Offset(0, 4)
+                    )
+                  ],
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.swap_horiz_rounded, color: primaryColor, size: 22),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Return to Mechanic',
+                      style: GoogleFonts.poppins(
+                          color: primaryColor, 
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600),
+                    ),
+                  ],
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  ListTile _drawerItem(IconData icon, String title, BuildContext context,
-      {bool isLogout = false, VoidCallback? onTap}) {
-    final isDark = themeNotifier.value == ThemeMode.dark;
-    return ListTile(
-      leading: Icon(icon, color: isLogout ? Colors.red : primaryColor),
-      title: Text(
-        title,
-        style: GoogleFonts.poppins(
-            fontSize: 15, fontWeight: FontWeight.w500, color: isDark ? Colors.white : Colors.black),
+  Widget _drawerItem(IconData icon, String title, BuildContext context, 
+      {bool isLogout = false, required bool isDark, bool isSelected = false, VoidCallback? onTap}) {
+    
+    final Color itemColor = isLogout ? Colors.red : (isDark ? Colors.white70 : Colors.black87);
+    final Color selectedBgColor = isDark ? primaryColor.withOpacity(0.15) : primaryColor.withOpacity(0.1);
+    final Color selectedTextColor = primaryColor;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      decoration: BoxDecoration(
+        color: isSelected ? selectedBgColor : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
       ),
-      onTap: onTap ?? () => Navigator.pop(context),
+      child: ListTile(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        leading: Icon(
+          icon, 
+          color: isSelected ? selectedTextColor : itemColor, 
+          size: 24
+        ),
+        title: Text(
+          title,
+          style: GoogleFonts.poppins(
+            color: isSelected ? selectedTextColor : itemColor,
+            fontSize: 15,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+          ),
+        ),
+        onTap: onTap,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+        minLeadingWidth: 20,
+      ),
     );
   }
 }

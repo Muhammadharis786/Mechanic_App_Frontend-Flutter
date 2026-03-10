@@ -23,11 +23,13 @@ class UserSession {
   String? _cachedMechPassword;
   
   // Basic Auth Header generate karne ke liye function
+  // Format: username = phonenumber;ROLE, password = password
   Map<String, String> getAuthHeader() {
     if (email == null || password == null) return {};
     
-    // Email:Password ko Base64 mein convert karna
-    String basicAuth = 'Basic ' + base64Encode(utf8.encode('$email:$password'));
+    // phonenumber;ROLE:Password ko Base64 mein convert karna
+    String credentials = '$email;${userType ?? "USER"}';
+    String basicAuth = 'Basic ' + base64Encode(utf8.encode('$credentials:$password'));
     return {
       'Authorization': basicAuth,
       'Content-Type': 'application/json',

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'verify_screen.dart'; // Replace with your actual import
+import 'role_selection_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -100,7 +100,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const VerifyScreen()),
+        MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),
       );
     }
   }
@@ -181,7 +181,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     Navigator.pushReplacement(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => const VerifyScreen(),
+                        builder: (context) => const RoleSelectionScreen(),
                       ),
                     );
                   },

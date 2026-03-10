@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shimmer/shimmer.dart';
@@ -13,7 +14,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../authentication/user_session.dart'; // Farz hai ke is file mein getPhoneNumber( ) aur getAuthHeader() hain
 import '../homescreen.dart';
-import '../verify_screen.dart';
+import '../role_selection_screen.dart';
 
 class MechanicDashboardScreen extends StatefulWidget {
   const MechanicDashboardScreen({super.key});
@@ -72,7 +73,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
 
     try {
       // Basic Auth header UserSession se aayega
-      final response = await http.get(url, headers: UserSession( ).getAuthHeader());
+      final response = await http.get(url, headers: UserSession( ).getAuthHeader());  
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -371,69 +372,178 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
   }
 
   Drawer _buildDrawer() {
+    final bool isDark = false; // Mechanic side currently doesn't implement dark mode state here, so defaulting to light
     return Drawer(
-      backgroundColor: const Color(0xFFFDFDFD),
+      backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.grey.shade50,
       child: Column(
         children: [
-          DrawerHeader(
-            decoration: const BoxDecoration(color: Color(0xFFFDFDFD)),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+          Container(
+            padding: EdgeInsets.only(
+              top: MediaQuery.of(context).padding.top + 20,
+              bottom: 24,
+              left: 20,
+              right: 20,
+            ),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [primaryColor, Colors.deepOrange],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: primaryColor.withOpacity(0.3),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                )
+              ],
+            ),
+            child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(15),
+                  padding: const EdgeInsets.all(3),
                   decoration: BoxDecoration(
-                    color: Colors.red[50],
+                    color: Colors.white,
                     shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 8,
+                      )
+                    ],
                   ),
-                  child: Icon(Icons.build_circle, color: primaryColor, size: 50),
+                  child: CircleAvatar(
+                    radius: 32,
+                    backgroundColor: Colors.grey.shade200,
+                    child: Icon(Icons.build_circle, color: primaryColor, size: 40),
+                  ),
                 ),
-                const SizedBox(height: 10),
-                Text(
-                  'Mechanic Panel',
-                  style: GoogleFonts.poppins(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Mechanic Panel',
+                        style: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        "Workspace",
+                        style: GoogleFonts.poppins(
+                          color: Colors.white.withOpacity(0.8), 
+                          fontSize: 13,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
           ),
-          const Divider(height: 1),
-          _drawerItem(Icons.grid_view_rounded, 'Dashboard', color: primaryColor),
-          _drawerItem(Icons.calendar_today_rounded, 'Booking Requests', onTap: () {
-            Navigator.pop(context);
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const MechanicBookingRequestScreen()));
-          }),
-          _drawerItem(Icons.account_balance_wallet_rounded, 'Earnings', onTap: () {
-            Navigator.pop(context);
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const MechanicEarningsScreen()));
-          }),
-          _drawerItem(Icons.person_outline_rounded, 'Profile', onTap: () {
-            Navigator.pop(context);
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const MechanicProfileScreen()));
-          }),
-          const Divider(),
-          _drawerItem(Icons.settings_outlined, 'Settings', onTap: () {
-            Navigator.pop(context);
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => MechanicSettingsScreen(
-                  isDarkMode: false,
-                  onThemeChanged: (val) {},
+          
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              children: [
+                _drawerItem(Icons.grid_view_rounded, 'Dashboard', isDark: isDark, isSelected: true, onTap: () {
+                   Navigator.pop(context);
+                }),
+                _drawerItem(Icons.calendar_today_rounded, 'Booking Requests', isDark: isDark, onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const MechanicBookingRequestScreen()));
+                }),
+                _drawerItem(Icons.account_balance_wallet_rounded, 'Earnings', isDark: isDark, onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const MechanicEarningsScreen()));
+                }),
+                _drawerItem(Icons.person_outline_rounded, 'Profile', isDark: isDark, onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const MechanicProfileScreen()));
+                }),
+                
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Divider(color: isDark ? Colors.grey.shade800 : Colors.grey.shade300, thickness: 1),
                 ),
-              ),
-            );
-          }),
-          _drawerItem(Icons.logout_rounded, 'Logout', color: Colors.red, onTap: () {
-            Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute(builder: (_) => const MechanicLoginScreen()),
-              (route) => false,
-            );
-          }),
-          const Spacer(),
+                
+                _drawerItem(Icons.settings_outlined, 'Settings', isDark: isDark, onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => MechanicSettingsScreen(
+                        isDarkMode: false,
+                        onThemeChanged: (val) {},
+                      ),
+                    ),
+                  );
+                }),
+                _drawerItem(Icons.logout_rounded, 'Logout', isDark: isDark, isLogout: true, onTap: () async {
+                  Navigator.pop(context);
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (context) {
+                      return Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Positioned.fill(
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                              child: Container(color: Colors.black.withOpacity(0.3)),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.all(24),
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.grey[900] : Colors.white,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Column(
+                               mainAxisSize: MainAxisSize.min,
+                               children: [
+                                 const CircularProgressIndicator(color: Color(0xFFFB3300)),
+                                 const SizedBox(height: 16),
+                                 Text("Logging out...", 
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 14, 
+                                    fontWeight: FontWeight.w500,
+                                    decoration: TextDecoration.none,
+                                    color: isDark ? Colors.white : Colors.black
+                                  )
+                                 )
+                               ],
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+
+                  await Future.delayed(const Duration(seconds: 1)); 
+                  await UserSession().logout();
+
+                  if (context.mounted) {
+                    Navigator.pop(context); 
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
+                      (route) => false,
+                    );
+                  }
+                }),
+              ],
+            ),
+          ),
+
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
             child: InkWell(
@@ -450,27 +560,36 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
                   if (context.mounted) {
                     Navigator.pushAndRemoveUntil(
                       context,
-                      MaterialPageRoute(builder: (_) => const VerifyScreen()),
+                      MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
                       (route) => false,
                     );
                   }
                 }
               },
               child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 12),
+                padding: const EdgeInsets.symmetric(vertical: 14),
                 decoration: BoxDecoration(
-                  color: primaryColor,
-                  borderRadius: BorderRadius.circular(12),
+                  color: isDark ? Colors.grey[850] : Colors.white,
+                  border: Border.all(color: primaryColor.withOpacity(0.3), width: 1.5),
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: primaryColor.withOpacity(0.05),
+                      blurRadius: 10, offset: const Offset(0, 4)
+                    )
+                  ],
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.swap_horiz_rounded, color: Colors.white),
-                    const SizedBox(width: 8),
+                    Icon(Icons.swap_horiz_rounded, color: primaryColor, size: 22),
+                    const SizedBox(width: 10),
                     Text(
                       'Switch to User Mode',
                       style: GoogleFonts.poppins(
-                          color: Colors.white, fontWeight: FontWeight.w600),
+                          color: primaryColor, 
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600),
                     ),
                   ],
                 ),
@@ -482,15 +601,38 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
     );
   }
 
-  Widget _drawerItem(IconData icon, String title, {Color? color, VoidCallback? onTap}) {
-    return ListTile(
-      leading: Icon(icon, color: color ?? Colors.black54),
-      title: Text(
-        title,
-        style: GoogleFonts.poppins(
-            color: Colors.black87, fontWeight: FontWeight.w500, fontSize: 15),
+  Widget _drawerItem(IconData icon, String title, 
+      {bool isLogout = false, required bool isDark, bool isSelected = false, VoidCallback? onTap}) {
+    
+    final Color itemColor = isLogout ? Colors.red : (isDark ? Colors.white70 : Colors.black87);
+    final Color selectedBgColor = isDark ? primaryColor.withOpacity(0.15) : primaryColor.withOpacity(0.1);
+    final Color selectedTextColor = primaryColor;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      decoration: BoxDecoration(
+        color: isSelected ? selectedBgColor : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
       ),
-      onTap: onTap ?? () => Navigator.pop(context),
+      child: ListTile(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        leading: Icon(
+          icon, 
+          color: isSelected ? selectedTextColor : itemColor, 
+          size: 24
+        ),
+        title: Text(
+          title,
+          style: GoogleFonts.poppins(
+            color: isSelected ? selectedTextColor : itemColor,
+            fontSize: 15,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+          ),
+        ),
+        onTap: onTap,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+        minLeadingWidth: 20,
+      ),
     );
   }
 

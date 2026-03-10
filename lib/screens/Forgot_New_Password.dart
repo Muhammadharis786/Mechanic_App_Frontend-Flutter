@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-import 'verify_screen.dart';
+import 'role_selection_screen.dart';
 
 class NewPassword extends StatefulWidget {
   final String email;
@@ -44,7 +44,7 @@ class _NewPasswordState extends State<NewPassword> {
         url,
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
-          "email": email,
+          "phonenumber": email,
           "password": password,
         }),
       );
@@ -62,7 +62,7 @@ class _NewPasswordState extends State<NewPassword> {
         // Navigate back to login screen
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (context) => const VerifyScreen()),
+          MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),
           (route) => false,
         );
       } else {

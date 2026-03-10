@@ -42,7 +42,7 @@ Future<void> _verifyOtp() async {
         url,
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
-          "email": email,
+          "phonenumber": email,
           "token": otp,
         }),
       );
@@ -99,7 +99,7 @@ Future<void> _resendOtp() async {
       url,
       headers: {"Content-Type": "application/json"},
       body: jsonEncode({
-        "email": email,
+        "phonenumber": email,
       
       }),
     );
@@ -186,7 +186,7 @@ Future<void> _resendOtp() async {
             ),
             const SizedBox(height: 10),
             Text(
-              'A 6-digit code has been sent to your registered number/email.',
+              'A 6-digit code has been sent to your registered WhatsApp number.',
               style: GoogleFonts.poppins(
                 fontSize: 15,
                 color: Colors.grey.shade600,

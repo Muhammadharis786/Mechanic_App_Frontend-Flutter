@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:mech_app/screens/mechanic/mechanic_registration_screen.dart';
+import 'package:mech_app/screens/mechanic/mechanic_register_phone.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'mechanic_dashboard.dart';
@@ -34,11 +34,11 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
   Future<void> _onLogin() async {
     setState(() => _isLoading = true);
 
-    final phone = '+92${phoneController.text.trim()}';
+    final phone = '92${phoneController.text.trim()}';
     final password = passwordController.text.trim();
 
     try {
-      final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/login");
+      final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/login");
       
       final response = await http.post(
         url,
@@ -46,6 +46,7 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
         body: jsonEncode({
           'phonenumber': phone,
           'password': password,
+          'loginAs': 'MECHANIC',
         }),
       );
 
@@ -169,7 +170,7 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
                   prefixIcon: Padding(
                     padding: const EdgeInsets.all(14),
                     child: Text(
-                      "+92",
+                      "92",
                       style: GoogleFonts.poppins(
                         fontWeight: FontWeight.w600,
                       ),
@@ -301,8 +302,8 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) =>
-                                const MechanicRegistrationScreen(),
+                            builder: (context) =>
+                                const MechanicRegisterPhoneScreen(),
                           ),
                         );
                       },

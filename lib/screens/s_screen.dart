@@ -4,7 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'onboarding_screen.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
-import 'verify_screen.dart';
+import 'role_selection_screen.dart';
 import 'authentication/user_session.dart';
 import 'homescreen.dart';
 import 'mechanic/mechanic_dashboard.dart';
@@ -76,7 +76,7 @@ class _SplashScreenState extends State<SplashScreen>
           // Not first time -> Go straight to Login
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (_) => const VerifyScreen()),
+            MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
           );
         }
       }

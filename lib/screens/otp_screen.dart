@@ -4,10 +4,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:mech_app/screens/verify_screen.dart';
 import 'package:pinput/pinput.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'verify_screen.dart';
+import 'role_selection_screen.dart';
 
 class OtpScreen extends StatefulWidget {
   final String email;
@@ -42,7 +43,7 @@ Future<void> _verifyOtp() async {
         url,
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
-          "email": email,
+          "phonenumber": email,
           "token": otp,
         }),
       );
@@ -97,7 +98,7 @@ Future<void> _resendOtp() async {
       url,
       headers: {"Content-Type": "application/json"},
       body: jsonEncode({
-        "email": email,
+        "phonenumber": email,
         "password": password,
       }),
     );

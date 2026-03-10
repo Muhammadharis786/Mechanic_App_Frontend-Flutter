@@ -24,7 +24,10 @@ import 'package:mech_app/services/phone_auth_service.dart';
 
 
 class MechanicRegistrationScreen extends StatefulWidget {
-  const MechanicRegistrationScreen({super.key});
+  final String phoneNumber;
+  final String password;
+  
+  const MechanicRegistrationScreen({super.key, required this.phoneNumber, required this.password});
 
   @override
   State<MechanicRegistrationScreen> createState() =>
@@ -48,8 +51,7 @@ class _MechanicRegistrationScreenState
   XFile? cnicBackImage;
 
   String name = '';
-  String phone = '';
-  String password = '';
+  // phone is now retrieved from widget.phoneNumber rather than input on this screen
   String shopAddress = '';
   final TextEditingController addressController = TextEditingController();
   double? latitude; // Added latitude
@@ -156,13 +158,11 @@ class _MechanicRegistrationScreenState
       Map<String, dynamic> mechanicData = {
         'userid':    userId, 
         'name': name,
-        'phonenumber': phone,
-        'password': password,
+        'phonenumber': widget.phoneNumber,
         'shopaddress': shopAddress,
         'mechanictype': mechanicType,
         'experienceyears': int.tryParse(experience) ?? 0,
         'workinghours': workingHours,
-        'otpVerified': true, 
         'latitude': latitude,
         'longitude': longitude
       };
@@ -220,7 +220,9 @@ class _MechanicRegistrationScreenState
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Registration Successful!'), backgroundColor: Colors.green),
         );
-        await UserSession().saveSession(phone, password, 'MECHANIC');
+        
+        await UserSession().saveSession(widget.phoneNumber, widget.password, 'MECHANIC');
+        
         if (mounted) {
            Navigator.pushReplacement(
             context,
@@ -304,24 +306,6 @@ class _MechanicRegistrationScreenState
       }
       if (name.trim().isEmpty) {
         _showError('Please enter your full name.');
-        return false;
-      }
-      if (phone.isEmpty || phone.length < 10) {
-        _showError('Please enter a valid phone number.');
-        return false;
-      }
-      if (!isPhoneOk) {
-        _showError('Phone number is not available. Please use a different number.');
-        return false;
-      }
-      /*
-      if (!isOtpVerified) {
-        _showError('Please verify your phone number with OTP.');
-        return false;
-      }
-      */
-      if (password.isEmpty || password.length < 6) {
-        _showError('Please enter a valid password (min 6 characters).');
         return false;
       }
       return true;
@@ -571,129 +555,6 @@ class _MechanicRegistrationScreenState
     'Documents'
   ];
 
-  // ================= PHONE CHECK =================
-  bool isCheckingPhone = false;
-  String? phoneStatusMessage;
-  bool isPhoneOk = false;
-  bool isOtpVerified = false;
-  
-  // OTP logic placeholders
-  TextEditingController otpController = TextEditingController();
-
-  Future<void> _checkPhoneNumber(String number) async {
-    if (number.length < 10) return; // Basic length check for +92...
-
-    setState(() {
-      isCheckingPhone = true;
-      phoneStatusMessage = null;
-      isPhoneOk = false;
-    });
-
-    try {
-      // 10.0.2.2 for Android Emulator localhost
-      // Real device: Use your PC IP e.g. 192.168.x.x
-      final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/checknumber");
-      
-      final response = await http.post(
-        url,
-        body: {'number': number}, // Changed from 'phonenumber' to 'number' based on backend DTO
-      );
-
-      if (response.statusCode == 200) {
-        setState(() {
-          isPhoneOk = true;
-          phoneStatusMessage = "Number Available ";
-        });
-      } else {
-        // Try to parse backend error message
-        String errorMessage = "Not Available";
-        try {
-          final responseData = jsonDecode(response.body);
-          if (responseData is Map && responseData.containsKey('message')) {
-            errorMessage = responseData['message'];
-          } else if (responseData is String) {
-            errorMessage = responseData;
-          }
-        } catch (e) {
-          // If parsing fails, use response body as is
-          errorMessage = response.body.isNotEmpty ? response.body : "Number not available";
-        }
-        
-        setState(() {
-          isPhoneOk = false;
-          phoneStatusMessage = errorMessage;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          isPhoneOk = false;
-          phoneStatusMessage = "Error checking number";
-        });
-      }
-    } finally {
-      if (mounted) {
-         setState(() => isCheckingPhone = false);
-      }
-    }
-  }
-
-  // ================= OTP LOGIC =================
-  String? verificationId;
-  final PhoneAuthService _authService = PhoneAuthService();
-
-  Future<void> _sendOTP() async {
-    if (phone.isEmpty) return;
-    
-    // Show spinner or loading
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Sending OTP...')),
-    );
-
-    await _authService.sendOTP(
-      phoneNumber: phone,
-      onCodeSent: (id) {
-        setState(() {
-          verificationId = id;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('OTP Sent! Check SMS.')),
-        );
-      },
-      onError: (msg) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(msg), backgroundColor: Colors.red),
-        );
-      },
-      onAutoVerified: (credential) async {
-        // Auto sign-in logic if needed
-        setState(() => isOtpVerified = true);
-      },
-    );
-  }
-
-  Future<void> _verifyOTP() async {
-    String code = otpController.text.trim();
-    if (code.isEmpty || verificationId == null) return;
-
-    final credential = await _authService.verifyOTP(
-      verificationId: verificationId!,
-      smsCode: code,
-      onError: (msg) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(msg), backgroundColor: Colors.red),
-        );
-      },
-    );
-
-    if (credential != null && credential.user != null) {
-      setState(() => isOtpVerified = true);
-       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Phone Verified!'), backgroundColor: Colors.green),
-        );
-    }
-  }
-
   // ================= STEP 1 =================
   Widget personalInfo() {
     return SingleChildScrollView(
@@ -735,103 +596,6 @@ class _MechanicRegistrationScreenState
           ),
           const SizedBox(height: 24),
           input('Full Name', onChanged: (v) => name = v),
-          const SizedBox(height: 12),
-          
-          // Phone Input with Check Logic
-          input(
-            'Phone Number',
-            type: TextInputType.phone,
-            prefix: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Text('+92',
-                  style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
-            ),
-            onChanged: (v) {
-              phone = '+92$v';
-              if (v.length >= 10) {
-                // Debounce could be good, but direct call for now
-                _checkPhoneNumber(phone);
-              }
-            },
-          ),
-          
-          // Status Message
-          if (isCheckingPhone)
-            const Padding(
-              padding: EdgeInsets.only(top: 5),
-              child: LinearProgressIndicator(minHeight: 2),
-            ),
-          if (phoneStatusMessage != null)
-             Padding(
-              padding: const EdgeInsets.only(top: 5, left: 5),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  phoneStatusMessage!,
-                  style: GoogleFonts.poppins(
-                    color: isPhoneOk ? Colors.green : Colors.red,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500
-                  ),
-                ),
-              ),
-            ),
-
-          const SizedBox(height: 12),
-          
-          // OTP Section (Only if phone is OK)
-          if (isPhoneOk)
-            Padding(
-               padding: const EdgeInsets.only(bottom: 12),
-               child: Column(
-                 children: [
-                   Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: primary,
-                              foregroundColor: Colors.white,
-                              disabledBackgroundColor: Colors.grey,
-                            ),
-                            onPressed: (isOtpVerified || phone.length < 10) ? null : _sendOTP,
-                            child: Text(isOtpVerified ? "Verified" : "Get OTP"),
-                          ),
-                        ),
-                        if (!isOtpVerified) ...[
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: TextField(
-                              controller: otpController,
-                              decoration: const InputDecoration(
-                                hintText: "Enter Code",
-                                border: OutlineInputBorder(),
-                                contentPadding: EdgeInsets.symmetric(horizontal: 10),
-                              ),
-                              keyboardType: TextInputType.number,
-                            ),
-                          ),
-                        ]
-                      ],
-                   ),
-                   if (!isOtpVerified && verificationId != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8.0),
-                        child: Align(
-                          alignment: Alignment.centerRight,
-                          child: ElevatedButton(
-                            onPressed: _verifyOTP, 
-                            style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-                            child: const Text("Verify Code")
-                          ),
-                        ),
-                      )
-                 ],
-               ),
-            ),
-
-          input('Password', isPassword: true, onChanged: (v) => password = v),
-          const SizedBox(height: 80),
         ],
       ),
     );

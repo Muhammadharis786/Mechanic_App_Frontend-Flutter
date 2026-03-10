@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:mech_app/main.dart';
 import 'package:mech_app/screens/homescreen.dart';
-import 'package:mech_app/screens/verify_screen.dart';
+import 'package:mech_app/screens/role_selection_screen.dart';
 import 'package:mech_app/screens/authentication/user_session.dart';
 
 class SettingsMenuBar extends StatefulWidget {
@@ -303,7 +303,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
             onPressed: () {
               Navigator.pushAndRemoveUntil(
                 context,
-                MaterialPageRoute(builder: (_) => const VerifyScreen()),
+                MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
                 (_) => false,
               );
             },
@@ -444,7 +444,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
         if (context.mounted) {
           Navigator.pushAndRemoveUntil(
             context,
-            MaterialPageRoute(builder: (_) => const VerifyScreen()),
+            MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
             (_) => false,
           );
         }
