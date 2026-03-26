@@ -1,0 +1,66 @@
+name: Flutter Web CI/CD
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - '**'
+
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 🔹 Checkout repo
+      - uses: actions/checkout@v4
+
+      # 🔹 Remove any old Flutter installation
+      - name: Remove old Flutter
+        run: rm -rf $HOME/flutter
+
+      # 🔹 Install Flutter 3.13.3 fresh (Dart 3.8+)
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.13.3'
+          channel: stable
+          cache: false   # Disable cache to avoid old Flutter
+
+      # 🔹 Disable analytics to prevent banner
+      - run: flutter config --no-analytics
+
+      # 🔹 Verify Flutter/Dart version
+      - run: |
+          flutter --version
+          dart --version
+
+      # 🔹 Clean project
+      - run: flutter clean
+
+      # 🔹 Install dependencies
+      - run: flutter pub get
+
+      # 🔹 Build Flutter Web
+      - run: flutter build web --release
+
+      # 🔹 Deploy to Firebase Production
+      - name: Deploy to Firebase Hosting (Production)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: "${{ secrets.GITHUB_TOKEN }}"
+          firebaseServiceAccount: "${{ secrets.FIREBASE_SERVICE_ACCOUNT_ONFIX_MECHANIC_FINDER }}"
+          projectId: onfix-mechanic-finder
+          channelId: live
+
+      # 🔹 Deploy PR preview
+      - name: Deploy PR preview
+        if: github.event_name == 'pull_request'
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: "${{ secrets.GITHUB_TOKEN }}"
+          firebaseServiceAccount: "${{ secrets.FIREBASE_SERVICE_ACCOUNT_ONFIX_MECHANIC_FINDER }}"
+          projectId: onfix-mechanic-finder
+          channelId: pr-${{ github.event.pull_request.number }}
