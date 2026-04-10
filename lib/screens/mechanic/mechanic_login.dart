@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'mechanic_dashboard.dart';
 import 'mechanic_location_screen.dart';
+import 'mechanic_under_review_screen.dart';
 import '../authentication/user_session.dart';
 
 class MechanicLoginScreen extends StatefulWidget {
@@ -60,6 +61,17 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
 
         debugPrint("Login Success: ${response.body}");
 
+        // --- ADMIN CHECK (Success case with message) ---
+        if (response.body.toLowerCase().contains('admin')) {
+          if (mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const MechanicUnderReviewScreen()),
+            );
+          }
+          return;
+        }
+
         if (mounted) {
            ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Login Successful!'), backgroundColor: Colors.green),
@@ -90,6 +102,18 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
         }
         
         debugPrint("Login Failed: ${response.body}");
+        
+        // --- ADMIN CHECK ---
+        if (response.body.toLowerCase().contains('admin')) {
+          if (mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const MechanicUnderReviewScreen()),
+            );
+          }
+          return;
+        }
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
