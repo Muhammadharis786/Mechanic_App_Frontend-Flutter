@@ -4,6 +4,7 @@ import 'package:mech_app/screens/mechanic/mechanic_register_phone.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'mechanic_dashboard.dart';
+import 'mechanic_location_screen.dart';
 import '../authentication/user_session.dart';
 
 class MechanicLoginScreen extends StatefulWidget {
@@ -66,7 +67,7 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
 
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (_) => const MechanicDashboardScreen()),
+            MaterialPageRoute(builder: (_) => const MechanicLocationScreen()),
           );
         }
       } else {

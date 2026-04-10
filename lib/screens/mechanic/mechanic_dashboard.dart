@@ -124,21 +124,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
             onPressed: _openNotifications,
           ),
           const SizedBox(width: 10),
-          IconButton(
-            icon: const Icon(Icons.settings, color: Colors.black),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => MechanicSettingsScreen(
-                    isDarkMode: false,
-                    onThemeChanged: (val) {},
-                  ),
-                ),
-              );
-            },
-          ),
-          const SizedBox(width: 10),
+
         ],
       ),
       drawer: _buildDrawer(),

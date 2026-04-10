@@ -218,15 +218,13 @@ class _MechanicRegistrationScreenState
 
       if (response.statusCode == 200) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Registration Successful!'), backgroundColor: Colors.green),
+          const SnackBar(content: Text('Registration Successful! Please login to continue.'), backgroundColor: Colors.green),
         );
-        
-        await UserSession().saveSession(widget.phoneNumber, widget.password, 'MECHANIC');
         
         if (mounted) {
            Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (_) => const MechanicDashboardScreen()),
+            MaterialPageRoute(builder: (_) => const MechanicLoginScreen()),
           );
         }
       } else if (response.statusCode == 409 || responseBody.contains("already exists")) {
