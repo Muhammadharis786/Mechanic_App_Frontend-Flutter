@@ -10,8 +10,11 @@ class MechanicUnderReviewScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     const Color primaryColor = Color(0xFFFB3300);
 
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 30),
@@ -25,7 +28,7 @@ class MechanicUnderReviewScreen extends StatelessWidget {
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
-                  Icons.pending_actions_rounded,
+                  Icons.pending_actions_outlined,
                   size: 100,
                   color: primaryColor,
                 ),
@@ -36,7 +39,7 @@ class MechanicUnderReviewScreen extends StatelessWidget {
                 style: GoogleFonts.poppins(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
-                  color: Colors.black,
+                  color: theme.textTheme.titleLarge?.color,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -45,7 +48,7 @@ class MechanicUnderReviewScreen extends StatelessWidget {
                 "Humari team apki profile ka review dekh rhi hay, hm apko 2 se 3 ghanty tak batayeinge.",
                 style: GoogleFonts.poppins(
                   fontSize: 16,
-                  color: Colors.grey[700],
+                  color: isDark ? Colors.white70 : Colors.grey[700],
                   height: 1.5,
                 ),
                 textAlign: TextAlign.center,
@@ -87,7 +90,7 @@ class MechanicUnderReviewScreen extends StatelessWidget {
                 "Thank you for your patience!",
                 style: GoogleFonts.poppins(
                   fontSize: 14,
-                  color: Colors.grey[500],
+                  color: isDark ? Colors.white38 : Colors.grey[500],
                   fontStyle: FontStyle.italic,
                 ),
               ),

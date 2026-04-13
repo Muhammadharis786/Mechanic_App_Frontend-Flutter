@@ -41,7 +41,7 @@ class _MechanicListScreenState extends State<MechanicListScreen> {
         backgroundColor: Colors.white,
         elevation: 1,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_new,
+          icon: Icon(Icons.arrow_back_ios,
               color: primaryColor, size: 22),
           onPressed: () => Navigator.pop(context),
         ),
@@ -120,11 +120,11 @@ class _NearbyMechanicCardVertical extends StatelessWidget {
                             fontWeight: FontWeight.w600, fontSize: 15)),
                     Row(
                       children: [
-                        const Icon(Icons.star,
+                        const Icon(Icons.star_outline_rounded,
                             size: 14, color: Colors.amber),
                         Text("${mechanic['averagerating']}"),
                         const SizedBox(width: 8),
-                        Icon(Icons.location_on,
+                        Icon(Icons.location_on_outlined,
                             size: 14, color: primaryColor),
                         Text("${mechanic['distance']} km"),
                       ],
@@ -151,7 +151,7 @@ class _NearbyMechanicCardVertical extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               _actionButton(
-                Icons.call_rounded,
+                Icons.call_outlined,
                 "Call",
                 Colors.green,
                 () async {
@@ -173,7 +173,7 @@ class _NearbyMechanicCardVertical extends StatelessWidget {
                 },
               ),
               _actionButton(
-                Icons.remove_red_eye_rounded,
+                Icons.visibility_outlined,
                 "View",
                 primaryColor,
                 () {

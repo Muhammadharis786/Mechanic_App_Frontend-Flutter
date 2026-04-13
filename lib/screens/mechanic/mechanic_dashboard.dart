@@ -15,6 +15,7 @@ import 'package:http/http.dart' as http;
 import '../authentication/user_session.dart'; // Farz hai ke is file mein getPhoneNumber( ) aur getAuthHeader() hain
 import '../homescreen.dart';
 import '../role_selection_screen.dart';
+import '../../services/websocket_service.dart';
 
 class MechanicDashboardScreen extends StatefulWidget {
   const MechanicDashboardScreen({super.key});
@@ -54,11 +55,108 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
   double mechanicRating = 0;
   String mechanicName = "Mechanic";
   String mechanicImageUrl = ''; // Profile image ka URL save karne ke liye
+  
+  late WebSocketService _webSocketService;
+  int _notificationCount = 0;
+  List<Map<String, dynamic>> _notifications = [];
 
   @override
   void initState() {
     super.initState();
     _fetchDashboardData();
+    _initWebSocket();
+  }
+
+  void _initWebSocket() {
+    if (UserSession().userId == null) {
+      debugPrint("❌ Mechanic Dashboard: User ID is null, cannot connect to WebSocket");
+      return;
+    }
+
+    _webSocketService = WebSocketService(
+      onNotificationReceived: (data) {
+        setState(() {
+          _notificationCount++;
+          _notifications.insert(0, data);
+        });
+        _showNotificationOverlay(data);
+      },
+    );
+    // Use the ID strictly from UserSession saved at Login
+    _webSocketService.connect(UserSession().userId!);
+  }
+
+  void _showNotificationOverlay(Map<String, dynamic> data) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("New Service Request!", style: TextStyle(fontWeight: FontWeight.bold)),
+            Text("User: ${data['username'] ?? 'Unknown'} (ID: ${data['userid']})"),
+          ],
+        ),
+        backgroundColor: primaryColor,
+        duration: const Duration(seconds: 4),
+        action: SnackBarAction(
+          label: "View",
+          textColor: Colors.white,
+          onPressed: () => _openLiveNotifications(),
+        ),
+      ),
+    );
+  }
+
+  void _openLiveNotifications() {
+    setState(() => _notificationCount = 0);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => _buildNotificationList(),
+    );
+  }
+
+  Widget _buildNotificationList() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text("Notifications", style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 16),
+          if (_notifications.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Text("No new requests", style: GoogleFonts.poppins(color: Colors.grey)),
+            )
+          else
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: _notifications.length,
+                itemBuilder: (context, index) {
+                  final n = _notifications[index];
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text("Service Request", style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+                    subtitle: Text("User: ${n['username']} (ID: ${n['userid']})"),
+                    leading: CircleAvatar(backgroundColor: primaryColor.withOpacity(0.1), child: Icon(Icons.build_outlined, color: primaryColor)),
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _webSocketService.disconnect();
+    super.dispose();
   }
 
   // --- TABDEELI #2: API call ko theek kiya ---
@@ -89,6 +187,11 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
           mechanicImageUrl = data['mechanicimgurl'] ?? '';
           _isLoading = false;
           debugPrint("✅ Mechanic Dashboard: Data loaded successfully, _isLoading = $_isLoading");
+          
+          // Capture numeric ID if present
+          if (data.containsKey('id')) {
+            UserSession().setUserId(data['id']);
+          }
         });
       } else {
         // Agar server se error aaye (jaise 404 Not Found ya 401 Unauthorized)
@@ -111,20 +214,45 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: theme.appBarTheme.backgroundColor ?? theme.scaffoldBackgroundColor,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black),
+        iconTheme: IconThemeData(color: isDark ? Colors.white : Colors.black),
         actions: [
-          IconButton(
-            icon: Icon(Icons.notifications_none_rounded,
-                color: primaryColor, size: 28),
-            onPressed: _openNotifications,
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              IconButton(
+                icon: Icon(Icons.notifications_none_rounded,
+                    color: primaryColor, size: 28),
+                onPressed: _openLiveNotifications,
+              ),
+              if (_notificationCount > 0)
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                    child: Text(
+                      '$_notificationCount',
+                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(width: 10),
-
         ],
       ),
       drawer: _buildDrawer(),
@@ -142,45 +270,17 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Hello, $mechanicName',
-                              style: GoogleFonts.poppins(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black,
-                              ),
-                            ),
-                            Row(
-                              children: [
-                                const Icon(Icons.star_rounded,
-                                    color: Colors.amber, size: 20),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '$mechanicRating Rating',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 14,
-                                    color: Colors.grey[700],
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
+                        Text(
+                          'Dashboard',
+                          style: GoogleFonts.poppins(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: theme.textTheme.titleLarge?.color,
+                          ),
                         ),
-                        // --- TABDEELI #3: Profile Image ko display kiya ---
-                        CircleAvatar(
-                          radius: 30,
-                          backgroundColor: Colors.grey[200],
-                          // Agar image URL khaali hai to Icon dikhayein, warna NetworkImage load karein
-                          backgroundImage: mechanicImageUrl.isNotEmpty
-                              ? NetworkImage(mechanicImageUrl)
-                              : null,
-                          child: mechanicImageUrl.isEmpty
-                              ? const Icon(Icons.person, color: Colors.grey, size: 35)
-                              : null,
+                        IconButton(
+                          onPressed: _fetchDashboardData,
+                          icon: Icon(Icons.refresh_rounded, color: primaryColor),
                         ),
                       ],
                     ),
@@ -216,12 +316,12 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
                     Text(
                       'Quick Actions',
                       style:
-                          GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold),
+                          GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: theme.textTheme.titleLarge?.color),
                     ),
                     const SizedBox(height: 15),
                     Row(
                       children: [
-                        _actionCard('Requests', Icons.pending_actions, Colors.blue, () {
+                        _actionCard('Requests', Icons.pending_actions, Colors.blue, theme, () {
                           Navigator.push(
                               context,
                               MaterialPageRoute(
@@ -229,7 +329,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
                         }),
                         const SizedBox(width: 15),
                         _actionCard('My Wallet', Icons.account_balance_wallet,
-                            Colors.green, () {
+                            Colors.green, theme, () {
                           Navigator.push(
                               context,
                               MaterialPageRoute(
@@ -241,7 +341,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
                     Text(
                       'Recent Jobs',
                       style:
-                          GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold),
+                          GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: theme.textTheme.titleLarge?.color),
                     ),
                     const SizedBox(height: 15),
                     requests.isEmpty
@@ -254,7 +354,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
                             itemCount: requests.length,
                               separatorBuilder: (context, _) => const SizedBox(height: 12),
                             itemBuilder: (context, index) =>
-                                _jobTile(requests[index]),
+                                _jobTile(requests[index], theme),
                           ),
                   ],
                 ),
@@ -280,7 +380,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
   }
 
   Widget _actionCard(
-      String title, IconData icon, Color color, VoidCallback onTap) {
+      String title, IconData icon, Color color, ThemeData theme, VoidCallback onTap) {
     return Expanded(
       child: InkWell(
         onTap: onTap,
@@ -306,14 +406,16 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
     );
   }
 
-  Widget _jobTile(Map<String, dynamic> r) {
+  Widget _jobTile(Map<String, dynamic> r, ThemeData theme) {
     bool isPending = r['status'] == 'Pending';
+    final isDark = theme.brightness == Brightness.dark;
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.grey.shade100),
+        border: Border.all(color: isDark ? Colors.grey.shade800 : Colors.grey.shade100),
       ),
       child: Row(
         children: [
@@ -336,7 +438,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
               children: [
                 Text(r['user'] ?? 'Unknown User',
                     style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.bold, fontSize: 14)),
+                        fontWeight: FontWeight.bold, fontSize: 14, color: theme.textTheme.titleMedium?.color)),
                 Text(r['service'] ?? 'No Service',
                     style: GoogleFonts.poppins(color: Colors.grey, fontSize: 12)),
               ],
@@ -358,12 +460,14 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
   }
 
   Drawer _buildDrawer() {
-    final bool isDark = false; // Mechanic side currently doesn't implement dark mode state here, so defaulting to light
+    final theme = Theme.of(context);
+    final bool isDark = theme.brightness == Brightness.dark;
     return Drawer(
-      backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.grey.shade50,
+      backgroundColor: isDark ? theme.scaffoldBackgroundColor : Colors.white,
       child: Column(
         children: [
           Container(
+            width: double.infinity,
             padding: EdgeInsets.only(
               top: MediaQuery.of(context).padding.top + 20,
               bottom: 24,
@@ -371,62 +475,58 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
               right: 20,
             ),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [primaryColor, Colors.deepOrange],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+              color: isDark ? Colors.grey[900] : Colors.white,
+              border: Border(
+                bottom: BorderSide(
+                  color: isDark ? Colors.white10 : Colors.grey.shade100,
+                  width: 1,
+                ),
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: primaryColor.withOpacity(0.3),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                )
-              ],
             ),
             child: Row(
               children: [
                 Container(
                   padding: const EdgeInsets.all(3),
                   decoration: BoxDecoration(
-                    color: Colors.white,
                     shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 8,
-                      )
-                    ],
+                    border: Border.all(color: primaryColor.withOpacity(0.5), width: 2),
                   ),
                   child: CircleAvatar(
                     radius: 32,
-                    backgroundColor: Colors.grey.shade200,
-                    child: Icon(Icons.build_circle, color: primaryColor, size: 40),
+                    backgroundColor: isDark ? Colors.grey[800] : Colors.grey[100],
+                    backgroundImage: mechanicImageUrl.isNotEmpty ? NetworkImage(mechanicImageUrl) : null,
+                    child: mechanicImageUrl.isEmpty ? Icon(Icons.person, color: primaryColor, size: 35) : null,
                   ),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        'Mechanic Panel',
+                        mechanicName,
                         style: GoogleFonts.poppins(
-                          color: Colors.white,
+                          color: theme.textTheme.titleLarge?.color,
                           fontSize: 18,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.bold,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        "Workspace",
-                        style: GoogleFonts.poppins(
-                          color: Colors.white.withOpacity(0.8), 
-                          fontSize: 13,
-                          fontWeight: FontWeight.w400,
-                        ),
+                      Row(
+                        children: [
+                          Icon(Icons.star_rounded, color: Colors.amber, size: 16),
+                          const SizedBox(width: 4),
+                          Text(
+                            "$mechanicRating Rating",
+                            style: GoogleFonts.poppins(
+                              color: isDark ? Colors.white54 : Colors.grey.shade600,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -439,14 +539,14 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
             child: ListView(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
               children: [
-                _drawerItem(Icons.grid_view_rounded, 'Dashboard', isDark: isDark, isSelected: true, onTap: () {
+                _drawerItem(Icons.grid_view_outlined, 'Overview', isDark: isDark, isSelected: true, onTap: () {
                    Navigator.pop(context);
                 }),
-                _drawerItem(Icons.calendar_today_rounded, 'Booking Requests', isDark: isDark, onTap: () {
+                _drawerItem(Icons.pending_actions_outlined, 'Requests', isDark: isDark, onTap: () {
                   Navigator.pop(context);
                   Navigator.push(context, MaterialPageRoute(builder: (_) => const MechanicBookingRequestScreen()));
                 }),
-                _drawerItem(Icons.account_balance_wallet_rounded, 'Earnings', isDark: isDark, onTap: () {
+                _drawerItem(Icons.account_balance_wallet_outlined, 'Earnings', isDark: isDark, onTap: () {
                   Navigator.pop(context);
                   Navigator.push(context, MaterialPageRoute(builder: (_) => const MechanicEarningsScreen()));
                 }),
@@ -465,14 +565,11 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => MechanicSettingsScreen(
-                        isDarkMode: false,
-                        onThemeChanged: (val) {},
-                      ),
+                      builder: (_) => const MechanicSettingsScreen(),
                     ),
                   );
                 }),
-                _drawerItem(Icons.logout_rounded, 'Logout', isDark: isDark, isLogout: true, onTap: () async {
+                _drawerItem(Icons.logout_outlined, 'Logout', isDark: isDark, isLogout: true, onTap: () async {
                   Navigator.pop(context);
                   showDialog(
                     context: context,
@@ -590,12 +687,12 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
   Widget _drawerItem(IconData icon, String title, 
       {bool isLogout = false, required bool isDark, bool isSelected = false, VoidCallback? onTap}) {
     
-    final Color itemColor = isLogout ? Colors.red : (isDark ? Colors.white70 : Colors.black87);
+    final Color itemColor = isLogout ? Colors.red : (isDark ? Colors.white70 : Colors.grey.shade700);
     final Color selectedBgColor = isDark ? primaryColor.withOpacity(0.15) : primaryColor.withOpacity(0.1);
     final Color selectedTextColor = primaryColor;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 6),
+      margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: isSelected ? selectedBgColor : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
@@ -622,10 +719,14 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
     );
   }
 
-  void _openNotifications() {
+  void _openPendingRequests() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: theme.scaffoldBackgroundColor,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (context) {
@@ -663,7 +764,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
                 children: [
                   Text('Service Requests',
                       style: GoogleFonts.poppins(
-                          fontSize: 18, fontWeight: FontWeight.bold)),
+                          fontSize: 18, fontWeight: FontWeight.bold, color: theme.textTheme.titleLarge?.color)),
                   const SizedBox(height: 20),
                   Expanded(
                     child: ListView.separated(
@@ -674,9 +775,9 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
                         return Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color: theme.cardColor,
                             borderRadius: BorderRadius.circular(15),
-                            border: Border.all(color: Colors.grey.shade100),
+                            border: Border.all(color: isDark ? Colors.white12 : Colors.grey.shade100),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -684,7 +785,8 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
                               Text(r['user'] ?? 'Unknown User',
                                   style: GoogleFonts.poppins(
                                       fontWeight: FontWeight.bold,
-                                      fontSize: 14)),
+                                      fontSize: 14,
+                                      color: theme.textTheme.titleMedium?.color)),
                               Text(r['service'] ?? 'No Service',
                                   style: GoogleFonts.poppins(
                                       color: Colors.grey, fontSize: 12)),
@@ -753,11 +855,14 @@ class _SkeletonMechanicDashboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Shimmer.fromColors(
-        baseColor: Colors.grey.shade300,
-        highlightColor: Colors.grey.shade100,
+        baseColor: isDark ? Colors.grey[850]! : Colors.grey.shade300,
+        highlightColor: isDark ? Colors.grey[800]! : Colors.grey.shade100,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

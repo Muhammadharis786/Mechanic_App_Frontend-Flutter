@@ -111,7 +111,7 @@ Future<void> fetchOptions(int parentId) async {
         backgroundColor: Colors.white,
         elevation: 1,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new,
+          icon: const Icon(Icons.arrow_back_ios,
               color: Colors.black, size: 22),
           onPressed: () => Navigator.pop(context),
         ),

@@ -156,7 +156,7 @@ class _VerifyScreenState extends State<VerifyScreen> {
               // Back button
               IconButton(
                 onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.arrow_back_ios, color: Colors.black54),
+                icon: const Icon(Icons.arrow_back_ios, color: Colors.black54, size: 20),
                 padding: EdgeInsets.zero,
                 alignment: Alignment.centerLeft,
               ),
@@ -205,7 +205,7 @@ class _VerifyScreenState extends State<VerifyScreen> {
                 decoration: _inputDecoration("Min 6 characters").copyWith(
                   suffixIcon: IconButton(
                     icon: Icon(
-                      _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                      _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
                       color: kButtonColor,
                     ),
                     onPressed: () => setState(() => _obscurePassword = !_obscurePassword),

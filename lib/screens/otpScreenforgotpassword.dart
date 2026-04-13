@@ -169,6 +169,10 @@ Future<void> _resendOtp() async {
             fontWeight: FontWeight.w600,
           ),
         ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.black, size: 20),
+          onPressed: () => Navigator.pop(context),
+        ),
         iconTheme: const IconThemeData(color: Colors.black),
       ),
       body: Padding(

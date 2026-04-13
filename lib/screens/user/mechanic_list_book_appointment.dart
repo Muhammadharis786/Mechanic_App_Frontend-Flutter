@@ -24,7 +24,7 @@ class MechanicListScreenn extends StatelessWidget {
         backgroundColor: Colors.white,
         elevation: 1,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_new, color: primaryColor, size: 22),
+          icon: Icon(Icons.arrow_back_ios, color: primaryColor, size: 22),
           onPressed: () => Navigator.pop(context),
         ),
         title: Column(
@@ -86,12 +86,12 @@ class MechanicListScreenn extends StatelessWidget {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        const Icon(Icons.star, size: 14, color: Colors.amber),
+                        const Icon(Icons.star_outline_rounded, size: 14, color: Colors.amber),
                         const SizedBox(width: 4),
                         Text("${mechanic['rating']}",
                             style: GoogleFonts.poppins(fontSize: 12)),
                         const SizedBox(width: 6),
-                        Icon(Icons.location_on, size: 14, color: primaryColor),
+                        Icon(Icons.location_on_outlined, size: 14, color: primaryColor),
                         Text("${mechanic['distance']} km",
                             style: GoogleFonts.poppins(fontSize: 12)),
                       ],
@@ -133,7 +133,7 @@ class MechanicListScreenn extends StatelessWidget {
               ),
               ElevatedButton.icon(
                 onPressed: () => _callMechanic(mechanic['phone']),
-                icon: const Icon(Icons.call, size: 16, color: Colors.white),
+                icon: const Icon(Icons.call_outlined, size: 16, color: Colors.white),
                 label: const Text("Call",
                     style: TextStyle(color: Colors.white, fontSize: 12)),
                 style: ElevatedButton.styleFrom(

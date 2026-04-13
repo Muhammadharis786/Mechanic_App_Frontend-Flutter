@@ -64,6 +64,13 @@ class UserSession {
     }
   }
 
+  // Update UserId explicitly (e.g. from dashboard or login response)
+  Future<void> setUserId(int id) async {
+    final prefs = await SharedPreferences.getInstance();
+    userId = id;
+    await prefs.setInt('userId', id);
+  }
+
   // Load Credentials (Splash screen par call karein)
   Future<bool> loadSession() async {
     final prefs = await SharedPreferences.getInstance();
@@ -78,7 +85,8 @@ class UserSession {
       _cachedMechPhone = prefs.getString('cached_mech_id');
       _cachedMechPassword = prefs.getString('cached_mech_pass');
 
-      print("🔄 Session Loaded: $email as $userType");
+      userId = prefs.getInt('userId');
+      print("🔄 Session Loaded: $email as $userType (ID: $userId)");
       return true;
     }
     print("⚠️ No session found.");

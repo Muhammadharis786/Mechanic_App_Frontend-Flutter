@@ -91,7 +91,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               // Back button
               IconButton(
                 onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.arrow_back_ios, color: Colors.black54),
+                icon: const Icon(Icons.arrow_back_ios, color: Colors.black54, size: 20),
                 padding: EdgeInsets.zero,
                 alignment: Alignment.centerLeft,
               ),
@@ -144,7 +144,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 style: GoogleFonts.poppins(),
                 decoration: _inputDecoration("Minimum 6 characters").copyWith(
                   suffixIcon: IconButton(
-                    icon: Icon(hidePassword ? Icons.visibility_off : Icons.visibility, color: Colors.black54),
+                    icon: Icon(hidePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined, color: Colors.black54),
                     onPressed: () => setState(() => hidePassword = !hidePassword),
                   ),
                 ),

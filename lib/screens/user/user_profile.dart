@@ -224,13 +224,13 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         backgroundColor: Colors.white,
         elevation: 0.5,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black, size: 20),
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.black54, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
           if (!_isLoading)
             IconButton(
-              icon: Icon(_isEditing ? Icons.close : Icons.edit, color: primaryColor),
+              icon: Icon(_isEditing ? Icons.close_rounded : Icons.edit_outlined, color: primaryColor),
               onPressed: _toggleEdit,
             ),
         ],
@@ -272,7 +272,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                     shape: BoxShape.circle,
                                     border: Border.all(color: Colors.white, width: 2),
                                   ),
-                                  child: const Icon(Icons.camera_alt, color: Colors.white, size: 16),
+                                  child: const Icon(Icons.camera_alt_outlined, color: Colors.white, size: 16),
                                 ),
                               ),
                             ),
@@ -292,7 +292,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                     const SizedBox(height: 30),
 
                     // ===== FIELDS =====
-                    _buildField('Full Name', _nameController, Icons.person_outline),
+                    _buildField('Full Name', _nameController, Icons.person_outline_rounded),
                     const SizedBox(height: 20),
                     _buildField('Phone Number', _phoneController, Icons.phone_outlined, isPhone: true, alwaysDisabled: true),
                     const SizedBox(height: 20),

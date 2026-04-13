@@ -184,31 +184,34 @@ class _MechanicOtpScreenState extends State<MechanicOtpScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     final defaultPinTheme = PinTheme(
       width: 50,
       height: 56,
       textStyle: GoogleFonts.poppins(
         fontSize: 20,
-        color: Colors.black87,
+        color: theme.textTheme.bodyLarge?.color,
         fontWeight: FontWeight.w600,
       ),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        border: Border.all(color: Colors.grey.shade300),
+        color: isDark ? Colors.grey[900] : Colors.grey.shade50,
+        border: Border.all(color: isDark ? Colors.grey[800]! : Colors.grey.shade300),
         borderRadius: BorderRadius.circular(12),
       ),
     );
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(
           "Verification",
-          style: GoogleFonts.poppins(color: Colors.black),
+          style: GoogleFonts.poppins(color: theme.textTheme.titleLarge?.color),
         ),
-        backgroundColor: Colors.white,
+        backgroundColor: theme.appBarTheme.backgroundColor ?? theme.scaffoldBackgroundColor,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black),
+        iconTheme: IconThemeData(color: isDark ? Colors.white : Colors.black),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -224,7 +227,7 @@ class _MechanicOtpScreenState extends State<MechanicOtpScreen> {
                   style: GoogleFonts.poppins(
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
-                    color: Colors.black87,
+                    color: theme.textTheme.titleLarge?.color,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -233,7 +236,7 @@ class _MechanicOtpScreenState extends State<MechanicOtpScreen> {
                   textAlign: TextAlign.center,
                   style: GoogleFonts.poppins(
                     fontSize: 14,
-                    color: Colors.grey.shade600,
+                    color: isDark ? Colors.white70 : Colors.grey.shade600,
                     height: 1.5,
                   ),
                 ),
@@ -313,7 +316,7 @@ class _MechanicOtpScreenState extends State<MechanicOtpScreen> {
                     Text(
                       "Didn't receive code? ",
                       style: GoogleFonts.poppins(
-                        color: Colors.grey.shade600,
+                        color: isDark ? Colors.white70 : Colors.grey.shade600,
                         fontSize: 14,
                       ),
                     ),

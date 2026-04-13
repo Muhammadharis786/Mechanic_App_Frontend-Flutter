@@ -1,6 +1,8 @@
 // map_screen.dart
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:http/http.dart' as http;
+import 'authentication/user_session.dart';
 
 class MapScreen extends StatefulWidget {
   final String serviceType;
@@ -12,6 +14,28 @@ class MapScreen extends StatefulWidget {
 }
 
 class _MapScreenState extends State<MapScreen> {
+
+  @override
+  void initState() {
+    super.initState();
+    _triggerNotification();
+  }
+
+  Future<void> _triggerNotification() async {
+    try {
+      final response = await http.get(
+        Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/service/request/nearbymechanic"),
+        headers: UserSession().getAuthHeader(),
+      );
+      if (response.statusCode == 200) {
+        print("✅ Notification triggered successfully via API");
+      } else {
+        print("⚠️ Failed to trigger notification: ${response.statusCode}");
+      }
+    } catch (e) {
+      print("❌ Error triggering notification: $e");
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

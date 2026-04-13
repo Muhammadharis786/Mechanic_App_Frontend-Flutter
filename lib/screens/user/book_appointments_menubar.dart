@@ -78,7 +78,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
         backgroundColor: isDark ? Colors.black : Colors.white,
         elevation: 1,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_new, color: primaryColor),
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.black, size: 20),
           onPressed: () => Navigator.pushReplacement(
               context, MaterialPageRoute(builder: (_) => const HomeScreen())),
         ),
@@ -148,7 +148,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
               width: double.infinity,
               child: ElevatedButton.icon(
                 onPressed: _autoAssignMechanic,
-                icon: const Icon(Icons.auto_fix_high, color: Colors.white),
+                icon: const Icon(Icons.auto_fix_high_outlined, color: Colors.white),
                 label: Text("Auto Assign Mechanic",
                     style: GoogleFonts.poppins(
                         fontWeight: FontWeight.w600, color: Colors.white)),
@@ -167,7 +167,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
             _inputField(
               controller: detailController,
               hint: "Describe your problem briefly",
-              icon: Icons.build,
+              icon: Icons.build_outlined,
               isDark: isDark,
               maxLines: 3,
             ),
@@ -178,7 +178,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
             _inputField(
               controller: addressController,
               hint: "Enter your home address",
-              icon: Icons.location_on,
+              icon: Icons.location_on_outlined,
               isDark: isDark,
             ),
             const SizedBox(height: 16),
@@ -318,11 +318,11 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                         style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 14)),
                     Row(
                       children: [
-                        const Icon(Icons.star, size: 14, color: Colors.amber),
+                        const Icon(Icons.star_outline_rounded, size: 14, color: Colors.amber),
                         const SizedBox(width: 4),
                         Text("${mechanic['rating']}", style: GoogleFonts.poppins(fontSize: 12)),
                         const SizedBox(width: 6),
-                        Icon(Icons.location_on, size: 14, color: primaryColor),
+                        Icon(Icons.location_on_outlined, size: 14, color: primaryColor),
                         Text("${mechanic['distance']} km", style: GoogleFonts.poppins(fontSize: 12)),
                       ],
                     ),
@@ -355,7 +355,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
               ),
               ElevatedButton.icon(
                 onPressed: () => _callMechanic(mechanic['phone']),
-                icon: const Icon(Icons.call, size: 16, color: Colors.white),
+                icon: const Icon(Icons.call_outlined, size: 16, color: Colors.white),
                 label: const Text("Call", style: TextStyle(color: Colors.white, fontSize: 12)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.lightGreen,
@@ -396,7 +396,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   Widget _dateTile(bool isDark) => ListTile(
         tileColor: isDark ? Colors.grey[900] : Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        leading: Icon(Icons.calendar_today, color: primaryColor),
+        leading: Icon(Icons.calendar_today_outlined, color: primaryColor),
         title: Text(selectedDate == null
             ? "Choose Date"
             : "${selectedDate!.day}/${selectedDate!.month}/${selectedDate!.year}"),
@@ -427,7 +427,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   Widget _timeTile(bool isDark) => ListTile(
         tileColor: isDark ? Colors.grey[900] : Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        leading: Icon(Icons.access_time, color: primaryColor),
+        leading: Icon(Icons.access_time_outlined, color: primaryColor),
         title: Text(selectedTime == null
             ? "Choose Time"
             : selectedTime!.format(context)),
@@ -455,7 +455,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
 
   Widget _successDialog() => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: Icon(Icons.check_circle, color: primaryColor, size: 50),
+        title: Icon(Icons.check_circle_outline_rounded, color: primaryColor, size: 50),
         content: Text(
           "Your appointment has been booked successfully with ${selectedMechanic!['name']}!",
           textAlign: TextAlign.center,

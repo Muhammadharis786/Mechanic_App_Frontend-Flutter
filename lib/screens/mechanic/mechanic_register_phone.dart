@@ -115,16 +115,19 @@ class _MechanicRegisterPhoneScreenState
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(
           "Mechanic Registration",
-          style: GoogleFonts.poppins(color: Colors.black),
+          style: GoogleFonts.poppins(color: theme.textTheme.titleLarge?.color),
         ),
-        backgroundColor: Colors.white,
+        backgroundColor: theme.appBarTheme.backgroundColor ?? theme.scaffoldBackgroundColor,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black),
+        iconTheme: IconThemeData(color: isDark ? Colors.white : Colors.black),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -140,7 +143,7 @@ class _MechanicRegisterPhoneScreenState
                   style: GoogleFonts.poppins(
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
-                    color: Colors.black87,
+                    color: theme.textTheme.titleLarge?.color,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -148,7 +151,7 @@ class _MechanicRegisterPhoneScreenState
                   "Enter your WhatsApp number and create a password to receive an OTP.",
                   style: GoogleFonts.poppins(
                     fontSize: 14,
-                    color: Colors.grey.shade600,
+                    color: isDark ? Colors.white70 : Colors.grey.shade600,
                   ),
                 ),
                 const SizedBox(height: 40),
@@ -159,33 +162,33 @@ class _MechanicRegisterPhoneScreenState
                   style: GoogleFonts.poppins(
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
-                      color: Colors.grey.shade700),
+                      color: isDark ? Colors.white70 : Colors.grey.shade700),
                 ),
                 const SizedBox(height: 8),
                 TextFormField(
                   controller: _phoneController,
                   keyboardType: TextInputType.phone,
-                  style: GoogleFonts.poppins(),
+                  style: GoogleFonts.poppins(color: theme.textTheme.bodyLarge?.color),
                   decoration: InputDecoration(
                     prefixIcon: Padding(
                       padding: const EdgeInsets.all(12.0),
                       child: Text(
                         '92',
                         style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w600, fontSize: 16),
+                            fontWeight: FontWeight.w600, fontSize: 16, color: theme.textTheme.bodyLarge?.color),
                       ),
                     ),
                     filled: true,
-                    fillColor: Colors.grey.shade50,
+                    fillColor: isDark ? Colors.grey[900] : Colors.grey.shade50,
                     hintText: '3XXXXXXXXX',
-                    hintStyle: GoogleFonts.poppins(color: Colors.grey),
+                    hintStyle: GoogleFonts.poppins(color: isDark ? Colors.white38 : Colors.grey),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Colors.grey.shade300),
+                      borderSide: BorderSide(color: isDark ? Colors.grey[800]! : Colors.grey.shade300),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Colors.grey.shade300),
+                      borderSide: BorderSide(color: isDark ? Colors.grey[800]! : Colors.grey.shade300),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -210,18 +213,18 @@ class _MechanicRegisterPhoneScreenState
                   style: GoogleFonts.poppins(
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
-                      color: Colors.grey.shade700),
+                      color: isDark ? Colors.white70 : Colors.grey.shade700),
                 ),
                 const SizedBox(height: 8),
                 TextFormField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
-                  style: GoogleFonts.poppins(),
+                  style: GoogleFonts.poppins(color: theme.textTheme.bodyLarge?.color),
                   decoration: InputDecoration(
                     prefixIcon: const Icon(Icons.lock_outline, color: Colors.grey),
                     suffixIcon: IconButton(
                       icon: Icon(
-                        _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                        _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
                         color: Colors.grey,
                       ),
                       onPressed: () {
@@ -231,16 +234,16 @@ class _MechanicRegisterPhoneScreenState
                       },
                     ),
                     filled: true,
-                    fillColor: Colors.grey.shade50,
+                    fillColor: isDark ? Colors.grey[900] : Colors.grey.shade50,
                     hintText: 'Min 6 characters',
-                    hintStyle: GoogleFonts.poppins(color: Colors.grey),
+                    hintStyle: GoogleFonts.poppins(color: isDark ? Colors.white38 : Colors.grey),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Colors.grey.shade300),
+                      borderSide: BorderSide(color: isDark ? Colors.grey[800]! : Colors.grey.shade300),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Colors.grey.shade300),
+                      borderSide: BorderSide(color: isDark ? Colors.grey[800]! : Colors.grey.shade300),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),

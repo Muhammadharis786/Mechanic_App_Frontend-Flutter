@@ -48,9 +48,12 @@ class _MechanicProfileScreenState extends State<MechanicProfileScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
+        final modalTheme = Theme.of(context);
+        final isModalDark = modalTheme.brightness == Brightness.dark;
         return Padding(
           padding:
               EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
@@ -62,13 +65,13 @@ class _MechanicProfileScreenState extends State<MechanicProfileScreen> {
                 children: [
                   Text('Edit Profile',
                       style: GoogleFonts.poppins(
-                          fontSize: 18, fontWeight: FontWeight.w600)),
+                          fontSize: 18, fontWeight: FontWeight.w600, color: modalTheme.textTheme.titleLarge?.color)),
                   const SizedBox(height: 20),
-                  _editTextField('Name', nameController),
-                  _editTextField('Email', emailController),
-                  _editTextField('Phone', phoneController),
-                  _editTextField('Location', locationController),
-                  _editTextField('Skills', skillsController),
+                  _editTextField('Name', nameController, modalTheme),
+                  _editTextField('Email', emailController, modalTheme),
+                  _editTextField('Phone', phoneController, modalTheme),
+                  _editTextField('Location', locationController, modalTheme),
+                  _editTextField('Skills', skillsController, modalTheme),
                   const SizedBox(height: 20),
                   ElevatedButton(
                     onPressed: () {
@@ -103,16 +106,22 @@ class _MechanicProfileScreenState extends State<MechanicProfileScreen> {
     );
   }
 
-  Widget _editTextField(String label, TextEditingController controller) {
+  Widget _editTextField(String label, TextEditingController controller, ThemeData theme) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextField(
         controller: controller,
+        style: TextStyle(color: theme.textTheme.bodyLarge?.color),
         decoration: InputDecoration(
           labelText: label,
-          labelStyle: GoogleFonts.poppins(fontSize: 14),
-          border: OutlineInputBorder(
+          labelStyle: GoogleFonts.poppins(fontSize: 14, color: theme.textTheme.bodyMedium?.color?.withOpacity(0.7)),
+          enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: theme.dividerColor),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: primaryColor),
           ),
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -132,16 +141,19 @@ class _MechanicProfileScreenState extends State<MechanicProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: theme.appBarTheme.backgroundColor ?? theme.scaffoldBackgroundColor,
         iconTheme: IconThemeData(color: primaryColor),
         elevation: 1,
         title: Text(
           'Profile',
           style: GoogleFonts.poppins(
-            color: Colors.black87,
+            color: theme.textTheme.titleLarge?.color,
             fontSize: 20,
             fontWeight: FontWeight.w600,
           ),
@@ -188,7 +200,7 @@ class _MechanicProfileScreenState extends State<MechanicProfileScreen> {
                               radius: 18,
                               backgroundColor: Colors.white,
                               child: Icon(
-                                Icons.camera_alt,
+                                Icons.camera_alt_outlined,
                                 color: primaryColor,
                                 size: 20,
                               ),
@@ -224,11 +236,11 @@ class _MechanicProfileScreenState extends State<MechanicProfileScreen> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: theme.cardColor,
                   borderRadius: BorderRadius.circular(18),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
+                      color: isDark ? Colors.black26 : Colors.black.withOpacity(0.05),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -236,15 +248,15 @@ class _MechanicProfileScreenState extends State<MechanicProfileScreen> {
                 ),
                 child: Column(
                   children: [
-                    _profileInfoRow(Icons.person, userName),
-                    _divider(),
-                    _profileInfoRow(Icons.email, email),
-                    _divider(),
-                    _profileInfoRow(Icons.phone, phone),
-                    _divider(),
-                    _profileInfoRow(Icons.location_on, location),
-                    _divider(),
-                    _profileInfoRow(Icons.build, skills),
+                    _profileInfoRow(Icons.person_outline_rounded, userName, theme),
+                    _divider(theme),
+                    _profileInfoRow(Icons.email_outlined, email, theme),
+                    _divider(theme),
+                    _profileInfoRow(Icons.phone_outlined, phone, theme),
+                    _divider(theme),
+                    _profileInfoRow(Icons.location_on_outlined, location, theme),
+                    _divider(theme),
+                    _profileInfoRow(Icons.build_outlined, skills, theme),
                   ],
                 ),
               ),
@@ -253,7 +265,7 @@ class _MechanicProfileScreenState extends State<MechanicProfileScreen> {
               // Edit Profile Button
               ElevatedButton.icon(
                 onPressed: _editProfile,
-                icon: Icon(Icons.edit, size: 18),
+                icon: Icon(Icons.edit_outlined, size: 18),
                 label: Text('Edit Profile',
                     style: GoogleFonts.poppins(
                         fontSize: 14, fontWeight: FontWeight.w600)),
@@ -278,7 +290,8 @@ class _MechanicProfileScreenState extends State<MechanicProfileScreen> {
   }
 
   // Info Row
-  Widget _profileInfoRow(IconData icon, String text) {
+  Widget _profileInfoRow(IconData icon, String text, ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Row(
@@ -286,17 +299,17 @@ class _MechanicProfileScreenState extends State<MechanicProfileScreen> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.grey.shade100,
+              color: isDark ? Colors.grey[900] : Colors.grey.shade100,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, color: Colors.grey.shade700, size: 20),
+            child: Icon(icon, color: isDark ? Colors.white70 : Colors.grey.shade700, size: 20),
           ),
           const SizedBox(width: 16),
           Expanded(
             child: Text(
               text,
               style:
-                  GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w500),
+                  GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w500, color: theme.textTheme.bodyLarge?.color),
             ),
           ),
         ],
@@ -304,7 +317,7 @@ class _MechanicProfileScreenState extends State<MechanicProfileScreen> {
     );
   }
 
-  Widget _divider() {
-    return Divider(color: Colors.grey.shade300, thickness: 1);
+  Widget _divider(ThemeData theme) {
+    return Divider(color: theme.dividerColor, thickness: 1);
   }
 }

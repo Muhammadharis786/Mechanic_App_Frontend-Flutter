@@ -3,7 +3,6 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:uuid/uuid.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -20,15 +19,15 @@ class MechanicMapSelectionScreen extends StatefulWidget {
 
 class _MechanicMapSelectionScreenState extends State<MechanicMapSelectionScreen> {
   GoogleMapController? _mapController;
-  LatLng _centerPosition = const LatLng(24.8607, 67.0011); // Default to Karachi or Pakistan
+  LatLng _centerPosition = const LatLng(24.8607, 67.0011);
   bool _isLoading = false;
   String _currentAddress = "Move map to select location";
   final TextEditingController _searchController = TextEditingController();
   List<dynamic> _placeList = [];
-  final String _googleApiKey = "AIzaSyBpyZg2i30gOLUKK0furYdGDbWXe4lqpkU"; // Using the API key from AndroidManifest.xml
-  String _sessionToken = '1234567890'; // Default, will be reset in initState
+  final String _googleApiKey = "AIzaSyBpyZg2i30gOLUKK0furYdGDbWXe4lqpkU";
+  String _sessionToken = '1234567890';
 
-  final Color primary = const Color(0xFFFB3300);
+  final Color primaryColor = const Color(0xFFFB3300);
 
   @override
   void initState() {
@@ -65,7 +64,7 @@ class _MechanicMapSelectionScreenState extends State<MechanicMapSelectionScreen>
       );
       _getAddressFromLatLng(_centerPosition);
     } catch (e) {
-      // Handle error
+      debugPrint("Error getting location: $e");
     }
   }
 
@@ -76,11 +75,10 @@ class _MechanicMapSelectionScreenState extends State<MechanicMapSelectionScreen>
         Placemark place = placemarks[0];
         setState(() {
           _currentAddress = "${place.street}, ${place.subLocality}, ${place.locality}, ${place.country}".replaceAll(RegExp(r'^, |, $'), '');
-          // clean up trailing or leading commas if some fields are empty
         });
       }
     } catch (e) {
-      // Ignore or log error
+      debugPrint("Error geocoding: $e");
     }
   }
 
@@ -88,7 +86,7 @@ class _MechanicMapSelectionScreenState extends State<MechanicMapSelectionScreen>
     if (address.isEmpty) return;
     setState(() {
       _isLoading = true;
-      _placeList = []; // Hide suggestions when searching
+      _placeList = [];
     });
     try {
       List<Location> locations = await locationFromAddress(address);
@@ -112,21 +110,10 @@ class _MechanicMapSelectionScreenState extends State<MechanicMapSelectionScreen>
 
   void _getSuggestion(String input) async {
     if (input.isEmpty) {
-      setState(() {
-        _placeList = [];
-      });
+      setState(() => _placeList = []);
       return;
     }
     String request = 'https://maps.googleapis.com/maps/api/place/autocomplete/json?input=$input&key=$_googleApiKey&sessiontoken=$_sessionToken';
-    
-    // Public cors-anywhere returns 403 by default without visiting /corsdemo.
-    // Try hitting API directly first. If Web fails CORS, browser console will mention it.
-    // In production, you would use a backend or allow your domain in Google Cloud Console.
-    /*
-    if (kIsWeb) {
-      request = 'https://cors-anywhere.herokuapp.com/' + request;
-    }
-    */
     
     try {
       var response = await http.get(Uri.parse(request));
@@ -134,8 +121,6 @@ class _MechanicMapSelectionScreenState extends State<MechanicMapSelectionScreen>
         setState(() {
           _placeList = json.decode(response.body)['predictions'];
         });
-      } else {
-        throw Exception('Failed to load predictions. Status Code: ${response.statusCode}. Body: ${response.body}');
       }
     } catch (e) {
       debugPrint("Error fetching predictions: $e");
@@ -144,11 +129,23 @@ class _MechanicMapSelectionScreenState extends State<MechanicMapSelectionScreen>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        title: Text("Select Location", style: GoogleFonts.poppins()),
-        backgroundColor: primary,
-        foregroundColor: Colors.white,
+        title: Text(
+          "Select Location",
+          style: GoogleFonts.poppins(
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
+          ),
+        ),
+        backgroundColor: primaryColor,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: Stack(
         children: [
@@ -169,13 +166,14 @@ class _MechanicMapSelectionScreenState extends State<MechanicMapSelectionScreen>
             myLocationEnabled: true,
             myLocationButtonEnabled: false,
             zoomControlsEnabled: false,
+            // Dark mode map styling could be added here if JSON exists
           ),
           
           // Center Marker
           Center(
             child: Padding(
-              padding: const EdgeInsets.only(bottom: 40.0), // Adjust to center the pin correctly
-              child: Icon(Icons.location_on, color: primary, size: 50),
+              padding: const EdgeInsets.only(bottom: 40.0),
+              child: Icon(Icons.location_on_outlined, color: primaryColor, size: 50),
             ),
           ),
           
@@ -188,66 +186,70 @@ class _MechanicMapSelectionScreenState extends State<MechanicMapSelectionScreen>
               children: [
                 Container(
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                    boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                    color: isDark ? Colors.grey[900] : Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: isDark ? Colors.black45 : Colors.black12,
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      )
+                    ],
                   ),
                   child: TextField(
                     controller: _searchController,
-                    style: GoogleFonts.poppins(),
+                    style: GoogleFonts.poppins(color: theme.textTheme.bodyLarge?.color),
                     textInputAction: TextInputAction.search,
-                    onChanged: (value) {
-                      _getSuggestion(value);
-                    },
+                    onChanged: _getSuggestion,
                     onSubmitted: _searchAndMove,
                     decoration: InputDecoration(
                       hintText: "Search location...",
+                      hintStyle: GoogleFonts.poppins(color: isDark ? Colors.white38 : Colors.grey),
                       border: InputBorder.none,
-                      prefixIcon: const Icon(Icons.search),
+                      prefixIcon: Icon(Icons.search_rounded, color: primaryColor),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 15),
                       suffixIcon: IconButton(
                         icon: _isLoading 
-                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                            : const Icon(Icons.clear),
+                            ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: primaryColor))
+                            : Icon(Icons.close_rounded, color: isDark ? Colors.white54 : Colors.grey),
                         onPressed: () {
                           _searchController.clear();
-                          setState(() {
-                            _placeList = [];
-                          });
+                          setState(() => _placeList = []);
                         },
                       ),
                     ),
                   ),
                 ),
                 if (_placeList.isNotEmpty)
-                  Material(
-                    elevation: 4,
-                    borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      margin: const EdgeInsets.only(top: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      constraints: const BoxConstraints(maxHeight: 250),
-                      child: ListView.builder(
-                        padding: EdgeInsets.zero,
-                        shrinkWrap: true,
-                        itemCount: _placeList.length,
-                        itemBuilder: (context, index) {
-                          return ListTile(
-                            leading: const Icon(Icons.location_on_outlined, color: Colors.grey),
-                            title: Text(
-                              _placeList[index]["description"],
-                              style: GoogleFonts.poppins(fontSize: 14),
+                  Container(
+                    margin: const EdgeInsets.only(top: 8),
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.grey[900] : Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10)],
+                    ),
+                    constraints: const BoxConstraints(maxHeight: 250),
+                    child: ListView.builder(
+                      padding: EdgeInsets.zero,
+                      shrinkWrap: true,
+                      itemCount: _placeList.length,
+                      itemBuilder: (context, index) {
+                        return ListTile(
+                          leading: Icon(Icons.location_on_outlined, color: primaryColor, size: 20),
+                          title: Text(
+                            _placeList[index]["description"],
+                            style: GoogleFonts.poppins(
+                              fontSize: 13,
+                              color: theme.textTheme.bodyMedium?.color,
                             ),
-                            onTap: () {
-                              FocusScope.of(context).unfocus();
-                              _searchController.text = _placeList[index]["description"];
-                              _searchAndMove(_searchController.text);
-                            },
-                          );
-                        },
-                      ),
+                          ),
+                          onTap: () {
+                            FocusScope.of(context).unfocus();
+                            _searchController.text = _placeList[index]["description"];
+                            _searchAndMove(_searchController.text);
+                          },
+                        );
+                      },
                     ),
                   ),
               ],
@@ -260,9 +262,9 @@ class _MechanicMapSelectionScreenState extends State<MechanicMapSelectionScreen>
             right: 16,
             child: FloatingActionButton(
               heroTag: 'my_location_btn',
-              backgroundColor: Colors.white,
+              backgroundColor: isDark ? Colors.grey[850] : Colors.white,
               onPressed: _getCurrentLocation,
-              child: Icon(Icons.my_location, color: primary),
+              child: Icon(Icons.my_location_outlined, color: primaryColor),
             ),
           ),
           
@@ -272,43 +274,69 @@ class _MechanicMapSelectionScreenState extends State<MechanicMapSelectionScreen>
             left: 0,
             right: 0,
             child: Container(
-              padding: const EdgeInsets.all(20),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10)],
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.grey[900] : Colors.white,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                boxShadow: [
+                  BoxShadow(
+                    color: isDark ? Colors.black54 : Colors.black12,
+                    blurRadius: 15,
+                    offset: const Offset(0, -5),
+                  )
+                ],
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                   Row(
+                  Row(
                     children: [
-                      Icon(Icons.place, color: primary, size: 20),
+                      Icon(Icons.location_on_outlined, color: primaryColor, size: 22),
                       const SizedBox(width: 8),
-                      Text("Selected Location", style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey)),
+                      Text(
+                        "Selected Location",
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          color: isDark ? Colors.white54 : Colors.grey.shade600,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  Text(_currentAddress, style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: primary,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  const SizedBox(height: 12),
+                  Text(
+                    _currentAddress,
+                    style: GoogleFonts.poppins(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: theme.textTheme.titleLarge?.color,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(double.infinity, 55),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                      elevation: 0,
+                    ),
+                    onPressed: () {
+                      Navigator.pop(context, {
+                        'latitude': _centerPosition.latitude,
+                        'longitude': _centerPosition.longitude,
+                        'address': _currentAddress,
+                      });
+                    },
+                    child: Text(
+                      "Confirm Location",
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
                       ),
-                      onPressed: () {
-                        // Return the selected location data
-                        Navigator.pop(context, {
-                          'latitude': _centerPosition.latitude,
-                          'longitude': _centerPosition.longitude,
-                          'address': _currentAddress,
-                        });
-                      },
-                      child: Text("Confirm Location", style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 16)),
                     ),
                   )
                 ],

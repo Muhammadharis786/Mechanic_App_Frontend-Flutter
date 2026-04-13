@@ -58,6 +58,30 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
 
         // Save Mechanic Session
         await UserSession().saveSession(phone, password, 'MECHANIC');
+        
+        // Extract Mechanic ID from the login response and save to Session
+        try {
+          final data = jsonDecode(response.body);
+          int? mechanicId;
+          
+          if (data is Map) {
+            if (data.containsKey('id') && data['id'] != null) {
+              // Convert to int in case the backend returns it as string unexpectedly
+              mechanicId = int.tryParse(data['id'].toString());
+            } else if (data.containsKey('userId') && data['userId'] != null) {
+              mechanicId = int.tryParse(data['userId'].toString());
+            }
+          }
+          
+          if (mechanicId != null) {
+             await UserSession().setUserId(mechanicId);
+             debugPrint("✅ Mechanic ID ($mechanicId) saved to UserSession during login.");
+          } else {
+             debugPrint("⚠️ Mechanic ID not found in login response.");
+          }
+        } catch (e) {
+          debugPrint("❌ Error parsing login response for ID: $e");
+        }
 
         debugPrint("Login Success: ${response.body}");
 
@@ -146,8 +170,11 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -161,6 +188,7 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
                 style: GoogleFonts.poppins(
                   fontSize: 28,
                   fontWeight: FontWeight.bold,
+                  color: theme.textTheme.titleLarge?.color,
                 ),
               ),
 
@@ -168,7 +196,7 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
 
               Text(
                 "Login with your phone number and password",
-                style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey),
+                style: GoogleFonts.poppins(fontSize: 14, color: isDark ? Colors.white70 : Colors.grey),
               ),
 
               const SizedBox(height: 30),
@@ -176,18 +204,20 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
               /// Phone Number
               Text(
                 "Phone Number",
-                style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: theme.textTheme.bodyLarge?.color),
               ),
               const SizedBox(height: 8),
 
               TextField(
                 controller: phoneController,
                 keyboardType: TextInputType.phone,
+                style: TextStyle(color: theme.textTheme.bodyLarge?.color),
                 onChanged: (_) => _checkFields(),
                 decoration: InputDecoration(
                   hintText: "3XXXXXXXXX",
+                  hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.grey),
                   filled: true,
-                  fillColor: const Color(0xFFF3F3F3),
+                  fillColor: isDark ? Colors.grey[900] : const Color(0xFFF3F3F3),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 14,
@@ -198,12 +228,13 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
                       "92",
                       style: GoogleFonts.poppins(
                         fontWeight: FontWeight.w600,
+                        color: theme.textTheme.bodyLarge?.color,
                       ),
                     ),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: primaryColor),
+                    borderSide: BorderSide(color: isDark ? Colors.grey[800]! : primaryColor),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
@@ -220,18 +251,20 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
               /// Password
               Text(
                 "Password",
-                style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: theme.textTheme.bodyLarge?.color),
               ),
               const SizedBox(height: 8),
 
               TextField(
                 controller: passwordController,
                 obscureText: _obscurePassword,
+                style: TextStyle(color: theme.textTheme.bodyLarge?.color),
                 onChanged: (_) => _checkFields(),
                 decoration: InputDecoration(
                   hintText: "Min 8 characters",
+                  hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.grey),
                   filled: true,
-                  fillColor: const Color(0xFFF3F3F3),
+                  fillColor: isDark ? Colors.grey[900] : const Color(0xFFF3F3F3),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 14,
@@ -239,8 +272,8 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
                   suffixIcon: IconButton(
                     icon: Icon(
                       _obscurePassword
-                          ? Icons.visibility_off
-                          : Icons.visibility,
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
                       color: primaryColor,
                     ),
                     onPressed: () {
@@ -251,7 +284,7 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: primaryColor),
+                    borderSide: BorderSide(color: isDark ? Colors.grey[800]! : primaryColor),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
@@ -320,7 +353,7 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
                   children: [
                     Text(
                       "Don't have an account? ",
-                      style: GoogleFonts.poppins(color: Colors.black),
+                      style: GoogleFonts.poppins(color: theme.textTheme.bodyMedium?.color),
                     ),
                     GestureDetector(
                       onTap: () {

@@ -106,22 +106,25 @@ class _MechanicLocationScreenState extends State<MechanicLocationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 30),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.location_on_rounded, size: 90, color: Color(0xFFFB3300)),
+              const Icon(Icons.location_on_outlined, size: 90, color: Color(0xFFFB3300)),
               const SizedBox(height: 20),
               Text(
                 'Enable Location', 
                 style: GoogleFonts.poppins(
                   fontSize: 26, 
                   fontWeight: FontWeight.w700,
-                  color: Colors.black
+                  color: theme.textTheme.titleLarge?.color
                 )
               ),
               const SizedBox(height: 12),
@@ -130,7 +133,7 @@ class _MechanicLocationScreenState extends State<MechanicLocationScreen> {
                 textAlign: TextAlign.center, 
                 style: GoogleFonts.poppins(
                   fontSize: 15, 
-                  color: Colors.black54
+                  color: isDark ? Colors.white70 : Colors.black54
                 )
               ),
               const SizedBox(height: 35),
