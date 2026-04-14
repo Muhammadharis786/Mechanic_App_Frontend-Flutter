@@ -64,7 +64,7 @@ class _MechanicDetailScreenState extends State<MechanicDetailScreen> {
     await Future.delayed(const Duration(seconds: 2));
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Mechanic details updated hogay hay")),
+        const SnackBar(content: Text("Mechanic details")),
       );
     }
   }
