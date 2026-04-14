@@ -48,7 +48,6 @@ class _EnableLocationScreenState extends State<EnableLocationScreen> {
     });
 
     try {
-      // Request permission
       LocationPermission permission = await Geolocator.requestPermission();
       
       if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
@@ -57,14 +56,10 @@ class _EnableLocationScreenState extends State<EnableLocationScreen> {
         return;
       }
 
-      // Get current location
       Position position = await Geolocator.getCurrentPosition();
-      
-      // Save to database
       setState(() => _statusMessage = "Saving location...");
       await _updateLocationOnServer(position.latitude, position.longitude);
 
-      // Navigate to home screen
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
@@ -84,19 +79,27 @@ class _EnableLocationScreenState extends State<EnableLocationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Detect current theme
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final bgColor = isDark ? Colors.black : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black;
+    final subTextColor = isDark ? Colors.grey[400] : Colors.black54;
+    final buttonColor = const Color(0xFFFB3300);
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: bgColor,
       body: Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 30),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.location_on_rounded, size: 90, color: Color(0xFFFB3300)),
+              Icon(Icons.location_on_rounded, size: 90, color: buttonColor),
               const SizedBox(height: 20),
-              const Text('Enable Location', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700)),
+              Text('Enable Location', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: textColor)),
               const SizedBox(height: 12),
-              Text(_statusMessage, textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, color: Colors.black54)),
+              Text(_statusMessage, textAlign: TextAlign.center, style: TextStyle(fontSize: 15, color: subTextColor)),
               const SizedBox(height: 35),
               SizedBox(
                 width: double.infinity,
@@ -104,7 +107,7 @@ class _EnableLocationScreenState extends State<EnableLocationScreen> {
                 child: ElevatedButton(
                   onPressed: _isLoading ? null : handleLocationPermission,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFB3300),
+                    backgroundColor: buttonColor,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                   ),
                   child: _isLoading

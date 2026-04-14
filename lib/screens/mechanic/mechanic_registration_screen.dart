@@ -218,13 +218,15 @@ class _MechanicRegistrationScreenState
 
       if (response.statusCode == 200) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Registration Successful! Please login to continue.'), backgroundColor: Colors.green),
+          const SnackBar(content: Text('Registration Successful!'), backgroundColor: Colors.green),
         );
+        
+        await UserSession().saveSession(widget.phoneNumber, widget.password, 'MECHANIC');
         
         if (mounted) {
            Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (_) => const MechanicLoginScreen()),
+            MaterialPageRoute(builder: (_) => const MechanicDashboardScreen()),
           );
         }
       } else if (response.statusCode == 409 || responseBody.contains("already exists")) {
@@ -381,18 +383,16 @@ class _MechanicRegistrationScreenState
 
   // ================= CLOSE DIALOG =================
   void showCloseDialog() {
-    final theme = Theme.of(context);
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: theme.scaffoldBackgroundColor,
         title: Text(
           'Close Registration',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: theme.textTheme.titleLarge?.color),
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
         ),
         content: Text(
           'Are you sure you want to close registration process?',
-          style: GoogleFonts.poppins(color: theme.textTheme.bodyMedium?.color),
+          style: GoogleFonts.poppins(),
         ),
         actions: [
           TextButton(
@@ -424,25 +424,20 @@ class _MechanicRegistrationScreenState
     Widget? prefix,
     Function(String)? onChanged,
   }) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
     return TextField(
       keyboardType: type,
       obscureText: isPassword && !showPassword,
       inputFormatters: formatters,
       onChanged: onChanged,
-      style: GoogleFonts.poppins(color: theme.textTheme.bodyLarge?.color),
+      style: GoogleFonts.poppins(),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: GoogleFonts.poppins(color: isDark ? Colors.white38 : Colors.grey),
-        filled: true,
-        fillColor: isDark ? Colors.grey[900] : Colors.white,
+        hintStyle: GoogleFonts.poppins(),
         prefixIcon: prefix,
         suffixIcon: isPassword
             ? IconButton(
                 icon: Icon(
-                  showPassword ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                  showPassword ? Icons.visibility : Icons.visibility_off,
                   color: primary,
                 ),
                 onPressed: () =>
@@ -451,7 +446,7 @@ class _MechanicRegistrationScreenState
             : null,
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: isDark ? Colors.grey[800]! : primary),
+          borderSide: BorderSide(color: primary),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -464,11 +459,8 @@ class _MechanicRegistrationScreenState
   // ================= UI =================
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
     return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
+      backgroundColor: Colors.white,
       body: SafeArea(
         child: Column(
           children: [
@@ -480,7 +472,7 @@ class _MechanicRegistrationScreenState
                   if (currentStep > 0)
                     IconButton(
                       onPressed: previousPage,
-                      icon: Icon(Icons.arrow_back_ios,
+                      icon: Icon(Icons.arrow_back_ios_new,
                           color: primary, size: 22),
                     ),
                   Expanded(
@@ -488,12 +480,12 @@ class _MechanicRegistrationScreenState
                       _titles[currentStep],
                       textAlign: TextAlign.center,
                       style: GoogleFonts.poppins(
-                          fontSize: 18, fontWeight: FontWeight.w600, color: theme.textTheme.titleLarge?.color),
+                          fontSize: 18, fontWeight: FontWeight.w600),
                     ),
                   ),
                   IconButton(
                     onPressed: showCloseDialog,
-                    icon: Icon(Icons.close_rounded, color: primary),
+                    icon: Icon(Icons.close, color: primary),
                   ),
                 ],
               ),
@@ -523,11 +515,11 @@ class _MechanicRegistrationScreenState
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text('${currentStep + 1} of $totalSteps',
-                            style: GoogleFonts.poppins(fontSize: 12, color: theme.textTheme.bodySmall?.color)),
+                            style: GoogleFonts.poppins(fontSize: 12)),
                         const SizedBox(height: 6),
                         LinearProgressIndicator(
                           value: (currentStep + 1) / totalSteps,
-                          backgroundColor: isDark ? Colors.grey[900] : Colors.grey.shade300,
+                          backgroundColor: Colors.grey.shade300,
                           valueColor: AlwaysStoppedAnimation<Color>(primary),
                         )
                       ],
@@ -577,7 +569,7 @@ class _MechanicRegistrationScreenState
                   children: [
                     Text('Upload Profile Picture',
                         style: GoogleFonts.poppins(
-                            fontSize: 16, fontWeight: FontWeight.w600, color: Theme.of(context).textTheme.titleMedium?.color)),
+                            fontSize: 16, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 6),
                     Text('This will be visible to customers',
                         style: GoogleFonts.poppins(
@@ -589,14 +581,14 @@ class _MechanicRegistrationScreenState
                 onTap: () => pickImage('profile'),
                 child: CircleAvatar(
                   radius: 45,
-                  backgroundColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey[900] : Colors.grey.shade200,
+                  backgroundColor: Colors.grey.shade200,
                   backgroundImage: profileImage != null
                       ? (kIsWeb
                           ? NetworkImage(profileImage!.path)
                           : FileImage(File(profileImage!.path)) as ImageProvider)
                       : null,
                   child: profileImage == null
-                      ? Icon(Icons.add_circle_outline_rounded, size: 30, color: primary)
+                      ? Icon(Icons.add, size: 30, color: primary)
                       : null,
                 ),
               ),
@@ -620,16 +612,14 @@ class _MechanicRegistrationScreenState
               Expanded(
                 child: TextField(
                   controller: addressController,
-                  style: GoogleFonts.poppins(color: Theme.of(context).textTheme.bodyLarge?.color),
+                  style: GoogleFonts.poppins(),
                   onChanged: (v) => shopAddress = v,
                   decoration: InputDecoration(
                     hintText: 'Shop Address',
-                    hintStyle: GoogleFonts.poppins(color: Theme.of(context).brightness == Brightness.dark ? Colors.white38 : Colors.grey),
-                    filled: true,
-                    fillColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey[900] : Colors.white,
+                    hintStyle: GoogleFonts.poppins(),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Theme.of(context).brightness == Brightness.dark ? Colors.grey[800]! : primary),
+                      borderSide: BorderSide(color: primary),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -645,7 +635,7 @@ class _MechanicRegistrationScreenState
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: IconButton(
-                  icon: const Icon(Icons.map_outlined, color: Colors.white),
+                  icon: const Icon(Icons.map, color: Colors.white),
                   onPressed: () async {
                     FocusScope.of(context).unfocus(); // Close keyboard before opening map
                     final result = await Navigator.push(
@@ -712,8 +702,6 @@ class _MechanicRegistrationScreenState
         children: [
           DropdownButtonFormField(
             initialValue: mechanicType,
-            dropdownColor: Theme.of(context).cardColor,
-            style: GoogleFonts.poppins(color: Theme.of(context).textTheme.bodyLarge?.color),
             items: const [
               DropdownMenuItem(value: 'Bike Mechanic', child: Text('Bike Mechanic')),
               DropdownMenuItem(value: 'Car Mechanic', child: Text('Car Mechanic')),
@@ -721,15 +709,9 @@ class _MechanicRegistrationScreenState
             ],
             onChanged: (v) => mechanicType = v!,
             decoration: InputDecoration(
-              filled: true,
-              fillColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey[900] : Colors.white,
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Theme.of(context).brightness == Brightness.dark ? Colors.grey[800]! : primary),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: primary, width: 2),
+                borderSide: BorderSide(color: primary),
               ),
             ),
           ),
@@ -756,8 +738,8 @@ class _MechanicRegistrationScreenState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // CNIC Front
-          Text('Upload CNIC Front (شناختی کارڈ سامنے wala حصہ)',
-              style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: Theme.of(context).textTheme.titleMedium?.color)),
+          Text('Upload CNIC Front (شناختی کارڈ سامنے والا حصہ)',
+              style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
           ElevatedButton(
             onPressed: () => pickImage('cnicFront'),
@@ -776,8 +758,8 @@ class _MechanicRegistrationScreenState
           const SizedBox(height: 24),
 
           // CNIC Back
-          Text('Upload CNIC Back (شناختی کارڈ پیچھے wala حصہ)',
-              style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: Theme.of(context).textTheme.titleMedium?.color)),
+          Text('Upload CNIC Back (شناختی کارڈ پیچھے والا حصہ)',
+              style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
           ElevatedButton(
             onPressed: () => pickImage('cnicBack'),

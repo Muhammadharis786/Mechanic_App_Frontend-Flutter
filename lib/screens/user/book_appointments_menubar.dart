@@ -78,7 +78,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
         backgroundColor: isDark ? Colors.black : Colors.white,
         elevation: 1,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.black, size: 20),
+          icon: Icon(Icons.arrow_back_ios_new, color: primaryColor),
           onPressed: () => Navigator.pushReplacement(
               context, MaterialPageRoute(builder: (_) => const HomeScreen())),
         ),
@@ -99,131 +99,131 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-            _sectionTitle("Select Service"),
-            const SizedBox(height: 8),
-            _dropdown(services, selectedService, (v) {
-              setState(() => selectedService = v!);
-            }, isDark),
-            const SizedBox(height: 20),
+              _sectionTitle("Select Service"),
+              const SizedBox(height: 8),
+              _dropdown(services, selectedService, (v) {
+                setState(() => selectedService = v!);
+              }, isDark),
+              const SizedBox(height: 20),
 
-            _sectionTitleWithSeeAll(
-              "Select Nearby Mechanic",
-              "See All",
-              () async {
-                final selected = await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => MechanicListScreenn(
-                      serviceType: selectedService,
-                      mechanics: mechanics,
-                      showViewOption: true, // show view button in vertical list
-                      selectedMechanicId: selectedMechanic?['id'],
+              _sectionTitleWithSeeAll(
+                "Select Nearby Mechanic",
+                "See All",
+                () async {
+                  final selected = await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => MechanicListScreenn(
+                        serviceType: selectedService,
+                        mechanics: mechanics,
+                        showViewOption: true,
+                        selectedMechanicId: selectedMechanic?['id'],
+                      ),
+                    ),
+                  );
+                  if (selected != null) setState(() => selectedMechanic = selected);
+                },
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 180,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: mechanics.length,
+                  itemBuilder: (context, index) {
+                    final mechanic = mechanics[index];
+                    final isSelected = selectedMechanic != null &&
+                        selectedMechanic!['id'] == mechanic['id'];
+                    return Container(
+                      width: 220,
+                      margin: const EdgeInsets.only(right: 12),
+                      child: _mechanicCard(mechanic, isDark, isSelected),
+                    );
+                  },
+                ),
+              ),
+
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _autoAssignMechanic,
+                  icon: const Icon(Icons.auto_fix_high, color: Colors.white),
+                  label: Text("Auto Assign Mechanic",
+                      style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.w600, color: Colors.white)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryColor,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              _sectionTitle("Service Detail"),
+              const SizedBox(height: 8),
+              _inputField(
+                controller: detailController,
+                hint: "Describe your problem briefly",
+                icon: Icons.build,
+                isDark: isDark,
+                maxLines: 3,
+              ),
+              const SizedBox(height: 16),
+
+              _sectionTitle("Service Location"),
+              const SizedBox(height: 8),
+              _inputField(
+                controller: addressController,
+                hint: "Enter your home address",
+                icon: Icons.location_on,
+                isDark: isDark,
+              ),
+              const SizedBox(height: 16),
+
+              _sectionTitle("Select Date"),
+              _dateTile(isDark),
+              const SizedBox(height: 16),
+              _sectionTitle("Select Time"),
+              _timeTile(isDark),
+              const SizedBox(height: 30),
+
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryColor,
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
+                  ),
+                  onPressed: () {
+                    if (selectedMechanic == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("Please select a mechanic")));
+                      return;
+                    }
+                    showDialog(
+                      context: context,
+                      builder: (_) => _successDialog(),
+                    );
+                  },
+                  child: Text(
+                    "Confirm Appointment",
+                    style: GoogleFonts.poppins(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
                     ),
                   ),
-                );
-                if (selected != null) setState(() => selectedMechanic = selected);
-              },
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              height: 180,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: mechanics.length,
-                itemBuilder: (context, index) {
-                  final mechanic = mechanics[index];
-                  final isSelected = selectedMechanic != null &&
-                      selectedMechanic!['id'] == mechanic['id'];
-                  return Container(
-                    width: 220,
-                    margin: const EdgeInsets.only(right: 12),
-                    child: _mechanicCard(mechanic, isDark, isSelected),
-                  );
-                },
-              ),
-            ),
-
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _autoAssignMechanic,
-                icon: const Icon(Icons.auto_fix_high_outlined, color: Colors.white),
-                label: Text("Auto Assign Mechanic",
-                    style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.w600, color: Colors.white)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: primaryColor,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16)),
                 ),
               ),
-            ),
-            const SizedBox(height: 20),
-
-            _sectionTitle("Service Detail"),
-            const SizedBox(height: 8),
-            _inputField(
-              controller: detailController,
-              hint: "Describe your problem briefly",
-              icon: Icons.build_outlined,
-              isDark: isDark,
-              maxLines: 3,
-            ),
-            const SizedBox(height: 16),
-
-            _sectionTitle("Service Location"),
-            const SizedBox(height: 8),
-            _inputField(
-              controller: addressController,
-              hint: "Enter your home address",
-              icon: Icons.location_on_outlined,
-              isDark: isDark,
-            ),
-            const SizedBox(height: 16),
-
-            _sectionTitle("Select Date"),
-            _dateTile(isDark),
-            const SizedBox(height: 16),
-            _sectionTitle("Select Time"),
-            _timeTile(isDark),
-            const SizedBox(height: 30),
-
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: primaryColor,
-                  padding: const EdgeInsets.symmetric(vertical: 18),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16)),
-                ),
-                onPressed: () {
-                  if (selectedMechanic == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Please select a mechanic")));
-                    return;
-                  }
-                  showDialog(
-                    context: context,
-                    builder: (_) => _successDialog(),
-                  );
-                },
-                child: Text(
-                  "Confirm Appointment",
-                  style: GoogleFonts.poppins(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 30),
-          ],
+              const SizedBox(height: 30),
+            ],
+          ),
         ),
-      ),
       ),
     );
   }
@@ -278,9 +278,11 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       TextField(
         controller: controller,
         maxLines: maxLines,
+        style: TextStyle(color: isDark ? Colors.white : Colors.black),
         decoration: InputDecoration(
           prefixIcon: Icon(icon, color: primaryColor),
           hintText: hint,
+          hintStyle: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[600]),
           filled: true,
           fillColor: isDark ? Colors.grey[900] : Colors.white,
           enabledBorder: OutlineInputBorder(
@@ -295,13 +297,19 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       );
 
   Widget _mechanicCard(Map<String, dynamic> mechanic, bool isDark, bool isSelected) {
+    final cardBg = isDark ? Colors.grey[850] : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black;
+    final subTextColor = isDark ? Colors.grey[300] : Colors.grey[700];
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardBg,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: isSelected ? primaryColor : Colors.transparent, width: 2),
-        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+        boxShadow: isDark
+            ? []
+            : const [BoxShadow(color: Colors.black12, blurRadius: 4)],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -315,15 +323,18 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(mechanic['name'],
-                        style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 14)),
+                        style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.w600, fontSize: 14, color: textColor)),
                     Row(
                       children: [
-                        const Icon(Icons.star_outline_rounded, size: 14, color: Colors.amber),
+                        const Icon(Icons.star, size: 14, color: Colors.amber),
                         const SizedBox(width: 4),
-                        Text("${mechanic['rating']}", style: GoogleFonts.poppins(fontSize: 12)),
+                        Text("${mechanic['rating']}",
+                            style: GoogleFonts.poppins(fontSize: 12, color: subTextColor)),
                         const SizedBox(width: 6),
-                        Icon(Icons.location_on_outlined, size: 14, color: primaryColor),
-                        Text("${mechanic['distance']} km", style: GoogleFonts.poppins(fontSize: 12)),
+                        Icon(Icons.location_on, size: 14, color: primaryColor),
+                        Text("${mechanic['distance']} km",
+                            style: GoogleFonts.poppins(fontSize: 12, color: subTextColor)),
                       ],
                     ),
                   ],
@@ -351,11 +362,12 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
                 child: Text(isSelected ? "Selected" : "Select",
-                    style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white)),
+                    style: GoogleFonts.poppins(
+                        fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white)),
               ),
               ElevatedButton.icon(
                 onPressed: () => _callMechanic(mechanic['phone']),
-                icon: const Icon(Icons.call_outlined, size: 16, color: Colors.white),
+                icon: const Icon(Icons.call, size: 16, color: Colors.white),
                 label: const Text("Call", style: TextStyle(color: Colors.white, fontSize: 12)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.lightGreen,
@@ -396,29 +408,34 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   Widget _dateTile(bool isDark) => ListTile(
         tileColor: isDark ? Colors.grey[900] : Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        leading: Icon(Icons.calendar_today_outlined, color: primaryColor),
+        leading: Icon(Icons.calendar_today, color: primaryColor),
         title: Text(selectedDate == null
             ? "Choose Date"
-            : "${selectedDate!.day}/${selectedDate!.month}/${selectedDate!.year}"),
+            : "${selectedDate!.day}/${selectedDate!.month}/${selectedDate!.year}",
+            style: TextStyle(color: isDark ? Colors.white : Colors.black)),
         onTap: () async {
           final date = await showDatePicker(
             context: context,
             firstDate: DateTime.now(),
             lastDate: DateTime(2030),
             initialDate: DateTime.now(),
-            builder: (context, child) => Theme(
-              data: Theme.of(context).copyWith(
-                colorScheme: ColorScheme.light(
-                  primary: primaryColor,
-                  onPrimary: Colors.white,
-                  onSurface: Colors.black,
+            builder: (context, child) {
+              final theme = Theme.of(context);
+              return Theme(
+                data: theme.copyWith(
+                  brightness: isDark ? Brightness.dark : Brightness.light,
+                  colorScheme: theme.colorScheme.copyWith(
+                    primary: primaryColor,
+                    onPrimary: Colors.white,
+                    onSurface: isDark ? Colors.white : Colors.black,
+                  ),
+                  textButtonTheme: TextButtonThemeData(
+                    style: TextButton.styleFrom(foregroundColor: primaryColor),
+                  ),
                 ),
-                textButtonTheme: TextButtonThemeData(
-                  style: TextButton.styleFrom(foregroundColor: primaryColor),
-                ),
-              ),
-              child: child!,
-            ),
+                child: child!,
+              );
+            },
           );
           if (date != null) setState(() => selectedDate = date);
         },
@@ -427,27 +444,32 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   Widget _timeTile(bool isDark) => ListTile(
         tileColor: isDark ? Colors.grey[900] : Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        leading: Icon(Icons.access_time_outlined, color: primaryColor),
+        leading: Icon(Icons.access_time, color: primaryColor),
         title: Text(selectedTime == null
             ? "Choose Time"
-            : selectedTime!.format(context)),
+            : selectedTime!.format(context),
+            style: TextStyle(color: isDark ? Colors.white : Colors.black)),
         onTap: () async {
           final time = await showTimePicker(
             context: context,
             initialTime: TimeOfDay.now(),
-            builder: (context, child) => Theme(
-              data: Theme.of(context).copyWith(
-                colorScheme: ColorScheme.light(
-                  primary: primaryColor,
-                  onPrimary: Colors.white,
-                  onSurface: Colors.black,
+            builder: (context, child) {
+              final theme = Theme.of(context);
+              return Theme(
+                data: theme.copyWith(
+                  brightness: isDark ? Brightness.dark : Brightness.light,
+                  colorScheme: theme.colorScheme.copyWith(
+                    primary: primaryColor,
+                    onPrimary: Colors.white,
+                    onSurface: isDark ? Colors.white : Colors.black,
+                  ),
+                  textButtonTheme: TextButtonThemeData(
+                    style: TextButton.styleFrom(foregroundColor: primaryColor),
+                  ),
                 ),
-                textButtonTheme: TextButtonThemeData(
-                  style: TextButton.styleFrom(foregroundColor: primaryColor),
-                ),
-              ),
-              child: child!,
-            ),
+                child: child!,
+              );
+            },
           );
           if (time != null) setState(() => selectedTime = time);
         },
@@ -455,7 +477,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
 
   Widget _successDialog() => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: Icon(Icons.check_circle_outline_rounded, color: primaryColor, size: 50),
+        title: Icon(Icons.check_circle, color: primaryColor, size: 50),
         content: Text(
           "Your appointment has been booked successfully with ${selectedMechanic!['name']}!",
           textAlign: TextAlign.center,

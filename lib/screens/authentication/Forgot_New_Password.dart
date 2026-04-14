@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-import 'authentication/role_selection_screen.dart';
+import 'role_selection_screen.dart';
 
 class NewPassword extends StatefulWidget {
   final String email;
@@ -33,7 +33,7 @@ class _NewPasswordState extends State<NewPassword> {
     final password = _passwordController.text.trim();
     final email = widget.email;
 
-    final url = Uri.parse("http://localhost:8080/api/user/newPassword");
+    final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/user/newPassword");
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text("Changing password...")),

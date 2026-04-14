@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-import 'role_selection_screen.dart';
+import 'authentication/role_selection_screen.dart';
 
 class NewPassword extends StatefulWidget {
   final String email;

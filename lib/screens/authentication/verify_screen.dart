@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
+import 'package:mech_app/screens/authentication/r_screen.dart';
+import 'package:mech_app/screens/authentication/user_session.dart';
+import 'package:mech_app/screens/enable_loc.dart';
 import 'dart:convert';
 import 'authentication/user_session.dart'; 
 import 'otpScreenforgotpassword.dart';
@@ -71,6 +74,7 @@ class _VerifyScreenState extends State<VerifyScreen> {
       );
 
       if (response.statusCode == 200) {
+        // Save Session with phone number
         await UserSession().saveSession(phone, password, 'USER');
 
         if (!mounted) return;
@@ -144,49 +148,34 @@ class _VerifyScreenState extends State<VerifyScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? Colors.black : Colors.white;
-    final textColor = isDark ? Colors.white : Colors.black87;
-    final subTextColor = isDark ? Colors.grey[400] : Colors.black54;
-    final fieldBgColor = isDark ? Colors.grey[900] : Colors.white;
-    final hintColor = isDark ? Colors.grey[500] : Colors.black45;
-
     return Scaffold(
-      backgroundColor: bgColor,
+      backgroundColor: Colors.white,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 30),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Back button and Welcome Back text in row
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.arrow_back_ios, color: Colors.deepOrange),
-                    padding: EdgeInsets.zero,
-                    alignment: Alignment.centerLeft,
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      "Welcome Back 👋",
-                      style: GoogleFonts.poppins(fontSize: 28, fontWeight: FontWeight.w700, color: textColor),
-                    ),
-                  ),
-                ],
+              // Back button
+              IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.arrow_back_ios, color: Colors.black54),
+                padding: EdgeInsets.zero,
+                alignment: Alignment.centerLeft,
               ),
+              const SizedBox(height: 10),
+
+              Text("Welcome Back 👋",
+                  style: GoogleFonts.poppins(fontSize: 28, fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
               Text(
                 "Login with your WhatsApp number and password",
-                style: GoogleFonts.poppins(fontSize: 15, color: subTextColor),
+                style: GoogleFonts.poppins(fontSize: 15, color: Colors.black54)
               ),
               const SizedBox(height: 30),
 
               // WhatsApp Number
-              Text("WhatsApp Number", style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w500, color: textColor)),
+              Text("WhatsApp Number", style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w500)),
               const SizedBox(height: 6),
               TextField(
                 controller: _phoneController,
@@ -195,13 +184,13 @@ class _VerifyScreenState extends State<VerifyScreen> {
                   FilteringTextInputFormatter.digitsOnly,
                   LengthLimitingTextInputFormatter(10),
                 ],
-                style: GoogleFonts.poppins(color: textColor),
-                decoration: _inputDecoration("3XXXXXXXXX", fieldBgColor!, hintColor!).copyWith(
+                style: GoogleFonts.poppins(),
+                decoration: _inputDecoration("3XXXXXXXXX").copyWith(
                   prefixIcon: Padding(
                     padding: const EdgeInsets.all(14),
                     child: Text(
                       "+92",
-                      style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: textColor),
+                      style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
                     ),
                   ),
                 ),
@@ -210,13 +199,13 @@ class _VerifyScreenState extends State<VerifyScreen> {
               const SizedBox(height: 22),
 
               // PASSWORD
-              Text("Password", style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w500, color: textColor)),
+              Text("Password", style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w500)),
               const SizedBox(height: 6),
               TextField(
                 controller: _passwordController,
                 obscureText: _obscurePassword,
-                style: GoogleFonts.poppins(color: textColor),
-                decoration: _inputDecoration("Min 6 characters", fieldBgColor, hintColor).copyWith(
+                style: GoogleFonts.poppins(),
+                decoration: _inputDecoration("Min 6 characters").copyWith(
                   suffixIcon: IconButton(
                     icon: Icon(
                       _obscurePassword ? Icons.visibility_off : Icons.visibility,
@@ -243,7 +232,7 @@ class _VerifyScreenState extends State<VerifyScreen> {
                       ? const CircularProgressIndicator(color: Colors.white)
                       : Text(
                           "Login", 
-                          style: GoogleFonts.poppins(fontSize: 17, color: Colors.white, fontWeight: FontWeight.w600),
+                          style: GoogleFonts.poppins(fontSize: 17, color: Colors.white, fontWeight: FontWeight.w600)
                         ),
                 ),
               ),
@@ -284,7 +273,7 @@ class _VerifyScreenState extends State<VerifyScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text("Don't have an account? ", style: GoogleFonts.poppins(fontSize: 14, color: textColor)),
+                  Text("Don't have an account? ", style: GoogleFonts.poppins(fontSize: 14)),
                   GestureDetector(
                     onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen())),
                     child: Text("Register",
@@ -299,12 +288,12 @@ class _VerifyScreenState extends State<VerifyScreen> {
     );
   }
 
-  InputDecoration _inputDecoration(String hint, Color fillColor, Color hintColor) {
+  InputDecoration _inputDecoration(String hint) {
     return InputDecoration(
       hintText: hint,
-      hintStyle: GoogleFonts.poppins(color: hintColor),
+      hintStyle: GoogleFonts.poppins(color: Colors.black45),
       filled: true,
-      fillColor: fillColor,
+      fillColor: Colors.white,
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),

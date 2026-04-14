@@ -3,7 +3,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'user/view_detail.dart';
 
-
 class MechanicListScreen extends StatefulWidget {
   final String serviceType;
   final List<Map<String, dynamic>> mechanics;
@@ -24,7 +23,6 @@ class _MechanicListScreenState extends State<MechanicListScreen> {
   final Color primaryColor = const Color(0xFFFB3300);
 
   Future<void> _refresh() async {
-    // Simulated delay for refresh
     await Future.delayed(const Duration(seconds: 2));
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -35,31 +33,34 @@ class _MechanicListScreenState extends State<MechanicListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: isDark ? Colors.black : Colors.white,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: isDark ? Colors.grey[900] : Colors.white,
         elevation: 1,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios,
+          icon: Icon(Icons.arrow_back_ios_new,
               color: primaryColor, size: 22),
           onPressed: () => Navigator.pop(context),
         ),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Nearby Mechanics",
+            Text("Nearby Mechanics",
                 style: TextStyle(
-                    color: Colors.black,
+                    color: isDark ? Colors.white : Colors.black,
                     fontSize: 18,
                     fontWeight: FontWeight.bold)),
             Text(widget.serviceType,
-                style: TextStyle(fontSize: 13, color: Colors.grey)),
+                style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? Colors.white70 : Colors.grey)),
           ],
         ),
       ),
 
-      // 🔥 SAME CARDS – JUST VERTICAL
       body: RefreshIndicator(
         onRefresh: _refresh,
         color: primaryColor,
@@ -70,6 +71,7 @@ class _MechanicListScreenState extends State<MechanicListScreen> {
             return _NearbyMechanicCardVertical(
               mechanic: widget.mechanics[index],
               primaryColor: primaryColor,
+              isDark: isDark,
             );
           },
         ),
@@ -78,14 +80,16 @@ class _MechanicListScreenState extends State<MechanicListScreen> {
   }
 }
 
-// ================= SAME CARD – VERTICAL VERSION =================
+// ================= CARD =================
 class _NearbyMechanicCardVertical extends StatelessWidget {
   final Map<String, dynamic> mechanic;
   final Color primaryColor;
+  final bool isDark;
 
   const _NearbyMechanicCardVertical({
     required this.mechanic,
     required this.primaryColor,
+    required this.isDark,
   });
 
   @override
@@ -94,7 +98,7 @@ class _NearbyMechanicCardVertical extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? Colors.grey[850] : Colors.white,
         borderRadius: BorderRadius.circular(18),
         boxShadow: const [
           BoxShadow(color: Colors.black12, blurRadius: 6),
@@ -106,38 +110,62 @@ class _NearbyMechanicCardVertical extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 28,
-                backgroundImage: mechanic['mechanicimgurl'].toString().startsWith('http')
+                backgroundImage: mechanic['mechanicimgurl']
+                        .toString()
+                        .startsWith('http')
                     ? NetworkImage(mechanic['mechanicimgurl'])
-                    : AssetImage(mechanic['mechanicimgurl']) as ImageProvider,
+                    : AssetImage(mechanic['mechanicimgurl'])
+                        as ImageProvider,
               ),
               const SizedBox(width: 12),
+
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(mechanic['name'],
-                        style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w600, fontSize: 15)),
+                    Text(
+                      mechanic['name'],
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                        color: isDark ? Colors.white : Colors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
                     Row(
                       children: [
-                        const Icon(Icons.star_outline_rounded,
+                        const Icon(Icons.star,
                             size: 14, color: Colors.amber),
-                        Text("${mechanic['averagerating']}"),
+                        Text(
+                          "${mechanic['averagerating']}",
+                          style: TextStyle(
+                            color:
+                                isDark ? Colors.white : Colors.black,
+                          ),
+                        ),
                         const SizedBox(width: 8),
-                        Icon(Icons.location_on_outlined,
+                        Icon(Icons.location_on,
                             size: 14, color: primaryColor),
-                        Text("${mechanic['distance']} km"),
+                        Text(
+                          "${mechanic['distance']} km",
+                          style: TextStyle(
+                            color:
+                                isDark ? Colors.white : Colors.black,
+                          ),
+                        ),
                       ],
                     ),
                   ],
                 ),
               ),
+
               Container(
                 width: 10,
                 height: 10,
                 decoration: BoxDecoration(
-                  color:
-                      mechanic['isactive'] ? Colors.green : Colors.red,
+                  color: mechanic['isactive']
+                      ? Colors.green
+                      : Colors.red,
                   shape: BoxShape.circle,
                 ),
               )
@@ -146,34 +174,26 @@ class _NearbyMechanicCardVertical extends StatelessWidget {
 
           const SizedBox(height: 14),
 
-          // 🔥 SAME BUTTONS
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               _actionButton(
-                Icons.call_outlined,
+                Icons.call_rounded,
                 "Call",
                 Colors.green,
                 () async {
                   final phone = mechanic['phonenumber'] as String?;
                   if (phone != null && phone.isNotEmpty) {
-                     final Uri launchUri = Uri(scheme: 'tel', path: phone);
-                     if (await canLaunchUrl(launchUri)) {
-                       await launchUrl(launchUri);
-                     } else {
-                       ScaffoldMessenger.of(context).showSnackBar(
-                         SnackBar(content: Text('Could not launch dialer for $phone'))
-                       );
-                     }
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Phone number not available'))
-                    );
+                    final Uri launchUri =
+                        Uri(scheme: 'tel', path: phone);
+                    if (await canLaunchUrl(launchUri)) {
+                      await launchUrl(launchUri);
+                    }
                   }
                 },
               ),
               _actionButton(
-                Icons.visibility_outlined,
+                Icons.remove_red_eye_rounded,
                 "View",
                 primaryColor,
                 () {
@@ -184,20 +204,39 @@ class _NearbyMechanicCardVertical extends StatelessWidget {
                         serviceType: "View Mechanic",
                         mechanic: Mechanic(
                           id: mechanic['id'].toString(),
-                          mechanictype: mechanic['MechanicType'] ?? 'Mechanic',
+                          mechanictype:
+                              mechanic['MechanicType'] ?? 'Mechanic',
                           name: mechanic['name'],
                           avatarUrl: mechanic['mechanicimgurl'],
                           rating:
-                              (mechanic['averagerating'] as num).toDouble(),
+                              (mechanic['averagerating'] as num)
+                                  .toDouble(),
                           distanceKm:
-                              (mechanic['distance'] as num).toDouble(),
+                              (mechanic['distance'] as num)
+                                  .toDouble(),
                           isOnline: mechanic['isactive'],
                           phone: mechanic['phonenumber'],
-                          lat: (mechanic['latitude'] is String) ? double.tryParse(mechanic['latitude']) ?? 0.0 : (mechanic['latitude'] as num?)?.toDouble() ?? 0.0,
-                          lng: (mechanic['longitude'] is String) ? double.tryParse(mechanic['longitude']) ?? 0.0 : (mechanic['longitude'] as num?)?.toDouble() ?? 0.0,
-                          experienceYears: mechanic['experience'] ?? 0,
-                          mechanicLocName: mechanic['mechaniclocname'] ?? "Unknown Location",
+                          lat: (mechanic['latitude'] is String)
+                              ? double.tryParse(
+                                      mechanic['latitude']) ??
+                                  0.0
+                              : (mechanic['latitude'] as num?)
+                                      ?.toDouble() ??
+                                  0.0,
+                          lng: (mechanic['longitude'] is String)
+                              ? double.tryParse(
+                                      mechanic['longitude']) ??
+                                  0.0
+                              : (mechanic['longitude'] as num?)
+                                      ?.toDouble() ??
+                                  0.0,
+                          experienceYears:
+                              mechanic['experience'] ?? 0,
+                          mechanicLocName:
+                              mechanic['mechaniclocname'] ??
+                                  "Unknown Location",
                         ),
+                        isDarkMode: isDark, // <-- pass theme info
                       ),
                     ),
                   );

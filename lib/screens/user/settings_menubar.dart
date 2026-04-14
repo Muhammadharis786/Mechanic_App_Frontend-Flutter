@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:mech_app/main.dart';
 import 'package:mech_app/screens/homescreen.dart';
-import 'package:mech_app/screens/role_selection_screen.dart';
+import 'package:mech_app/screens/authentication/role_selection_screen.dart';
 import 'package:mech_app/screens/authentication/user_session.dart';
 
 class SettingsMenuBar extends StatefulWidget {
@@ -72,7 +72,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
           backgroundColor: isDark ? Colors.black : Colors.white,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios, color: Color(0xFFFB3300), size: 22),
+            icon: Icon(Icons.arrow_back_ios, color: primaryColor),
             onPressed: () {
               Navigator.pushAndRemoveUntil(
                 context,
@@ -131,7 +131,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
               ),
             )
           : null,
-      trailing: Icon(Icons.arrow_forward_ios_rounded, color: primaryColor, size: 16),
+      trailing: Icon(Icons.arrow_forward_ios, color: primaryColor, size: 18),
       onTap: tap,
     );
   }
@@ -214,7 +214,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
             ListTile(
               title: const Text("English"),
               trailing: language == "English"
-                  ? Icon(Icons.check_rounded, color: primaryColor)
+                  ? Icon(Icons.check, color: primaryColor)
                   : null,
               onTap: () {
                 setState(() => language = "English");
@@ -224,7 +224,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
             ListTile(
               title: const Text("Urdu (Pakistan)"),
               trailing: language == "Urdu (Pakistan)"
-                  ? Icon(Icons.check_rounded, color: primaryColor)
+                  ? Icon(Icons.check, color: primaryColor)
                   : null,
               onTap: () {
                 setState(() => language = "Urdu (Pakistan)");
@@ -248,7 +248,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
             ListTile(
               title: const Text("Light Theme"),
               trailing: themeNotifier.value == ThemeMode.light
-                  ? Icon(Icons.check_rounded, color: primaryColor)
+                  ? Icon(Icons.check, color: primaryColor)
                   : null,
               onTap: () {
                 themeNotifier.setLight();

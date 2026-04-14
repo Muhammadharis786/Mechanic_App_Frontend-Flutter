@@ -2,17 +2,18 @@
 // ignore_for_file: use_build_context_synchronously
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:mech_app/screens/verify_screen.dart';
 import 'package:pinput/pinput.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-
-import 'Forgot_New_Password.dart';
+import 'role_selection_screen.dart';
 
 class OtpScreen extends StatefulWidget {
   final String email;
-
- const OtpScreen({super.key, required this.email} );
+  final String password;
+ const OtpScreen({super.key, required this.email , required this.password});
 
   @override
   State<OtpScreen> createState() => _OtpScreenState();
@@ -35,7 +36,7 @@ Future<void> _verifyOtp() async {
       SnackBar(content: Text("Verifying OTP...")),
     );
 
-    final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/user/forget/verify");
+    final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/verify/user/token");
 
     try {
       final response = await http.post(
@@ -47,31 +48,30 @@ Future<void> _verifyOtp() async {
         }),
       );
 
-      final body = response.body;  // <-- backend ka exact message
-
+      final body = response.body;  
       if (response.statusCode == 200) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(body),   // <-- SUCCESS message from backend
+            content: Text(body),   
             backgroundColor: Colors.green,
           ),
         );
 
         Navigator.pushReplacement(
-          // ignore: duplicate_ignore
-          // ignore: use_build_context_synchronously
           context,
-          MaterialPageRoute(builder: (context) =>  NewPassword(email:email)),
+          MaterialPageRoute(builder: (context) => const VerifyScreen()),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(body),   // <-- ERROR message from backend
+            content: Text(body),   
             backgroundColor: Colors.red,
           ),
         );
       }
     } catch (e) {
+      // ignore: duplicate_ignore
+      // ignore: use_build_context_synchronously
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("Server Error! Please try again."),
@@ -82,17 +82,16 @@ Future<void> _verifyOtp() async {
   }
 }
 
-// ye jab click hoga jab user wo did not recive email per click karega
 
 Future<void> _resendOtp() async {
   final email = widget.email;
-
+  final password = widget.password;
 
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(content: Text("Resending OTP...")),
   );
 
-  final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/user/forgot");
+  final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/user/register");
 
   try {
     final response = await http.post(
@@ -100,7 +99,7 @@ Future<void> _resendOtp() async {
       headers: {"Content-Type": "application/json"},
       body: jsonEncode({
         "phonenumber": email,
-      
+        "password": password,
       }),
     );
 
@@ -186,7 +185,7 @@ Future<void> _resendOtp() async {
             ),
             const SizedBox(height: 10),
             Text(
-              'A 6-digit code has been sent to your registered WhatsApp number.',
+              'A 6-digit code has been sent to your registered number/email.',
               style: GoogleFonts.poppins(
                 fontSize: 15,
                 color: Colors.grey.shade600,
@@ -194,7 +193,7 @@ Future<void> _resendOtp() async {
             ),
             const SizedBox(height: 50),
 
-            
+            // ✅ Pinput
             Form(
               key: _formKey,
               child: Pinput(
@@ -208,7 +207,7 @@ Future<void> _resendOtp() async {
                 ),
                 pinAnimationType: PinAnimationType.scale,
                 keyboardType: TextInputType.number,
-                
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 validator: (s) {
                   if (s == null || s.length < 6) {
                     return 'Enter the complete 6-digit code';

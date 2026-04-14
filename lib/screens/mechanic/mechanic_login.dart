@@ -4,8 +4,6 @@ import 'package:mech_app/screens/mechanic/mechanic_register_phone.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'mechanic_dashboard.dart';
-import 'mechanic_location_screen.dart';
-import 'mechanic_under_review_screen.dart';
 import '../authentication/user_session.dart';
 
 class MechanicLoginScreen extends StatefulWidget {
@@ -58,43 +56,8 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
 
         // Save Mechanic Session
         await UserSession().saveSession(phone, password, 'MECHANIC');
-        
-        // Extract Mechanic ID from the login response and save to Session
-        try {
-          final data = jsonDecode(response.body);
-          int? mechanicId;
-          
-          if (data is Map) {
-            if (data.containsKey('id') && data['id'] != null) {
-              // Convert to int in case the backend returns it as string unexpectedly
-              mechanicId = int.tryParse(data['id'].toString());
-            } else if (data.containsKey('userId') && data['userId'] != null) {
-              mechanicId = int.tryParse(data['userId'].toString());
-            }
-          }
-          
-          if (mechanicId != null) {
-             await UserSession().setUserId(mechanicId);
-             debugPrint("✅ Mechanic ID ($mechanicId) saved to UserSession during login.");
-          } else {
-             debugPrint("⚠️ Mechanic ID not found in login response.");
-          }
-        } catch (e) {
-          debugPrint("❌ Error parsing login response for ID: $e");
-        }
 
         debugPrint("Login Success: ${response.body}");
-
-        // --- ADMIN CHECK (Success case with message) ---
-        if (response.body.toLowerCase().contains('admin')) {
-          if (mounted) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => const MechanicUnderReviewScreen()),
-            );
-          }
-          return;
-        }
 
         if (mounted) {
            ScaffoldMessenger.of(context).showSnackBar(
@@ -103,7 +66,7 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
 
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (_) => const MechanicLocationScreen()),
+            MaterialPageRoute(builder: (_) => const MechanicDashboardScreen()),
           );
         }
       } else {
@@ -126,18 +89,6 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
         }
         
         debugPrint("Login Failed: ${response.body}");
-        
-        // --- ADMIN CHECK ---
-        if (response.body.toLowerCase().contains('admin')) {
-          if (mounted) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => const MechanicUnderReviewScreen()),
-            );
-          }
-          return;
-        }
-
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -170,11 +121,8 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
     return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
+      backgroundColor: Colors.white,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -188,7 +136,6 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
                 style: GoogleFonts.poppins(
                   fontSize: 28,
                   fontWeight: FontWeight.bold,
-                  color: theme.textTheme.titleLarge?.color,
                 ),
               ),
 
@@ -196,7 +143,7 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
 
               Text(
                 "Login with your phone number and password",
-                style: GoogleFonts.poppins(fontSize: 14, color: isDark ? Colors.white70 : Colors.grey),
+                style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey),
               ),
 
               const SizedBox(height: 30),
@@ -204,20 +151,18 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
               /// Phone Number
               Text(
                 "Phone Number",
-                style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: theme.textTheme.bodyLarge?.color),
+                style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
 
               TextField(
                 controller: phoneController,
                 keyboardType: TextInputType.phone,
-                style: TextStyle(color: theme.textTheme.bodyLarge?.color),
                 onChanged: (_) => _checkFields(),
                 decoration: InputDecoration(
                   hintText: "3XXXXXXXXX",
-                  hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.grey),
                   filled: true,
-                  fillColor: isDark ? Colors.grey[900] : const Color(0xFFF3F3F3),
+                  fillColor: const Color(0xFFF3F3F3),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 14,
@@ -228,13 +173,12 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
                       "92",
                       style: GoogleFonts.poppins(
                         fontWeight: FontWeight.w600,
-                        color: theme.textTheme.bodyLarge?.color,
                       ),
                     ),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: isDark ? Colors.grey[800]! : primaryColor),
+                    borderSide: const BorderSide(color: primaryColor),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
@@ -251,20 +195,18 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
               /// Password
               Text(
                 "Password",
-                style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: theme.textTheme.bodyLarge?.color),
+                style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
 
               TextField(
                 controller: passwordController,
                 obscureText: _obscurePassword,
-                style: TextStyle(color: theme.textTheme.bodyLarge?.color),
                 onChanged: (_) => _checkFields(),
                 decoration: InputDecoration(
                   hintText: "Min 8 characters",
-                  hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.grey),
                   filled: true,
-                  fillColor: isDark ? Colors.grey[900] : const Color(0xFFF3F3F3),
+                  fillColor: const Color(0xFFF3F3F3),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 14,
@@ -272,8 +214,8 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
                   suffixIcon: IconButton(
                     icon: Icon(
                       _obscurePassword
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined,
+                          ? Icons.visibility_off
+                          : Icons.visibility,
                       color: primaryColor,
                     ),
                     onPressed: () {
@@ -284,7 +226,7 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: isDark ? Colors.grey[800]! : primaryColor),
+                    borderSide: const BorderSide(color: primaryColor),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
@@ -353,7 +295,7 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
                   children: [
                     Text(
                       "Don't have an account? ",
-                      style: GoogleFonts.poppins(color: theme.textTheme.bodyMedium?.color),
+                      style: GoogleFonts.poppins(color: Colors.black),
                     ),
                     GestureDetector(
                       onTap: () {

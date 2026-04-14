@@ -31,7 +31,7 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
         backgroundColor: isDark ? Colors.black : Colors.white,
         elevation: 1,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.black, size: 20),
+          icon: Icon(Icons.arrow_back_ios_new, color: primaryColor),
           onPressed: () {
             Navigator.pushAndRemoveUntil(
               context,
@@ -126,7 +126,7 @@ class RequestHistoryCard extends StatelessWidget {
               CircleAvatar(
                 radius: 26,
                 backgroundColor: primaryColor.withOpacity(0.15),
-                child: Icon(data.icon, color: primaryColor, size: 24),
+                child: Icon(data.icon, color: primaryColor),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -154,7 +154,7 @@ class RequestHistoryCard extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.star_outline_rounded,
+                      const Icon(Icons.star,
                           size: 16, color: Colors.amber),
                       Text(
                         data.rating.toString(),
@@ -179,9 +179,9 @@ class RequestHistoryCard extends StatelessWidget {
           const SizedBox(height: 12),
           Divider(color: isDark ? Colors.grey : Colors.grey.shade300),
 
-          _infoRow(Icons.location_on_outlined, data.location),
-          _infoRow(Icons.build_outlined, data.problem),
-          _infoRow(Icons.schedule_outlined, data.type),
+          _infoRow(Icons.location_on, data.location),
+          _infoRow(Icons.build, data.problem),
+          _infoRow(Icons.schedule, data.type),
 
           const SizedBox(height: 8),
 
@@ -291,7 +291,7 @@ final List<RequestModel> dummyRequests = [
     amount: 1800,
     rating: 4.8,
     status: "Completed",
-    icon: Icons.motorcycle_outlined,
+    icon: Icons.motorcycle,
   ),
   RequestModel(
     service: "Car Mechanic (Home Service)",
@@ -303,7 +303,7 @@ final List<RequestModel> dummyRequests = [
     amount: 3500,
     rating: 4.6,
     status: "Completed",
-    icon: Icons.directions_car_outlined,
+    icon: Icons.directions_car,
   ),
   RequestModel(
     service: "Puncture Repair",
@@ -315,6 +315,6 @@ final List<RequestModel> dummyRequests = [
     amount: 500,
     rating: 4.4,
     status: "Completed",
-    icon: Icons.build_circle_outlined,
+    icon: Icons.build_circle,
   ),
 ];

@@ -61,7 +61,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        // Handle both flat and nested response
         final user = data['user'] ?? data;
         if (user != null) {
           setState(() {
@@ -83,7 +82,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     }
   }
 
-  // ===== PICK IMAGE (just preview, no upload yet) =====
+  // ===== PICK IMAGE =====
   Future<void> _pickImage() async {
     final XFile? img = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
     if (img == null) return;
@@ -94,11 +93,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     });
   }
 
-  // ===== SAVE ALL — one multipart request (like mechanic registration) =====
+  // ===== SAVE PROFILE =====
   Future<void> _saveProfile() async {
     setState(() => _isSaving = true);
     
-    // Validation: Must have at least some image (picked or existing)
     if (_pickedImage == null && _imageUrl.isEmpty) {
       setState(() => _isSaving = false);
       _showSnack('Please select a profile image', isError: true);
@@ -113,7 +111,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       var request = http.MultipartRequest('PUT', uri);
       request.headers.addAll(UserSession().getAuthHeader());
 
-      // 1. userData JSON part
       final Map<String, dynamic> userData = {
         'username': _nameController.text.trim(),
         'email': _emailController.text.trim(),
@@ -121,10 +118,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       if (_passwordController.text.isNotEmpty) {
         userData['password'] = _passwordController.text;
       } else {
-        // Send existing password from session if left blank
         userData['password'] = UserSession().password;
       }
-      // Send existing image URL if no new image picked
       if (_pickedImage == null && _imageUrl.isNotEmpty) {
         userData['userimgurl'] = _imageUrl;
       }
@@ -135,7 +130,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         contentType: MediaType('application', 'json'),
       ));
 
-      // 2. userimage file part - Only added if a NEW image is picked
       if (_pickedImage != null) {
         if (kIsWeb) {
           final bytes = await _pickedImage!.readAsBytes();
@@ -154,11 +148,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         }
       }
 
-      // 3. Send
       final streamed = await request.send();
       final response = await http.Response.fromStream(streamed);
 
-      // Parse backend message
       String message;
       try {
         final body = jsonDecode(response.body);
@@ -214,23 +206,32 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark ? Colors.black : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.grey[400] : Colors.grey.shade700;
+    // ignore: unused_local_variable
+    final fieldBgColor = isDark ? Colors.grey[900] : Colors.white;
+    // ignore: unused_local_variable
+    final disabledBgColor = isDark ? Colors.grey[800] : Colors.grey.shade100;
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: bgColor,
       appBar: AppBar(
         title: Text(
           'My Profile',
-          style: GoogleFonts.poppins(color: Colors.black, fontWeight: FontWeight.w600),
+          style: GoogleFonts.poppins(color: textColor, fontWeight: FontWeight.w600),
         ),
-        backgroundColor: Colors.white,
+        backgroundColor: bgColor,
         elevation: 0.5,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.black54, size: 20),
+          icon: Icon(Icons.arrow_back_ios_new, color: Colors.deepOrange, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
           if (!_isLoading)
             IconButton(
-              icon: Icon(_isEditing ? Icons.close_rounded : Icons.edit_outlined, color: primaryColor),
+              icon: Icon(_isEditing ? Icons.close : Icons.edit, color: primaryColor),
               onPressed: _toggleEdit,
             ),
         ],
@@ -245,13 +246,12 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 padding: const EdgeInsets.all(20),
                 child: Column(
                   children: [
-                    // ===== PROFILE IMAGE =====
                     Center(
                       child: Stack(
                         children: [
                           CircleAvatar(
                             radius: 52,
-                            backgroundColor: Colors.grey.shade200,
+                            backgroundColor: Colors.grey.shade700,
                             backgroundImage: _pickedImageBytes != null
                                 ? MemoryImage(_pickedImageBytes!)
                                 : (_imageUrl.startsWith('http')
@@ -272,14 +272,13 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                     shape: BoxShape.circle,
                                     border: Border.all(color: Colors.white, width: 2),
                                   ),
-                                  child: const Icon(Icons.camera_alt_outlined, color: Colors.white, size: 16),
+                                  child: const Icon(Icons.camera_alt, color: Colors.white, size: 16),
                                 ),
                               ),
                             ),
                         ],
                       ),
                     ),
-
                     if (_isEditing && _pickedImageBytes != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 8),
@@ -288,31 +287,25 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                           style: GoogleFonts.poppins(fontSize: 11, color: Colors.green),
                         ),
                       ),
-
                     const SizedBox(height: 30),
-
-                    // ===== FIELDS =====
-                    _buildField('Full Name', _nameController, Icons.person_outline_rounded),
+                    _buildField('Full Name', _nameController, Icons.person_outline, isDark: isDark),
                     const SizedBox(height: 20),
-                    _buildField('Phone Number', _phoneController, Icons.phone_outlined, isPhone: true, alwaysDisabled: true),
+                    _buildField('Phone Number', _phoneController, Icons.phone_outlined, isPhone: true, alwaysDisabled: true, isDark: isDark),
                     const SizedBox(height: 20),
-                    _buildField('Email (Optional)', _emailController, Icons.email_outlined, isEmail: true),
+                    _buildField('Email (Optional)', _emailController, Icons.email_outlined, isEmail: true, isDark: isDark),
                     const SizedBox(height: 20),
-
                     if (_isEditing) ...[
-                      _buildPasswordField(),
+                      _buildPasswordField(isDark),
                       const SizedBox(height: 6),
                       Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
                           'Leave blank to keep current password',
-                          style: GoogleFonts.poppins(fontSize: 11, color: Colors.grey),
+                          style: GoogleFonts.poppins(fontSize: 11, color: subTextColor),
                         ),
                       ),
                     ],
-
                     const SizedBox(height: 40),
-
                     if (_isEditing)
                       SizedBox(
                         width: double.infinity,
@@ -344,7 +337,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                 ),
                         ),
                       ),
-
                     const SizedBox(height: 20),
                   ],
                 ),
@@ -354,14 +346,19 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   }
 
   Widget _buildField(String label, TextEditingController controller, IconData icon,
-      {bool isPhone = false, bool isEmail = false, bool alwaysDisabled = false}) {
+      {bool isPhone = false, bool isEmail = false, bool alwaysDisabled = false, required bool isDark}) {
+    final textColor = alwaysDisabled ? (isDark ? Colors.grey[400] : Colors.black54) : (isDark ? Colors.white : Colors.black87);
+    final prefixColor = (_isEditing && !alwaysDisabled) ? primaryColor : (isDark ? Colors.grey[400] : Colors.grey);
+    final fillColor = alwaysDisabled ? (isDark ? Colors.grey[800] : Colors.grey.shade100) : (isDark ? Colors.grey[900] : Colors.white);
+    final borderColor = isDark ? Colors.grey[700]! : Colors.grey.shade300;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
           style: GoogleFonts.poppins(
-              fontSize: 14, fontWeight: FontWeight.w500, color: Colors.grey.shade700),
+              fontSize: 14, fontWeight: FontWeight.w500, color: isDark ? Colors.grey[400] : Colors.grey.shade700),
         ),
         const SizedBox(height: 8),
         TextFormField(
@@ -372,52 +369,37 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               : isEmail
                   ? TextInputType.emailAddress
                   : TextInputType.text,
-          style: GoogleFonts.poppins(
-            fontSize: 15, 
-            fontWeight: FontWeight.w500, 
-            color: alwaysDisabled ? Colors.black54 : Colors.black87
-          ),
+          style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w500, color: textColor),
           decoration: InputDecoration(
-            prefixIcon: Icon(icon, color: (!alwaysDisabled && _isEditing) ? primaryColor : Colors.grey),
+            prefixIcon: Icon(icon, color: prefixColor),
             filled: true,
-            fillColor: alwaysDisabled ? Colors.grey.shade100 : Colors.white,
+            fillColor: fillColor,
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.grey.shade300),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.grey.shade300),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: primaryColor, width: 1.5),
-            ),
-            disabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.grey.shade200),
-            ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: primaryColor, width: 1.5)),
+            disabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor)),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildPasswordField() {
+  Widget _buildPasswordField(bool isDark) {
+    final textColor = isDark ? Colors.white : Colors.black87;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           'New Password',
           style: GoogleFonts.poppins(
-              fontSize: 14, fontWeight: FontWeight.w500, color: Colors.grey.shade700),
+              fontSize: 14, fontWeight: FontWeight.w500, color: isDark ? Colors.grey[400] : Colors.grey.shade700),
         ),
         const SizedBox(height: 8),
         TextFormField(
           controller: _passwordController,
           obscureText: _obscurePassword,
-          style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w500, color: Colors.black87),
+          style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w500, color: textColor),
           decoration: InputDecoration(
             prefixIcon: Icon(Icons.lock_outline, color: primaryColor),
             suffixIcon: IconButton(
@@ -428,17 +410,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
             ),
             filled: true,
-            fillColor: Colors.white,
+            fillColor: isDark ? Colors.grey[900] : Colors.white,
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.grey.shade300),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: primaryColor, width: 1.5),
-            ),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey.shade300)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: primaryColor, width: 1.5)),
           ),
         ),
       ],

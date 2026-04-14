@@ -21,7 +21,7 @@ import './authentication/service_chat_screen.dart';
 import './authentication/user_session.dart';
 import 'auto_assign.dart';
 import 'mechanic_list_screen.dart';
-import 'role_selection_screen.dart';
+import 'authentication/role_selection_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key} );
@@ -135,7 +135,7 @@ class _HomeScreenState extends State<HomeScreen> {
         elevation: 1,
         leading: Builder(
           builder: (context) => IconButton(
-            icon: Icon(Icons.menu_rounded, color: primaryColor),
+            icon: Icon(Icons.menu, color: primaryColor),
             onPressed: () => Scaffold.of(context).openDrawer(),
           ),
         ),
@@ -386,8 +386,12 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         children: [
           Container(
-            width: double.infinity,
-            padding: const EdgeInsets.only(top: 60, bottom: 30, left: 24, right: 24),
+            padding: EdgeInsets.only(
+              top: MediaQuery.of(context).padding.top + 20,
+              bottom: 24,
+              left: 20,
+              right: 20,
+            ),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [primaryColor, Colors.deepOrange],
@@ -459,18 +463,18 @@ class _HomeScreenState extends State<HomeScreen> {
             child: ListView(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
               children: [
-                _drawerItem(Icons.grid_view_outlined, "DashBoard", context, isDark: isDark, isSelected: true, onTap: () {
+                _drawerItem(Icons.dashboard_customize_rounded, "DashBoard", context, isDark: isDark, isSelected: true, onTap: () {
                   Navigator.pop(context);
                 }),
                 _drawerItem(Icons.person_outline_rounded, "My Profile", context, isDark: isDark, onTap: () {
                   Navigator.pop(context);
                   Navigator.push(context, MaterialPageRoute(builder: (_) => const UserProfileScreen()));
                 }),
-                _drawerItem(Icons.history_outlined, "Request History", context, isDark: isDark, onTap: () {
+                _drawerItem(Icons.history_rounded, "Request History", context, isDark: isDark, onTap: () {
                   Navigator.pop(context);
                   Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const RequestHistoryScreen()), (route) => false);
                 }),
-                _drawerItem(Icons.calendar_today_outlined, "Book Appointments", context, isDark: isDark, onTap: () {
+                _drawerItem(Icons.calendar_today_rounded, "Book Appointments", context, isDark: isDark, onTap: () {
                   Navigator.pop(context);
                   Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const BookAppointmentScreen()), (route) => false);
                 }),
@@ -484,7 +488,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   Navigator.pop(context);
                   Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const SettingsMenuBar()), (route) => false);
                 }),
-                _drawerItem(Icons.logout_outlined, "Logout", context, isDark: isDark, isLogout: true, onTap: () async {
+                _drawerItem(Icons.logout_rounded, "Logout", context, isDark: isDark, isLogout: true, onTap: () async {
                   Navigator.pop(context);
                   showDialog(
                     context: context,
@@ -579,7 +583,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.swap_horiz_outlined, color: primaryColor, size: 22),
+                    Icon(Icons.swap_horiz_rounded, color: primaryColor, size: 22),
                     const SizedBox(width: 10),
                     Text(
                       'Return to Mechanic',
@@ -612,12 +616,23 @@ class _HomeScreenState extends State<HomeScreen> {
         borderRadius: BorderRadius.circular(12),
       ),
       child: ListTile(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        leading: Icon(
+          icon, 
+          color: isSelected ? selectedTextColor : itemColor, 
+          size: 24
+        ),
+        title: Text(
+          title,
+          style: GoogleFonts.poppins(
+            color: isSelected ? selectedTextColor : itemColor,
+            fontSize: 15,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+          ),
+        ),
         onTap: onTap,
-        leading: Icon(icon, color: isSelected ? selectedTextColor : itemColor),
-        title: Text(title, style: GoogleFonts.poppins(
-          color: isSelected ? selectedTextColor : itemColor,
-          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal
-        )),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+        minLeadingWidth: 20,
       ),
     );
   }
@@ -733,7 +748,7 @@ class _NearbyMechanicCompactCard extends StatelessWidget {
                           errorBuilder: (context, error, stackTrace) {
                             // Error ko console mein print karein
                             debugPrint('Image Load Error for ${mechanic['name']}: $error');
-                            return Icon(Icons.person_outline_rounded, size: 24, color: Colors.grey.shade400);
+                            return Icon(Icons.person, size: 24, color: Colors.grey.shade400);
                           },
                         )
                       : Image.asset( // Fallback agar URL nahi hai
@@ -763,13 +778,13 @@ class _NearbyMechanicCompactCard extends StatelessWidget {
                     const SizedBox(height: 4),         
                     Row(
                       children: [
-                        const Icon(Icons.star_outline_rounded, size: 14, color: Colors.amber),
+                        const Icon(Icons.star, size: 14, color: Colors.amber),
                         Text("${mechanic['averagerating']}",
                             style: GoogleFonts.poppins(
                                 fontSize: 12,
                                 color: isDark ? Colors.white : Colors.black)),
                         const SizedBox(width: 8),
-                        Icon(Icons.location_on_outlined, size: 14, color: primaryColor),
+                        Icon(Icons.location_on, size: 14, color: primaryColor),
                         Text("${mechanic['distance']} km",
                             style: GoogleFonts.poppins(
                                 fontSize: 12,
@@ -803,7 +818,7 @@ class _NearbyMechanicCompactCard extends StatelessWidget {
                 }
               }),
               _actionButton(Icons.remove_red_eye_rounded, "View", primaryColor, () {
-                 Navigator.push(
+                Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (_) => MechanicDetailScreen(
@@ -820,7 +835,7 @@ class _NearbyMechanicCompactCard extends StatelessWidget {
                         lng: mechanic['longitude'] ?? 0.0,
                         experienceYears: mechanic['experience'] ?? 0,
                         mechanicLocName: mechanic['mechaniclocname'] ?? "Unknown Location",
-                      ),
+                      ), isDarkMode: isDark,
                     ),
                   ),
                 );
