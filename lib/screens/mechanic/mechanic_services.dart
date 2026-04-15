@@ -1,25 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-class MechanicEarningsScreen extends StatefulWidget {
-  const MechanicEarningsScreen({super.key});
+class MechanicServicesScreen extends StatefulWidget {
+  const MechanicServicesScreen({super.key});
 
   @override
-  State<MechanicEarningsScreen> createState() => _MechanicEarningsScreenState();
+  State<MechanicServicesScreen> createState() => _MechanicServicesScreenState();
 }
 
-class _MechanicEarningsScreenState extends State<MechanicEarningsScreen> {
+class _MechanicServicesScreenState extends State<MechanicServicesScreen> {
   final Color primaryColor = const Color(0xFFFB3300);
 
-  // 🔹 Dummy Data for Earnings
-  final double totalEarnings = 85000;
-  final double todaysEarnings = 4500;
+  // 🔹 Dummy Data for Services Status
+  final int totalServicesCompleted = 45;
+  final int pendingServices = 12;
+  final int rejectedServices = 8;
 
   Future<void> _refresh() async {
     await Future.delayed(const Duration(seconds: 1));
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Earnings updated")),
+        const SnackBar(content: Text("Services updated")),
       );
     }
   }
@@ -32,7 +33,7 @@ class _MechanicEarningsScreenState extends State<MechanicEarningsScreen> {
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(
-          "My Earnings",
+          "My Services",
           style: GoogleFonts.poppins(
               color: isDark ? Colors.white : Colors.black,
               fontWeight: FontWeight.bold,
@@ -51,19 +52,27 @@ class _MechanicEarningsScreenState extends State<MechanicEarningsScreen> {
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
           children: [
-            _earningCard(
-              title: "Total Earnings",
-              amount: "PKR 85,000",
-              icon: Icons.account_balance_wallet_rounded,
+            _serviceCard(
+              title: "Total Completed Services",
+              count: "$totalServicesCompleted",
+              icon: Icons.check_circle_outline_rounded,
               color: Colors.green,
               isDark: isDark,
             ),
             const SizedBox(height: 20),
-            _earningCard(
-              title: "Today's Earnings",
-              amount: "PKR 4,500",
-              icon: Icons.trending_up_rounded,
-              color: const Color(0xFF1E88E5), // Premium Blue
+            _serviceCard(
+              title: "Pending Services",
+              count: "$pendingServices",
+              icon: Icons.hourglass_top_rounded,
+              color: Colors.orange,
+              isDark: isDark,
+            ),
+            const SizedBox(height: 20),
+            _serviceCard(
+              title: "Rejected Services",
+              count: "$rejectedServices",
+              icon: Icons.cancel_outlined,
+              color: Colors.red,
               isDark: isDark,
             ),
           ],
@@ -72,10 +81,10 @@ class _MechanicEarningsScreenState extends State<MechanicEarningsScreen> {
     );
   }
 
-  // 🔹 Premium Earning Card Design
-  Widget _earningCard({
+  // 🔹 Premium Service Card Design
+  Widget _serviceCard({
     required String title,
-    required String amount,
+    required String count,
     required IconData icon,
     required Color color,
     required bool isDark,
@@ -121,9 +130,9 @@ class _MechanicEarningsScreenState extends State<MechanicEarningsScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  amount,
+                  count,
                   style: GoogleFonts.poppins(
-                    fontSize: 17,
+                    fontSize: 24, // Optimized font size for counts 
                     fontWeight: FontWeight.bold,
                     color: isDark ? Colors.white : Colors.black87,
                   ),

@@ -10,342 +10,238 @@ class MechanicBookingRequestScreen extends StatefulWidget {
 }
 
 class _MechanicBookingRequestScreenState
-    extends State<MechanicBookingRequestScreen>
-    with SingleTickerProviderStateMixin {
+    extends State<MechanicBookingRequestScreen> {
   final Color primaryColor = const Color(0xFFFB3300);
 
-  late TabController _tabController;
-
-  List<Map<String, dynamic>> bookingRequests = [];
-  List<Map<String, dynamic>> bookingHistory = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-    _loadInitialData();
-  }
-
-  void _loadInitialData() {
-    // Simulate fetching data from server
-    bookingRequests = [
-      {
-        'userName': 'Ali Khan',
-        'mobile': '0301-1234567',
-        'address': 'Johar Town, Lahore',
-        'service': 'Bike Repair',
-        'problem': 'Bike start nahi ho rahi',
-        'date': '12 Jan 2026',
-        'time': '4:30 PM',
-        'amount': 1200,
-        'status': 'Pending',
-      },
-      {
-        'userName': 'Sarah Ahmed',
-        'mobile': '0305-9876543',
-        'address': 'Gulshan-e-Iqbal, Karachi',
-        'service': 'Car Mechanic',
-        'problem': 'Engine overheating',
-        'date': '13 Jan 2026',
-        'time': '11:00 AM',
-        'amount': 2500,
-        'status': 'Pending',
-      },
-    ];
-  }
-
-  Future<void> _refreshRequests() async {
-    // Simulate API refresh delay
-    await Future.delayed(const Duration(seconds: 1));
-
-    setState(() {
-      // Reset the list to initial data for demo
-      _loadInitialData();
-    });
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
+  // 🔹 Dummy booking records — replace with API data later
+  final List<Map<String, dynamic>> bookingRecords = [
+    {
+      'userName': 'Ali Khan',
+      'location': 'Johar Town, Lahore',
+      'requestTime': '12 Jan 2026 • 4:30 PM',
+      'amount': 'Rs. 1,200',
+      'status': 'Completed',
+    },
+    {
+      'userName': 'Sarah Ahmed',
+      'location': 'Gulshan-e-Iqbal, Karachi',
+      'requestTime': '13 Jan 2026 • 11:00 AM',
+      'amount': 'Rs. 2,500',
+      'status': 'Rejected',
+    },
+    {
+      'userName': 'Usman Tariq',
+      'location': 'DHA Phase 5, Islamabad',
+      'requestTime': '14 Jan 2026 • 2:00 PM',
+      'amount': 'Rs. 3,000',
+      'status': 'Completed',
+    },
+  ];
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        elevation: 1,
-        iconTheme: IconThemeData(color: primaryColor),
         title: Text(
-          'Bookings',
+          'Booking Requests',
           style: GoogleFonts.poppins(
+            fontWeight: FontWeight.bold,
             fontSize: 20,
-            fontWeight: FontWeight.w600,
+            color: isDark ? Colors.white : Colors.black,
           ),
         ),
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: primaryColor,
-          unselectedLabelColor: theme.unselectedWidgetColor,
-          indicatorColor: primaryColor,
-          tabs: const [
-            Tab(text: 'Requests'),
-            Tab(text: 'History'),
-          ],
-        ),
+        backgroundColor:
+            Theme.of(context).appBarTheme.backgroundColor ??
+                Theme.of(context).scaffoldBackgroundColor,
+        elevation: 0,
+        centerTitle: true,
+        iconTheme: IconThemeData(color: primaryColor),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          RefreshIndicator(
-            onRefresh: _refreshRequests,
-            child: _requestsTab(theme),
-          ),
-          _historyTab(theme),
-        ],
-      ),
+      body: bookingRecords.isEmpty
+          ? Center(
+              child: Text(
+                'No booking records found.',
+                style: GoogleFonts.poppins(color: Colors.grey, fontSize: 16),
+              ),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              itemCount: bookingRecords.length,
+              itemBuilder: (context, index) {
+                return _buildRecordCard(bookingRecords[index], isDark);
+              },
+            ),
     );
   }
 
-  Widget _requestsTab(ThemeData theme) {
-    if (bookingRequests.isEmpty) {
-      return ListView(
-        children: [_emptyView('No booking requests', theme)],
-      );
+  Widget _buildRecordCard(Map<String, dynamic> record, bool isDark) {
+    final String status = record['status'];
+
+    Color statusColor;
+    IconData statusIcon;
+
+    if (status == 'Completed') {
+      statusColor = Colors.green;
+      statusIcon = Icons.check_circle_rounded;
+    } else {
+      // Rejected
+      statusColor = Colors.red;
+      statusIcon = Icons.cancel_rounded;
     }
-
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: bookingRequests.length,
-      itemBuilder: (context, index) {
-        final r = bookingRequests[index];
-        return _requestCard(r, index, theme);
-      },
-    );
-  }
-
-  Widget _historyTab(ThemeData theme) {
-    if (bookingHistory.isEmpty) {
-      return ListView(
-        children: [_emptyView('No booking history', theme)],
-      );
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: bookingHistory.length,
-      itemBuilder: (context, index) {
-        final h = bookingHistory[index];
-
-        return _cardContainer(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _titleRow(h['userName'], h['status'], theme),
-              const SizedBox(height: 8),
-              _infoRow(Icons.location_on_outlined, h['address'], theme),
-              const Divider(),
-              _infoRow(Icons.build_outlined, h['service'], theme),
-              _infoRow(Icons.description_outlined, h['service'], theme),
-              _infoRow(Icons.calendar_today_outlined,
-                  '${h['date']} • ${h['time']}', theme),
-              _infoRow(Icons.attach_money_outlined, 'Rs. ${h['amount']}', theme),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _cardContainer({required Widget child}) {
-    final theme = Theme.of(context);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(18),
+        color: isDark ? Colors.grey[850] : Colors.white,
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: theme.shadowColor.withOpacity(0.05),
-            blurRadius: 10,
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05),
+            blurRadius: 12,
+            spreadRadius: 1,
+            offset: const Offset(0, 4),
           ),
         ],
+        border: isDark ? Border.all(color: Colors.grey.shade800) : null,
       ),
-      child: child,
-    );
-  }
-
-  Widget _titleRow(String title, String status, ThemeData theme) {
-    Color color;
-
-    switch (status) {
-      case 'Completed':
-        color = Colors.green;
-        break;
-      case 'Rejected':
-        color = primaryColor;
-        break;
-      default:
-        color = primaryColor;
-    }
-
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Expanded(
-          child: Text(
-            title,
-            style: GoogleFonts.poppins(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: theme.textTheme.bodyMedium?.color,
-            ),
-          ),
-        ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.12),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Text(
-            status,
-            style: GoogleFonts.poppins(
-              color: color,
-              fontWeight: FontWeight.w600,
-              fontSize: 12,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _infoRow(IconData icon, String text, ThemeData theme) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: primaryColor),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              text,
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                color: theme.textTheme.bodyMedium?.color,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _requestCard(Map<String, dynamic> r, int index, ThemeData theme) {
-    return _cardContainer(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _titleRow(r['userName'], r['status'], theme),
-          const SizedBox(height: 10),
-          _infoRow(Icons.phone_outlined, r['mobile'], theme),
-          _infoRow(Icons.location_on, r['address'], theme),
-          const Divider(),
-          _infoRow(Icons.build_circle_outlined, r['service'], theme),
-          Container(
-            margin: const EdgeInsets.symmetric(vertical: 6),
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: primaryColor.withOpacity(0.06),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.warning_amber_rounded, color: primaryColor, size: 18),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    r['problem'],
-                    style: GoogleFonts.poppins(fontSize: 13),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Divider(),
-          _infoRow(Icons.calendar_today, '${r['date']} • ${r['time']}', theme),
-          _infoRow(Icons.attach_money, 'Rs. ' + r['amount'].toString(), theme),
-          const SizedBox(height: 14),
+          // 🔹 Top Row: Avatar + Name + Status Badge
           Row(
             children: [
-              Expanded(
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: primaryColor.withValues(alpha: 0.12),
+                child: Text(
+                  (record['userName'] as String?)?.isNotEmpty == true
+                      ? record['userName'][0]
+                      : '?',
+                  style: GoogleFonts.poppins(
+                    color: primaryColor,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
                   ),
-                  onPressed: () {
-                    setState(() {
-                      r['status'] = 'Rejected';
-                      bookingHistory.insert(0, r);
-                      bookingRequests.removeAt(index);
-                    });
-                  },
-                  child: Text('Reject',
-                      style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
+                child: Text(
+                  record['userName'],
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white : Colors.black87,
                   ),
-                  onPressed: () {
-                    setState(() {
-                      r['status'] = 'Completed';
-                      bookingHistory.insert(0, r);
-                      bookingRequests.removeAt(index);
-                    });
-                  },
-                  child: Text('Accept',
-                      style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+                ),
+              ),
+              // Status Badge
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(statusIcon, size: 14, color: statusColor),
+                    const SizedBox(width: 5),
+                    Text(
+                      status,
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: statusColor,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
+          ),
+
+          const SizedBox(height: 14),
+          const Divider(height: 1),
+          const SizedBox(height: 14),
+
+          // 🔹 Detail Rows
+          _detailRow(
+            Icons.location_on_rounded,
+            "Location",
+            record['location'],
+            isDark,
+          ),
+          const SizedBox(height: 10),
+          _detailRow(
+            Icons.access_time_rounded,
+            "Request Time",
+            record['requestTime'],
+            isDark,
+          ),
+          const SizedBox(height: 10),
+          _detailRow(
+            Icons.payments_rounded,
+            "Amount",
+            record['amount'],
+            isDark,
+            isHighlight: true,
           ),
         ],
       ),
     );
   }
 
-  Widget _emptyView(String text, ThemeData theme) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 100),
-        child: Text(
-          text,
-          style: GoogleFonts.poppins(
-            fontSize: 16,
-            color: theme.textTheme.bodyMedium?.color,
+  Widget _detailRow(
+    IconData icon,
+    String label,
+    String value,
+    bool isDark, {
+    bool isHighlight = false,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          icon,
+          size: 18,
+          color: isHighlight
+              ? Colors.green
+              : (isDark ? Colors.grey[400] : Colors.grey[600]),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: GoogleFonts.poppins(
+                  fontSize: 11,
+                  color: isDark ? Colors.grey[500] : Colors.grey[500],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              Text(
+                value,
+                style: GoogleFonts.poppins(
+                  fontSize: 13,
+                  fontWeight:
+                      isHighlight ? FontWeight.w700 : FontWeight.w500,
+                  color: isHighlight
+                      ? Colors.green
+                      : (isDark ? Colors.white : Colors.black87),
+                ),
+              ),
+            ],
           ),
         ),
-      ),
+      ],
     );
   }
 }
