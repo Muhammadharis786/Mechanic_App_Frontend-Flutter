@@ -106,6 +106,8 @@ class _MechanicRequestDetailScreenState
                     .toList(),
               ));
             } else {
+              debugPrint("❌ Map Route Error: ${result.errorMessage}");
+              debugPrint("❌ Map Route Status: ${result.status}");
               polylines.add(Polyline(
                 polylineId: const PolylineId('fallback'),
                 color: Colors.red,

@@ -143,29 +143,31 @@ class _MechanicUserMapState extends State<MechanicUserMap> {
       ),
     );
 
-    if (result.points.isNotEmpty) {
-      List<LatLng> polylineCoordinates =
-          result.points.map((p) => LatLng(p.latitude, p.longitude)).toList();
+      if (result.points.isNotEmpty) {
+        List<LatLng> polylineCoordinates =
+            result.points.map((p) => LatLng(p.latitude, p.longitude)).toList();
 
-      _polylines.add(Polyline(
-        polylineId: const PolylineId("route"),
-        color: Colors.red,
-        points: polylineCoordinates,
-        width: 5,
-      ));
-    } else {
-      // Fallback: straight dashed red line
-      _polylines.add(Polyline(
-        polylineId: const PolylineId("fallback_route"),
-        color: Colors.red,
-        points: [
-          LatLng(start.latitude, start.longitude),
-          LatLng(end.latitude, end.longitude),
-        ],
-        width: 5,
-        patterns: [PatternItem.dash(20), PatternItem.gap(10)],
-      ));
-    }
+        _polylines.add(Polyline(
+          polylineId: const PolylineId("route"),
+          color: Colors.red,
+          points: polylineCoordinates,
+          width: 5,
+        ));
+      } else {
+        debugPrint("❌ Map Route Error: ${result.errorMessage}");
+        debugPrint("❌ Map Route Status: ${result.status}");
+        // Fallback: straight dashed red line
+        _polylines.add(Polyline(
+          polylineId: const PolylineId("fallback_route"),
+          color: Colors.red,
+          points: [
+            LatLng(start.latitude, start.longitude),
+            LatLng(end.latitude, end.longitude),
+          ],
+          width: 5,
+          patterns: [PatternItem.dash(20), PatternItem.gap(10)],
+        ));
+      }
   }
 
   @override
