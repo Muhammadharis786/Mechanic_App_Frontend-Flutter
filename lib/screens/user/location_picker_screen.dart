@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
+import 'package:mech_app/screens/authentication/user_session.dart';
 
 // ────────────────────────────────────────────────────────────────
 //  Simple greyscale map style – no rivers, trees, or POI colors
@@ -24,24 +25,22 @@ const String _mapStyle = '''
 
 const String _googleApiKey = 'AIzaSyBpyZg2i30gOLUKK0furYdGDbWXe4lqpkU';
 
-class MechanicMapSelectionScreen extends StatefulWidget {
-  final double? initialLat;
-  final double? initialLng;
-
-  const MechanicMapSelectionScreen({super.key, this.initialLat, this.initialLng});
+class LocationPickerScreen extends StatefulWidget {
+  const LocationPickerScreen({super.key});
 
   @override
-  State<MechanicMapSelectionScreen> createState() => _MechanicMapSelectionScreenState();
+  State<LocationPickerScreen> createState() => _LocationPickerScreenState();
 }
 
-class _MechanicMapSelectionScreenState extends State<MechanicMapSelectionScreen>
+class _LocationPickerScreenState extends State<LocationPickerScreen>
     with TickerProviderStateMixin {
   // ── Colors ──────────────────────────────────────────────────────
   static const Color _primary = Color(0xFFFB3300);
 
   // ── Map ─────────────────────────────────────────────────────────
   GoogleMapController? _mapController;
-  LatLng _markerPos = const LatLng(24.8607, 67.0011); // Karachi default
+  // Karachi center default fallback
+  LatLng _markerPos = const LatLng(24.8607, 67.0011); 
   bool _isDragging = false;
   String? _locationLabel;
 
@@ -72,12 +71,23 @@ class _MechanicMapSelectionScreenState extends State<MechanicMapSelectionScreen>
       }
     });
 
-    if (widget.initialLat != null && widget.initialLng != null) {
-      _markerPos = LatLng(widget.initialLat!, widget.initialLng!);
-      _reverseGeocode(_markerPos);
+    _initializePosition();
+  }
+
+  // ── Initial map focus ──────────────────────────────────────────
+  void _initializePosition() {
+    final savedLat = UserSession().latitude;
+    final savedLng = UserSession().longitude;
+
+    if (savedLat != null && savedLng != null) {
+      _markerPos = LatLng(savedLat, savedLng);
+      debugPrint("📍 Using saved session location: $_markerPos");
     } else {
-      _getUserLocation();
+      debugPrint("📍 Using Karachi fallback: $_markerPos");
     }
+    
+    // Attempt fresh GPS fix but without blocking
+    _getUserLocation();
   }
 
   @override
@@ -106,9 +116,11 @@ class _MechanicMapSelectionScreenState extends State<MechanicMapSelectionScreen>
       final pos = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high);
       final newPos = LatLng(pos.latitude, pos.longitude);
-      setState(() => _markerPos = newPos);
-      _mapController?.animateCamera(CameraUpdate.newLatLngZoom(newPos, 14));
-      _reverseGeocode(newPos);
+      if (mounted) {
+        setState(() => _markerPos = newPos);
+        _mapController?.animateCamera(CameraUpdate.newLatLngZoom(newPos, 14)); // Zoom focus 5km (level 14)
+        _reverseGeocode(newPos);
+      }
     } catch (_) {}
   }
 
@@ -168,7 +180,7 @@ class _MechanicMapSelectionScreenState extends State<MechanicMapSelectionScreen>
           _showSuggestions = false;
           _searchCtrl.text = description;
         });
-        _mapController?.animateCamera(CameraUpdate.newLatLngZoom(newPos, 14));
+        _mapController?.animateCamera(CameraUpdate.newLatLngZoom(newPos, 15));
         _searchFocus.unfocus();
       }
     } catch (_) {}
@@ -179,7 +191,7 @@ class _MechanicMapSelectionScreenState extends State<MechanicMapSelectionScreen>
     Navigator.pop(context, {
       'latitude': _markerPos.latitude,
       'longitude': _markerPos.longitude,
-      'address': _locationLabel ?? '',
+      'locationName': _locationLabel ?? '',
     });
   }
 
@@ -352,7 +364,7 @@ class _MechanicMapSelectionScreenState extends State<MechanicMapSelectionScreen>
                 width: 3,
               ),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.location_pin,
               color: _primary,
               size: 26,
@@ -371,7 +383,7 @@ class _MechanicMapSelectionScreenState extends State<MechanicMapSelectionScreen>
       decoration: BoxDecoration(
         color: Colors.black87,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 2)),
         ],
       ),
@@ -402,10 +414,10 @@ class _MechanicMapSelectionScreenState extends State<MechanicMapSelectionScreen>
             child: Container(
               width: 40,
               height: 40,
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 color: Colors.white,
                 shape: BoxShape.circle,
-                boxShadow: [
+                boxShadow: const [
                   BoxShadow(color: Colors.black12, blurRadius: 6)
                 ],
               ),
@@ -436,7 +448,7 @@ class _MechanicMapSelectionScreenState extends State<MechanicMapSelectionScreen>
                       color: Colors.grey.shade500,
                       fontSize: 13),
                   prefixIcon:
-                      const Icon(Icons.search_rounded, color: _primary, size: 20),
+                      Icon(Icons.search_rounded, color: _primary, size: 20),
                   suffixIcon: _searchCtrl.text.isNotEmpty
                       ? IconButton(
                           icon: const Icon(Icons.close,
@@ -492,7 +504,7 @@ class _MechanicMapSelectionScreenState extends State<MechanicMapSelectionScreen>
                       const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                   child: Row(
                     children: [
-                      const Icon(Icons.location_on, color: _primary, size: 18),
+                      Icon(Icons.location_on, color: _primary, size: 18),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Column(

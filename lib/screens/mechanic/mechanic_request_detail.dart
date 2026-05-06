@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -33,7 +36,7 @@ class _MechanicRequestDetailScreenState
 
   Future<void> _setupMap() async {
     try {
-      // 1️⃣ Get mechanic's current GPS location
+      // 1. Get positions
       LocationPermission perm = await Geolocator.checkPermission();
       if (perm == LocationPermission.denied) {
         perm = await Geolocator.requestPermission();
@@ -44,7 +47,6 @@ class _MechanicRequestDetailScreenState
             locationSettings: const LocationSettings(accuracy: LocationAccuracy.high));
       }
 
-      // 2️⃣ Get user location — from lat/lon DTO or geocode address
       LatLng? userLatLng;
       final lat = widget.request['lat'];
       final lon = widget.request['lon'];
@@ -59,89 +61,162 @@ class _MechanicRequestDetailScreenState
         } catch (_) {}
       }
 
-      if (!mounted) return;
-
-      final Set<Marker> markers = {};
-      final Set<Polyline> polylines = {};
-
-      if (userLatLng != null) {
-        markers.add(Marker(
-          markerId: const MarkerId('user_loc'),
-          position: userLatLng,
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-          infoWindow: InfoWindow(
-            title: widget.request['userName'] ?? 'User',
-            snippet: widget.request['location'] ?? '',
-          ),
-        ));
+      if (!mounted || userLatLng == null || mechPos == null) {
+        if (mounted) setState(() => _isLoading = false);
+        return;
       }
 
-      if (mechPos != null) {
-        final mechLatLng = LatLng(mechPos.latitude, mechPos.longitude);
-        markers.add(Marker(
-          markerId: const MarkerId('mechanic_loc'),
-          position: mechLatLng,
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-          infoWindow: const InfoWindow(title: 'My Location'),
-        ));
+      // 2. Show basic markers immediately
+      final LatLng mechLatLng = LatLng(mechPos.latitude, mechPos.longitude);
+      final mechanicIcon = await _createLollipopMarker();
+      final userIconInitial = await _createUserDotMarker("Calculating...");
 
-        // 3️⃣ Draw route (isolated try/catch so markers show even if route fails on web)
-        if (userLatLng != null) {
-          try {
-            PolylinePoints pp = PolylinePoints(apiKey: "AIzaSyBpyZg2i30gOLUKK0furYdGDbWXe4lqpkU");
-            PolylineResult result = await pp.getRouteBetweenCoordinates(
-              request: PolylineRequest(
-                origin: PointLatLng(mechPos.latitude, mechPos.longitude),
-                destination: PointLatLng(userLatLng.latitude, userLatLng.longitude),
-                mode: TravelMode.driving,
-              ),
-            );
-            if (result.points.isNotEmpty) {
-              polylines.add(Polyline(
-                polylineId: const PolylineId('route'),
-                color: Colors.red,
-                width: 5,
-                points: result.points
-                    .map((p) => LatLng(p.latitude, p.longitude))
-                    .toList(),
-              ));
-            } else {
-              debugPrint("❌ Map Route Error: ${result.errorMessage}");
-              debugPrint("❌ Map Route Status: ${result.status}");
-              polylines.add(Polyline(
-                polylineId: const PolylineId('fallback'),
-                color: Colors.red,
-                width: 4,
-                points: [mechLatLng, userLatLng],
-                patterns: [PatternItem.dash(20), PatternItem.gap(10)],
-              ));
-            }
-          } catch (_) {
-            // CORS/network error on web — draw dashed straight line
-            polylines.add(Polyline(
-              polylineId: const PolylineId('fallback'),
-              color: Colors.red,
-              width: 4,
-              points: [mechLatLng, userLatLng],
-              patterns: [PatternItem.dash(20), PatternItem.gap(10)],
-            ));
-          }
-        }
+      if (mounted) {
+        setState(() {
+          _userLocation = userLatLng;
+          _mechanicLocation = mechLatLng;
+          _markers = {
+            Marker(markerId: const MarkerId('mechanic_loc'), position: mechLatLng, icon: mechanicIcon, anchor: const Offset(0.5, 1.0)),
+            Marker(markerId: const MarkerId('user_loc'), position: userLatLng!, icon: userIconInitial, anchor: const Offset(0.5, 0.9)),
+          };
+          _isLoading = false;
+        });
       }
 
-      setState(() {
-        _userLocation = userLatLng;
-        _mechanicLocation = mechPos != null
-            ? LatLng(mechPos.latitude, mechPos.longitude)
-            : null;
-        _markers = markers;
-        _polylines = polylines;
-        _isLoading = false;
-      });
+      const String apiKey = "AIzaSyBpyZg2i30gOLUKK0furYdGDbWXe4lqpkU";
+      
+      // 3. Fetch duration & route (async, won't block UI if fails)
+      _updateRouteAndDuration(mechLatLng, userLatLng, apiKey, mechanicIcon);
+
     } catch (e) {
       debugPrint('Map setup error: $e');
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _updateRouteAndDuration(LatLng start, LatLng end, String apiKey, BitmapDescriptor mechanicIcon) async {
+    String travelTime = "Route error";
+    
+    // Fetch duration
+    try {
+      final url = "https://maps.googleapis.com/maps/api/directions/json?origin=${start.latitude},${start.longitude}&destination=${end.latitude},${end.longitude}&key=$apiKey";
+      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['routes'].isNotEmpty) {
+          travelTime = data['routes'][0]['legs'][0]['duration']['text'];
+        }
+      }
+    } catch (e) {
+      debugPrint("❌ Duration Fetch Error: $e");
+    }
+
+    // Update markers with real time
+    final userIconUpdated = await _createUserDotMarker(travelTime);
+    if (mounted) {
+      setState(() {
+        _markers = {
+          Marker(markerId: const MarkerId('mechanic_loc'), position: start, icon: mechanicIcon, anchor: const Offset(0.5, 1.0)),
+          Marker(markerId: const MarkerId('user_loc'), position: end, icon: userIconUpdated, anchor: const Offset(0.5, 0.9)),
+        };
+      });
+    }
+
+    // Fetch Polyline
+    try {
+      PolylinePoints pp = PolylinePoints(apiKey: apiKey);
+      PolylineResult result = await pp.getRouteBetweenCoordinates(
+        request: PolylineRequest(
+          origin: PointLatLng(start.latitude, start.longitude),
+          destination: PointLatLng(end.latitude, end.longitude),
+          mode: TravelMode.driving,
+        ),
+      );
+      
+      if (mounted) {
+        setState(() {
+          if (result.points.isNotEmpty) {
+            _polylines = {
+              Polyline(
+                polylineId: const PolylineId('route'),
+                color: Colors.red,
+                width: 5,
+                jointType: JointType.round,
+                startCap: Cap.roundCap,
+                endCap: Cap.roundCap,
+                points: result.points.map((p) => LatLng(p.latitude, p.longitude)).toList(),
+              )
+            };
+          } else {
+            _polylines = {
+              Polyline(
+                polylineId: const PolylineId('fallback'),
+                color: Colors.red,
+                width: 4,
+                points: [start, end],
+                patterns: [PatternItem.dash(20), PatternItem.gap(10)],
+              )
+            };
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint("❌ Polyline Fetch Error: $e");
+    }
+  }
+
+  Future<BitmapDescriptor> _createLollipopMarker() async {
+    final ui.PictureRecorder pictureRecorder = ui.PictureRecorder();
+    final Canvas canvas = Canvas(pictureRecorder);
+    const double size = 120.0;
+    
+    final Paint linePaint = Paint()..color = Colors.red..strokeWidth = 4..strokeCap = StrokeCap.round;
+    canvas.drawLine(const Offset(size / 2, size / 2), const Offset(size / 2, size), linePaint);
+
+    final Paint circlePaint = Paint()..color = Colors.red;
+    canvas.drawCircle(const Offset(size / 2, size / 2), 35, circlePaint);
+
+    final Paint dotPaint = Paint()..color = Colors.white;
+    canvas.drawCircle(const Offset(size / 2, size / 2), 8, dotPaint);
+
+    final img = await pictureRecorder.endRecording().toImage(size.toInt(), size.toInt());
+    final data = await img.toByteData(format: ui.ImageByteFormat.png);
+    return BitmapDescriptor.fromBytes(data!.buffer.asUint8List());
+  }
+
+  Future<BitmapDescriptor> _createUserDotMarker(String duration) async {
+    final ui.PictureRecorder pictureRecorder = ui.PictureRecorder();
+    final Canvas canvas = Canvas(pictureRecorder);
+    const double width = 240.0;
+    const double height = 180.0;
+
+    final Paint boxPaint = Paint()..color = Colors.white;
+    final RRect rRect = RRect.fromLTRBR(20, 0, width - 20, 60, const Radius.circular(12));
+    canvas.drawRRect(rRect.shift(const Offset(0, 2)), Paint()..color = Colors.black26..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4));
+    canvas.drawRRect(rRect, boxPaint);
+
+    final Path path = Path();
+    path.moveTo(width / 2 - 10, 60);
+    path.lineTo(width / 2, 75);
+    path.lineTo(width / 2 + 10, 60);
+    canvas.drawPath(path, boxPaint);
+
+    TextPainter textPainter = TextPainter(textDirection: TextDirection.ltr);
+    textPainter.text = TextSpan(
+      text: duration,
+      style: GoogleFonts.poppins(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black),
+    );
+    textPainter.layout();
+    textPainter.paint(canvas, Offset((width - textPainter.width) / 2, (60 - textPainter.height) / 2));
+
+    final Paint dotOuterPaint = Paint()..color = Colors.black87;
+    final Paint dotInnerPaint = Paint()..color = Colors.white;
+    canvas.drawCircle(const Offset(width / 2, height - 30), 16, dotOuterPaint);
+    canvas.drawCircle(const Offset(width / 2, height - 30), 12, dotInnerPaint);
+
+    final img = await pictureRecorder.endRecording().toImage(width.toInt(), height.toInt());
+    final data = await img.toByteData(format: ui.ImageByteFormat.png);
+    return BitmapDescriptor.fromBytes(data!.buffer.asUint8List());
   }
 
   void _handleAccept() {

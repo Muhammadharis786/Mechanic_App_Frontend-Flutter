@@ -25,68 +25,108 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Scaffold(
-      backgroundColor: isDark ? Colors.black : Colors.white,
-      appBar: AppBar(
+    final emergencyRequests =
+        dummyRequests.where((r) => r.type == "Instant Request").toList();
+    final appointmentRequests =
+        dummyRequests.where((r) => r.type == "Appointment").toList();
+
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
         backgroundColor: isDark ? Colors.black : Colors.white,
-        elevation: 1,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.black, size: 20),
-          onPressed: () {
-            Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute(builder: (_) => const HomeScreen()),
-              (route) => false,
-            );
-          },
-        ),
-        title: Text(
-          'Request History',
-          style: GoogleFonts.poppins(
-            color: isDark ? Colors.white : Colors.black,
-            fontWeight: FontWeight.w600,
+        appBar: AppBar(
+          backgroundColor: isDark ? Colors.black : Colors.white,
+          elevation: 1,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios, color: Colors.black, size: 20),
+            onPressed: () {
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (_) => const HomeScreen()),
+                (route) => false,
+              );
+            },
+          ),
+          title: const Text(
+            'Request History',
+            style: TextStyle(
+              fontFamily: 'YandexSansText',
+              color: Colors.black,
+              fontWeight: FontWeight.w500,
+              fontSize: 18,
+            ),
+          ),
+          bottom: TabBar(
+            indicatorColor: primaryColor,
+            labelColor: primaryColor,
+            unselectedLabelColor: isDark ? Colors.white70 : Colors.grey,
+            labelStyle: const TextStyle(
+                fontFamily: 'YandexSansText',
+                fontWeight: FontWeight.bold,
+                fontSize: 15),
+            unselectedLabelStyle: const TextStyle(
+                fontFamily: 'YandexSansText',
+                fontWeight: FontWeight.normal,
+                fontSize: 14),
+            tabs: const [
+              Tab(text: "Emergency"),
+              Tab(text: "Appointments"),
+            ],
           ),
         ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: TextButton(
-              style: TextButton.styleFrom(
-                backgroundColor:
-                    isDark ? Colors.grey.shade900 : Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(22),
-                  side: BorderSide(color: primaryColor),
-                ),
-              ),
-              onPressed: () {
-                // 👉 Backend dev pagination / full history lagay ga
-              },
-              child: Text(
-                "See All",
-                style: TextStyle(
-                  color: primaryColor,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+        body: TabBarView(
+          children: [
+            // Tab 1: Emergency / Road Assistance
+            RefreshIndicator(
+              onRefresh: _refresh,
+              color: primaryColor,
+              child: emergencyRequests.isEmpty
+                  ? Center(
+                      child: Text(
+                        "No emergency requests yet",
+                        style: TextStyle(
+                            fontFamily: 'YandexSansText',
+                            color: isDark ? Colors.white54 : Colors.black54),
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: emergencyRequests.length,
+                      itemBuilder: (context, index) {
+                        return RequestHistoryCard(
+                          data: emergencyRequests[index],
+                          primaryColor: primaryColor,
+                          isDark: isDark,
+                        );
+                      },
+                    ),
             ),
-          )
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: _refresh,
-        color: primaryColor,
-        child: ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: dummyRequests.length,
-          itemBuilder: (context, index) {
-            return RequestHistoryCard(
-              data: dummyRequests[index],
-              primaryColor: primaryColor,
-              isDark: isDark,
-            );
-          },
+            // Tab 2: Appointments
+            RefreshIndicator(
+              onRefresh: _refresh,
+              color: primaryColor,
+              child: appointmentRequests.isEmpty
+                  ? Center(
+                      child: Text(
+                        "No appointments yet",
+                        style: TextStyle(
+                            fontFamily: 'YandexSansText',
+                            color: isDark ? Colors.white54 : Colors.black54),
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: appointmentRequests.length,
+                      itemBuilder: (context, index) {
+                        return RequestHistoryCard(
+                          data: appointmentRequests[index],
+                          primaryColor: primaryColor,
+                          isDark: isDark,
+                        );
+                      },
+                    ),
+            ),
+          ],
         ),
       ),
     );
@@ -135,15 +175,19 @@ class RequestHistoryCard extends StatelessWidget {
                   children: [
                     Text(
                       data.service,
-                      style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.w600,
-                        color: isDark ? Colors.white : Colors.black,
+                      style: const TextStyle(
+                        fontFamily: 'YandexSansText',
+                        fontWeight: FontWeight.w500,
+                        fontSize: 14,
+                        color: Colors.black,
                       ),
                     ),
                     Text(
                       data.mechanic,
-                      style: GoogleFonts.poppins(
+                      style: TextStyle(
+                        fontFamily: 'YandexSansText',
                         fontSize: 13,
+                        fontWeight: FontWeight.w400,
                         color: isDark ? Colors.white70 : Colors.grey,
                       ),
                     ),
@@ -158,7 +202,10 @@ class RequestHistoryCard extends StatelessWidget {
                           size: 16, color: Colors.amber),
                       Text(
                         data.rating.toString(),
-                        style: GoogleFonts.poppins(
+                        style: TextStyle(
+                          fontFamily: 'YandexSansText',
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
                           color: isDark ? Colors.white : Colors.black,
                         ),
                       ),
@@ -166,8 +213,10 @@ class RequestHistoryCard extends StatelessWidget {
                   ),
                   Text(
                     data.date,
-                    style: GoogleFonts.poppins(
+                    style: const TextStyle(
+                      fontFamily: 'YandexSansText',
                       fontSize: 11,
+                      fontWeight: FontWeight.w400,
                       color: Colors.grey,
                     ),
                   ),
@@ -190,16 +239,20 @@ class RequestHistoryCard extends StatelessWidget {
             children: [
               Text(
                 "Paid Amount",
-                style: GoogleFonts.poppins(
+                style: TextStyle(
+                  fontFamily: 'YandexSansText',
                   fontSize: 13,
+                  fontWeight: FontWeight.w400,
                   color: isDark ? Colors.white70 : Colors.grey,
                 ),
               ),
               Text(
                 "Rs ${data.amount}",
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w600,
-                  color: primaryColor,
+                style: const TextStyle(
+                  fontFamily: 'YandexSansText',
+                  fontWeight: FontWeight.w500,
+                  fontSize: 14,
+                  color: Color(0xFFFB3300),
                 ),
               ),
             ],
@@ -218,8 +271,10 @@ class RequestHistoryCard extends StatelessWidget {
               ),
               child: Text(
                 data.status,
-                style: GoogleFonts.poppins(
+                style: const TextStyle(
+                  fontFamily: 'YandexSansText',
                   color: Colors.green,
+                  fontWeight: FontWeight.w400,
                   fontSize: 12,
                 ),
               ),
@@ -240,8 +295,10 @@ class RequestHistoryCard extends StatelessWidget {
           Expanded(
             child: Text(
               text,
-              style: GoogleFonts.poppins(
+              style: TextStyle(
+                fontFamily: 'YandexSansText',
                 fontSize: 13,
+                fontWeight: FontWeight.w400,
                 color: isDark ? Colors.white70 : Colors.black,
               ),
             ),

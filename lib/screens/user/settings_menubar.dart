@@ -83,9 +83,11 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
           ),
           title: Text(
             t("settings"),
-            style: GoogleFonts.poppins(
+            style: TextStyle(
+              fontFamily: 'YandexSansText',
               color: isDark ? Colors.white : Colors.black,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w500,
+              fontSize: 18,
             ),
           ),
         ),
@@ -112,9 +114,10 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
     return ListTile(
       title: Text(
         title,
-        style: GoogleFonts.poppins(
+        style: TextStyle(
+          fontFamily: 'YandexSansText',
           fontSize: 16,
-          fontWeight: FontWeight.w500,
+          fontWeight: FontWeight.w400,
           color: danger
               ? Colors.red
               : isDark
@@ -125,8 +128,10 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
       subtitle: sub != null
           ? Text(
               sub,
-              style: GoogleFonts.poppins(
+              style: TextStyle(
+                fontFamily: 'YandexSansText',
                 fontSize: 13,
+                fontWeight: FontWeight.w400,
                 color: isDark ? Colors.white70 : Colors.black54,
               ),
             )
@@ -156,13 +161,13 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
             children: [
               Text(
                 t("changeNum"),
-                style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600),
+                style: const TextStyle(fontFamily: 'YandexSansText', fontSize: 18, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 8),
               Text(
                 t("changeSub"),
                 textAlign: TextAlign.center,
-                style: GoogleFonts.poppins(fontSize: 13),
+                style: const TextStyle(fontFamily: 'YandexSansText', fontSize: 13, fontWeight: FontWeight.w400),
               ),
               const SizedBox(height: 20),
               TextField(
@@ -170,7 +175,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
                 keyboardType: TextInputType.phone,
                 decoration: InputDecoration(
                   prefixText: "+92 ",
-                  prefixStyle: GoogleFonts.poppins(color: Colors.black),
+                  prefixStyle: const TextStyle(fontFamily: 'YandexSansText', color: Colors.black, fontWeight: FontWeight.w400),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide(color: primaryColor),
@@ -329,9 +334,10 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
             const SizedBox(width: 10),
             Text(
               t("deleteQ"),
-              style: GoogleFonts.poppins(
+              style: TextStyle(
+                fontFamily: 'YandexSansText',
                 fontSize: 18,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w500,
                 color: isDark ? Colors.white : Colors.black,
               ),
             ),
@@ -339,8 +345,10 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
         ),
         content: Text(
           t("deleteSub"),
-          style: GoogleFonts.poppins(
+          style: TextStyle(
+            fontFamily: 'YandexSansText',
             fontSize: 13,
+            fontWeight: FontWeight.w400,
             color: isDark ? Colors.white70 : Colors.black54,
           ),
         ),
@@ -349,9 +357,10 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
             onPressed: () => Navigator.pop(context),
             child: Text(
               "Cancel",
-              style: GoogleFonts.poppins(
+              style: TextStyle(
+                fontFamily: 'YandexSansText',
                 color: isDark ? Colors.white70 : Colors.black54,
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.w400,
               ),
             ),
           ),
@@ -364,7 +373,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
             onPressed: () => _performDeleteAccount(),
             child: Text(
               "Delete",
-              style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+              style: const TextStyle(fontFamily: 'YandexSansText', fontWeight: FontWeight.w500),
             ),
           ),
         ],
@@ -428,7 +437,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
             SnackBar(
               content: Text(
                 backendMessage,
-                style: GoogleFonts.poppins(color: Colors.white),
+                style: const TextStyle(fontFamily: 'YandexSansText', color: Colors.white, fontWeight: FontWeight.w400),
               ),
               backgroundColor: Colors.green,
               duration: const Duration(seconds: 2),
@@ -454,7 +463,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
             SnackBar(
               content: Text(
                 backendMessage,
-                style: GoogleFonts.poppins(color: Colors.white),
+                style: const TextStyle(fontFamily: 'YandexSansText', color: Colors.white, fontWeight: FontWeight.w400),
               ),
               backgroundColor: Colors.red,
             ),

@@ -1,4 +1,4 @@
-// Merged Version: API Logic + Design Updates
+﻿// Merged Version: API Logic + Design Updates
 
 import 'dart:convert';
 import 'dart:io';
@@ -41,6 +41,17 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Map<String, dynamic>> nearbyMechanics = [];
   String? _mechanicsMessage;
 
+  // ---- Filter State ----
+  String _selectedFilter = "All";
+  final List<String> _filterOptions = ["All", "Puncher", "Bike Mechanic", "Car Mechanic"];
+
+  List<Map<String, dynamic>> get _filteredMechanics {
+    if (_selectedFilter == "All") return nearbyMechanics;
+    return nearbyMechanics
+        .where((m) => (m['MechanicType'] ?? '').toString() == _selectedFilter)
+        .toList();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -52,23 +63,23 @@ class _HomeScreenState extends State<HomeScreen> {
 
     try {
       final headers = UserSession().getAuthHeader();
-      debugPrint('🔑 Auth Header: ${headers['Authorization']}');
-      debugPrint('🔑 UserSession: email=${UserSession().email}, userType=${UserSession().userType}');
+      debugPrint('ðŸ”‘ Auth Header: ${headers['Authorization']}');
+      debugPrint('ðŸ”‘ UserSession: email=${UserSession().email}, userType=${UserSession().userType}');
       
       final response = await http.get(
         url,
         headers: headers,
       );
 
-      debugPrint('📡 Dashboard Response Status: ${response.statusCode}');
-      debugPrint('📡 Dashboard Response Body: ${response.body.length > 200 ? response.body.substring(0, 200) : response.body}');
+      debugPrint('ðŸ“¡ Dashboard Response Status: ${response.statusCode}');
+      debugPrint('ðŸ“¡ Dashboard Response Body: ${response.body.length > 200 ? response.body.substring(0, 200) : response.body}');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         
         // Handle both flat and nested response formats
         final user = data['user'] ?? data; // If no 'user' key, data itself is the user object
-        debugPrint('✅ Dashboard data parsed. User: ${user['username']}');
+        debugPrint('âœ… Dashboard data parsed. User: ${user['username']}');
         
         setState(() {
           if (user['username'] != null || user['userid'] != null) {
@@ -106,8 +117,8 @@ class _HomeScreenState extends State<HomeScreen> {
           _isLoading = false;
         });
       } else {
-        debugPrint("❌ Failed to fetch dashboard: ${response.statusCode}");
-        debugPrint("❌ Response body: ${response.body}");
+        debugPrint("âŒ Failed to fetch dashboard: ${response.statusCode}");
+        debugPrint("âŒ Response body: ${response.body}");
         setState(() {
           _userName = "USER";
           _isLoading = false;
@@ -143,8 +154,8 @@ class _HomeScreenState extends State<HomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              "Hello 👋",
-              style: GoogleFonts.poppins(fontSize: 13, color: Colors.grey),
+              "Hello ",
+              style: TextStyle(fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily, fontSize: 13, color: Colors.grey, fontWeight: FontWeight.w500),
             ),
             _isLoading
                 ? Shimmer.fromColors(
@@ -158,15 +169,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   )
                 : Text(
                     _userName,
-                    style: GoogleFonts.poppins(
+                    style: TextStyle(
+                        fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
                         fontSize: 18, 
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w700,
                         color: isDark ? Colors.white : Colors.black),
                   ),
             if (!_isLoading && _userId != null)
               Text(
                 "ID: $_userId",
-                style: GoogleFonts.poppins(fontSize: 11, color: Colors.grey.shade600),
+                style: TextStyle(fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily, fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w400),
               ),
           ],
         ),
@@ -195,13 +207,14 @@ class _HomeScreenState extends State<HomeScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text("Need a Mechanic Now?",
-                              style: GoogleFonts.poppins(
+                              style: TextStyle(
+                                  fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
                                   color: Colors.white,
                                   fontSize: 20,
-                                  fontWeight: FontWeight.w600)),
+                                  fontWeight: FontWeight.w500)),
                           const SizedBox(height: 6),
                           Text("Nearest mechanic will be auto assigned",
-                              style: GoogleFonts.poppins(color: Colors.white70)),
+                              style: TextStyle(fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily, color: Colors.white70, fontWeight: FontWeight.w400)),
                           const SizedBox(height: 14),
                           ElevatedButton(
                             style: ElevatedButton.styleFrom(
@@ -218,8 +231,10 @@ class _HomeScreenState extends State<HomeScreen> {
                               );
                             },
                             child: Text("Auto Assign Mechanic",
-                                style: GoogleFonts.poppins(
-                                    fontWeight: FontWeight.w500)),
+                                style: TextStyle(
+                                    fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                                    fontWeight: FontWeight.w400,
+                                    color: Color(0xFFFB3300))),
                           ),
                         ],
                       ),
@@ -232,9 +247,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text("Nearby Mechanics",
-                            style: GoogleFonts.poppins(
+                            style: TextStyle(
+                                fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
                                 fontSize: 20, 
-                                fontWeight: FontWeight.w600,
+                                fontWeight: FontWeight.w800,
                                 color: isDark ? Colors.white : Colors.black)),
                         if (_mechanicsMessage == null)
                           InkWell(
@@ -243,8 +259,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                   context,
                                   MaterialPageRoute(
                                     builder: (context) => MechanicListScreen(
-                                      serviceType: "Nearby Mechanics",
-                                      mechanics: nearbyMechanics,
+                                      serviceType: _selectedFilter == "All" ? "Nearby Mechanics" : _selectedFilter,
+                                      mechanics: _filteredMechanics,
                                       showViewOption: true,
                                     ),
                                   ),
@@ -266,18 +282,84 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                               child: Text(
                                 "See All",
-                                style: GoogleFonts.poppins(
+                                style: TextStyle(
+                                    fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
                                     color: Colors.deepOrange,
-                                    fontWeight: FontWeight.w600),
+                                    fontWeight: FontWeight.w500),
                               ),
                             ),
                           )
                       ],
                     ),
 
+                    // -------- Filter Chips --------
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 36,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _filterOptions.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        itemBuilder: (context, index) {
+                          final label = _filterOptions[index];
+                          final isSelected = _selectedFilter == label;
+                          final IconData chipIcon;
+                          switch (label) {
+                            case 'Puncher':
+                              chipIcon = Icons.tire_repair_outlined;
+                              break;
+                            case 'Bike Mechanic':
+                              chipIcon = Icons.two_wheeler_outlined;
+                              break;
+                            case 'Car Mechanic':
+                              chipIcon = Icons.directions_car_outlined;
+                              break;
+                            default:
+                              chipIcon = Icons.handyman_outlined;
+                          }
+                          return GestureDetector(
+                            onTap: () => setState(() => _selectedFilter = label),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? primaryColor
+                                    : (isDark ? Colors.grey[850] : Colors.grey.shade100),
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: isSelected
+                                    ? [BoxShadow(color: primaryColor.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 3))]
+                                    : [],
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    chipIcon,
+                                    size: 14,
+                                    color: isSelected ? Colors.white : (isDark ? Colors.white70 : Colors.black54),
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    label,
+                                    style: TextStyle(
+                                      fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                                      fontSize: 12,
+                                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                                      color: isSelected ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+
                     const SizedBox(height: 12),
 
-                    if (_mechanicsMessage != null || nearbyMechanics.isEmpty)
+                    if (_mechanicsMessage != null || _filteredMechanics.isEmpty)
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
@@ -291,12 +373,15 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                             const SizedBox(height: 16),
                             Text(
-                              _mechanicsMessage ?? "No mechanics available right now",
+                              _mechanicsMessage ?? (_selectedFilter == "All"
+                                  ? "No mechanics available right now"
+                                  : "No $_selectedFilter mechanics nearby"),
                               textAlign: TextAlign.center,
-                              style: GoogleFonts.poppins(
+                              style: TextStyle(
+                                fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
                                 fontSize: 14,
                                 fontWeight: FontWeight.w400,
-                                color: isDark ? Colors.white54 : Colors.grey.shade500,
+                                color: isDark ? Colors.white54 : Colors.grey,
                                 letterSpacing: 0.3,
                               ),
                             ),
@@ -308,10 +393,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         height: 165,
                         child: ListView.builder(
                             scrollDirection: Axis.horizontal,
-                            itemCount: nearbyMechanics.length,
+                            itemCount: _filteredMechanics.length,
                             itemBuilder: (context, index) {
                               return _NearbyMechanicCompactCard(
-                                mechanic: nearbyMechanics[index],
+                                mechanic: _filteredMechanics[index],
                                 primaryColor: primaryColor,
                                 isDark: isDark,
                               );
@@ -323,9 +408,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
                     // -------- Service Categories --------
                     Text("Service Categories",
-                        style: GoogleFonts.poppins(
+                        style: TextStyle(
+                            fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
                             fontSize: 20, 
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w800,
                             color: isDark ? Colors.white : Colors.black)),
                     const SizedBox(height: 16),
 
@@ -367,11 +453,14 @@ class _HomeScreenState extends State<HomeScreen> {
             borderRadius: BorderRadius.circular(10),
           ),
           child: Text(
-            title,
-            style: GoogleFonts.poppins(
+            title.toUpperCase(),
+            style: TextStyle(
+              fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
               color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
+              fontSize: 26, // Increased size slightly to compensate for tight spacing
+              fontWeight: FontWeight.w900, // Make it as bold as possible
+              // TIGHT character spacing like Yango
+              height: 1.0, 
             ),
           ),
         ),
@@ -431,10 +520,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       Text(
                         _isLoading ? "Loading..." : _userName,
-                        style: GoogleFonts.poppins(
+                        style: TextStyle(
+                          fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
                           color: Colors.white,
                           fontSize: 18,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w500,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -442,7 +532,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       const SizedBox(height: 2),
                       Text(
                         "User Account",
-                        style: GoogleFonts.poppins(
+                        style: TextStyle(
+                          fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
                           color: Colors.white.withOpacity(0.8), 
                           fontSize: 13,
                           fontWeight: FontWeight.w400,
@@ -510,14 +601,15 @@ class _HomeScreenState extends State<HomeScreen> {
                                children: [
                                  const CircularProgressIndicator(color: Color(0xFFFB3300)),
                                  const SizedBox(height: 16),
-                                 Text("Logging out...", 
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 14, 
-                                    fontWeight: FontWeight.w500,
-                                    decoration: TextDecoration.none,
-                                    color: isDark ? Colors.white : Colors.black
+                                  Text("Logging out...", 
+                                   style: TextStyle(
+                                     fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                                     fontSize: 14, 
+                                     fontWeight: FontWeight.w400,
+                                     decoration: TextDecoration.none,
+                                     color: isDark ? Colors.white : Colors.black
+                                   )
                                   )
-                                 )
                                ],
                             ),
                           ),
@@ -583,10 +675,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(width: 10),
                     Text(
                       'Return to Mechanic',
-                      style: GoogleFonts.poppins(
-                          color: primaryColor, 
+                      style: TextStyle(
+                          fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                          color: Color(0xFFFB3300), 
                           fontSize: 14,
-                          fontWeight: FontWeight.w600),
+                          fontWeight: FontWeight.w500),
                     ),
                   ],
                 ),
@@ -614,9 +707,10 @@ class _HomeScreenState extends State<HomeScreen> {
       child: ListTile(
         onTap: onTap,
         leading: Icon(icon, color: isSelected ? selectedTextColor : itemColor),
-        title: Text(title, style: GoogleFonts.poppins(
+        title: Text(title, style: TextStyle(
+          fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
           color: isSelected ? selectedTextColor : itemColor,
-          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal
+          fontWeight: isSelected ? FontWeight.w500 : FontWeight.w400
         )),
       ),
     );
@@ -751,28 +845,35 @@ class _NearbyMechanicCompactCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(mechanic['name'],
-                        style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w600, 
+                        style: TextStyle(
+                            fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                            fontWeight: FontWeight.w700, 
                             fontSize: 14,
                             color: isDark ? Colors.white : Colors.black)),
                     const SizedBox(height: 2),
                     Text(mechanic['MechanicType'],
-                        style: GoogleFonts.poppins(
+                        style: TextStyle(
+                            fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
                             color: isDark ? Colors.white70 : Colors.grey.shade600, 
-                            fontSize: 12)),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w400)),
                     const SizedBox(height: 4),         
                     Row(
                       children: [
                         const Icon(Icons.star_outline_rounded, size: 14, color: Colors.amber),
                         Text("${mechanic['averagerating']}",
-                            style: GoogleFonts.poppins(
+                            style: TextStyle(
+                                fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
                                 fontSize: 12,
+                                fontWeight: FontWeight.w400,
                                 color: isDark ? Colors.white : Colors.black)),
                         const SizedBox(width: 8),
                         Icon(Icons.location_on_outlined, size: 14, color: primaryColor),
                         Text("${mechanic['distance']} km",
-                            style: GoogleFonts.poppins(
+                            style: TextStyle(
+                                fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
                                 fontSize: 12,
+                                fontWeight: FontWeight.w400,
                                 color: isDark ? Colors.white : Colors.black)),
                       ],
                     ),
@@ -847,7 +948,8 @@ class _NearbyMechanicCompactCard extends StatelessWidget {
             Icon(icon, size: 18, color: color),
             const SizedBox(width: 6),
             Text(label,
-                style: GoogleFonts.poppins(
+                style: TextStyle(
+                    fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
                     color: color,
                     fontWeight: FontWeight.w500,
                     fontSize: 13)),
@@ -857,3 +959,6 @@ class _NearbyMechanicCompactCard extends StatelessWidget {
     );
   }
 }
+
+
+

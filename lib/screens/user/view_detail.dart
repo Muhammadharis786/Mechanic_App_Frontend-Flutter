@@ -51,7 +51,7 @@ class MechanicDetailScreen extends StatefulWidget {
 
 class _MechanicDetailScreenState extends State<MechanicDetailScreen> {
   final Color primaryColor = const Color(0xFFFB3300);
-  final String uiFont = 'Poppins';
+  final String uiFont = 'YandexSansText';
   BitmapDescriptor? _markerIcon;
 
   @override
@@ -341,8 +341,9 @@ class _MechanicDetailScreenState extends State<MechanicDetailScreen> {
                           children: [
                             Text(
                               "Service Details",
-                              style: GoogleFonts.poppins(
-                                fontWeight: FontWeight.bold, 
+                              style: TextStyle(
+                                fontFamily: 'YandexSansText',
+                                fontWeight: FontWeight.w500, 
                                 fontSize: 16,
                                 color: theme.textTheme.titleLarge?.color,
                               ),
@@ -398,7 +399,7 @@ class _MechanicDetailScreenState extends State<MechanicDetailScreen> {
                                 ),
                                 child: Text(
                                   'Send Request', 
-                                  style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 16)
+                                  style: TextStyle(fontFamily: 'YandexSansText', fontWeight: FontWeight.w500, fontSize: 16)
                                 ),
                               ),
                             ),
@@ -446,10 +447,11 @@ class _MechanicDetailScreenState extends State<MechanicDetailScreen> {
             Expanded(
               child: Text(
                 widget.mechanic.name,
-                style: GoogleFonts.luckiestGuy(
+                style: TextStyle(
+                  fontFamily: 'YandexSansText',
                   fontSize: 24, 
-                  fontWeight: FontWeight.normal, 
-                  color: isHeaderFilled ? Colors.white : Colors.black87,
+                  fontWeight: FontWeight.w500, 
+                  color: Colors.white,
                   letterSpacing: 1.2,
                 ),
                 overflow: TextOverflow.ellipsis,
@@ -461,10 +463,11 @@ class _MechanicDetailScreenState extends State<MechanicDetailScreen> {
         const SizedBox(height: 4),
         Text(
           widget.mechanic.mechanictype,
-          style: GoogleFonts.poppins(
+          style: TextStyle(
+            fontFamily: 'YandexSansText',
             fontSize: 14, 
             color: isHeaderFilled ? Colors.white.withOpacity(0.9) : Colors.grey.shade600, 
-            fontWeight: FontWeight.w500
+            fontWeight: FontWeight.w400
           ),
         ),
       ],
@@ -499,9 +502,10 @@ class _MechanicDetailScreenState extends State<MechanicDetailScreen> {
           const SizedBox(width: 6),
           Text(
             isOnline ? "Online" : "Offline",
-            style: GoogleFonts.poppins(
+            style: TextStyle(
+              fontFamily: 'YandexSansText',
               fontSize: 11, 
-              fontWeight: FontWeight.bold, 
+              fontWeight: FontWeight.w500, 
               color: isHeaderFilled ? Colors.white : (isOnline ? Colors.green.shade700 : (isDark ? Colors.white54 : Colors.grey.shade700))
             ),
           ),
@@ -520,9 +524,10 @@ class _MechanicDetailScreenState extends State<MechanicDetailScreen> {
           Text(
             label,
             textAlign: TextAlign.center,
-            style: GoogleFonts.poppins(
+            style: TextStyle(
+              fontFamily: 'YandexSansText',
               color: color, 
-              fontWeight: FontWeight.bold, 
+              fontWeight: FontWeight.w500, 
               fontSize: 13,
               letterSpacing: 0.5
             ),
@@ -559,11 +564,11 @@ class _MechanicDetailScreenState extends State<MechanicDetailScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: GoogleFonts.poppins(color: isDark ? Colors.white38 : Colors.grey.shade500, fontSize: 12)),
+              Text(title, style: TextStyle(fontFamily: 'YandexSansText', fontWeight: FontWeight.w400, color: isDark ? Colors.white38 : Colors.grey.shade500, fontSize: 12)),
               const SizedBox(height: 2),
               Text(
                 value.isNotEmpty ? value : "Not specified",
-                style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w500, color: theme.textTheme.bodyLarge?.color),
+                style: TextStyle(fontFamily: 'YandexSansText', fontSize: 14, fontWeight: FontWeight.w400, color: theme.textTheme.bodyLarge?.color),
               ),
             ],
           ),
@@ -662,11 +667,11 @@ class FullScreenMapScreen extends StatelessWidget {
                       children: [
                         Text(
                           mechanic.name, 
-                          style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 16, color: theme.textTheme.titleLarge?.color)
+                          style: TextStyle(fontFamily: 'YandexSansText', fontWeight: FontWeight.w500, fontSize: 16, color: theme.textTheme.titleLarge?.color)
                         ),
                         Text(
                           '${mechanic.distanceKm.toStringAsFixed(1)} km away', 
-                          style: GoogleFonts.poppins(fontSize: 12, color: isDark ? Colors.white54 : Colors.grey)
+                          style: TextStyle(fontFamily: 'YandexSansText', fontWeight: FontWeight.w400, fontSize: 12, color: isDark ? Colors.white54 : Colors.grey)
                         ),
                       ],
                     ),

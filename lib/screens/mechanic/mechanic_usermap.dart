@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -8,7 +10,6 @@ import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 
 class MechanicUserMap extends StatefulWidget {
   final String address;
-  // Optional: Direct lat/lon from DTO (skip geocoding if provided)
   final double? userLat;
   final double? userLon;
 
@@ -27,69 +28,24 @@ class _MechanicUserMapState extends State<MechanicUserMap> {
   late GoogleMapController mapController;
   LatLng? _userLocation;
   Position? _mechanicLocation;
-  BitmapDescriptor? _customMarker;
   bool _isLoading = true;
 
   Set<Marker> _markers = {};
   Set<Polyline> _polylines = {};
+  String _travelTime = "Calculating...";
 
   @override
   void initState() {
     super.initState();
-    _loadMarker();
     _setupMap();
-  }
-
-  Future<void> _loadMarker() async {
-    final ui.PictureRecorder pictureRecorder = ui.PictureRecorder();
-    final Canvas canvas = Canvas(pictureRecorder);
-    const double width = 200.0;
-    const double height = 120.0;
-
-    final Paint paint = Paint()..color = const Color(0xFFFB3300);
-    final RRect rRect = RRect.fromLTRBR(
-        0, 0, width, height - 25, const Radius.circular(14));
-    canvas.drawRRect(rRect, paint);
-
-    final Path path = Path();
-    path.moveTo(width / 2 - 16, height - 25);
-    path.lineTo(width / 2, height);
-    path.lineTo(width / 2 + 16, height - 25);
-    canvas.drawPath(path, paint);
-
-    TextPainter painter = TextPainter(textDirection: TextDirection.ltr);
-    painter.text = TextSpan(
-      text: 'USER',
-      style: GoogleFonts.inter(
-        fontSize: 30,
-        fontWeight: FontWeight.w800,
-        color: Colors.white,
-        letterSpacing: 1.2,
-      ),
-    );
-    painter.layout();
-    painter.paint(
-        canvas, Offset((width - painter.width) / 2, (height - 25 - painter.height) / 2));
-
-    final img = await pictureRecorder.endRecording().toImage(width.toInt(), height.toInt());
-    final data = await img.toByteData(format: ui.ImageByteFormat.png);
-
-    if (mounted) {
-      setState(() {
-        _customMarker = BitmapDescriptor.fromBytes(data!.buffer.asUint8List());
-      });
-    }
   }
 
   Future<void> _setupMap() async {
     try {
-      // 1. Get mechanic's current GPS position
       Position mechanicPos = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high);
 
       LatLng userLatLng;
-
-      // 2. If lat/lon passed directly from DTO, use them. Otherwise geocode the address.
       if (widget.userLat != null && widget.userLon != null) {
         userLatLng = LatLng(widget.userLat!, widget.userLon!);
       } else {
@@ -101,73 +57,175 @@ class _MechanicUserMapState extends State<MechanicUserMap> {
         userLatLng = LatLng(locations[0].latitude, locations[0].longitude);
       }
 
-      // 3. Draw road route
-      await _getPolyline(mechanicPos, userLatLng);
+      // Show basic markers immediately
+      final LatLng mechLatLng = LatLng(mechanicPos.latitude, mechanicPos.longitude);
+      final mechanicIcon = await _createLollipopMarker();
+      final userIconInitial = await _createUserDotMarker("Calculating...");
 
       if (mounted) {
         setState(() {
           _mechanicLocation = mechanicPos;
           _userLocation = userLatLng;
-
-          _markers.add(Marker(
-            markerId: const MarkerId('user_location'),
-            position: userLatLng,
-            icon: _customMarker ?? BitmapDescriptor.defaultMarker,
-            anchor: const Offset(0.5, 1.0),
-            infoWindow: InfoWindow(title: 'Customer Address', snippet: widget.address),
-          ));
-
-          _markers.add(Marker(
-            markerId: const MarkerId('mechanic_location'),
-            position: LatLng(mechanicPos.latitude, mechanicPos.longitude),
-            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-            infoWindow: const InfoWindow(title: 'My Location'),
-          ));
-
+          _markers = {
+            Marker(markerId: const MarkerId('mechanic_location'), position: mechLatLng, icon: mechanicIcon, anchor: const Offset(0.5, 1.0)),
+            Marker(markerId: const MarkerId('user_location'), position: userLatLng, icon: userIconInitial, anchor: const Offset(0.5, 0.9)),
+          };
           _isLoading = false;
         });
       }
+
+      const String apiKey = "AIzaSyBpyZg2i30gOLUKK0furYdGDbWXe4lqpkU";
+      
+      // Fetch duration & route (async)
+      _updateRouteAndDuration(mechLatLng, userLatLng, apiKey, mechanicIcon);
+
     } catch (e) {
       debugPrint('Map error: $e');
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _getPolyline(Position start, LatLng end) async {
-    PolylinePoints polylinePoints = PolylinePoints(apiKey: "AIzaSyBpyZg2i30gOLUKK0furYdGDbWXe4lqpkU");
-    PolylineResult result = await polylinePoints.getRouteBetweenCoordinates(
-      request: PolylineRequest(
-        origin: PointLatLng(start.latitude, start.longitude),
-        destination: PointLatLng(end.latitude, end.longitude),
-        mode: TravelMode.driving,
+  Future<void> _updateRouteAndDuration(LatLng start, LatLng end, String apiKey, BitmapDescriptor mechanicIcon) async {
+    String travelTime = "Calculated soon";
+
+    // 1. Fetch Duration
+    try {
+      final String url = "https://maps.googleapis.com/maps/api/directions/json?origin=${start.latitude},${start.longitude}&destination=${end.latitude},${end.longitude}&key=$apiKey";
+      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['routes'].isNotEmpty) {
+          travelTime = data['routes'][0]['legs'][0]['duration']['text'];
+        }
+      }
+    } catch (e) {
+      debugPrint("❌ Duration Fetch Error: $e");
+    }
+
+    // Update markers with real time
+    final userIconUpdated = await _createUserDotMarker(travelTime);
+    if (mounted) {
+      setState(() {
+        _markers = {
+          Marker(markerId: const MarkerId('mechanic_location'), position: start, icon: mechanicIcon, anchor: const Offset(0.5, 1.0)),
+          Marker(markerId: const MarkerId('user_location'), position: end, icon: userIconUpdated, anchor: const Offset(0.5, 0.9)),
+        };
+      });
+    }
+
+    // 2. Fetch Polyline
+    try {
+      PolylinePoints polylinePoints = PolylinePoints(apiKey: apiKey);
+      PolylineResult result = await polylinePoints.getRouteBetweenCoordinates(
+        request: PolylineRequest(
+          origin: PointLatLng(start.latitude, start.longitude),
+          destination: PointLatLng(end.latitude, end.longitude),
+          mode: TravelMode.driving,
+        ),
+      );
+
+      if (mounted) {
+        setState(() {
+          if (result.points.isNotEmpty) {
+            _polylines = {
+              Polyline(
+                polylineId: const PolylineId("route"),
+                color: Colors.red,
+                points: result.points.map((p) => LatLng(p.latitude, p.longitude)).toList(),
+                width: 5,
+                jointType: JointType.round,
+                startCap: Cap.roundCap,
+                endCap: Cap.roundCap,
+              )
+            };
+          } else {
+            _polylines = {
+              Polyline(
+                polylineId: const PolylineId("fallback_route"),
+                color: Colors.red,
+                points: [start, end],
+                width: 5,
+                patterns: [PatternItem.dash(20), PatternItem.gap(10)],
+              )
+            };
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint("❌ Polyline Fetch Error: $e");
+    }
+  }
+
+  Future<BitmapDescriptor> _createLollipopMarker() async {
+    final ui.PictureRecorder pictureRecorder = ui.PictureRecorder();
+    final Canvas canvas = Canvas(pictureRecorder);
+    const double size = 120.0;
+    
+    // Draw Pin Line
+    final Paint linePaint = Paint()
+      ..color = Colors.red
+      ..strokeWidth = 4
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(const Offset(size / 2, size / 2), const Offset(size / 2, size), linePaint);
+
+    // Draw Big Red Circle
+    final Paint circlePaint = Paint()..color = Colors.red;
+    canvas.drawCircle(const Offset(size / 2, size / 2), 35, circlePaint);
+
+    // Draw White Dot in Center
+    final Paint dotPaint = Paint()..color = Colors.white;
+    canvas.drawCircle(const Offset(size / 2, size / 2), 8, dotPaint);
+
+    final img = await pictureRecorder.endRecording().toImage(size.toInt(), size.toInt());
+    final data = await img.toByteData(format: ui.ImageByteFormat.png);
+    return BitmapDescriptor.fromBytes(data!.buffer.asUint8List());
+  }
+
+  Future<BitmapDescriptor> _createUserDotMarker(String duration) async {
+    final ui.PictureRecorder pictureRecorder = ui.PictureRecorder();
+    final Canvas canvas = Canvas(pictureRecorder);
+    
+    const double width = 240.0;
+    const double height = 180.0;
+
+    // 1. Draw Tooltip Box (White)
+    final Paint boxPaint = Paint()..color = Colors.white;
+    final RRect rRect = RRect.fromLTRBR(20, 0, width - 20, 60, const Radius.circular(12));
+    
+    // Shadow for tooltip
+    canvas.drawRRect(rRect.shift(const Offset(0, 2)), Paint()..color = Colors.black26..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4));
+    canvas.drawRRect(rRect, boxPaint);
+
+    // 2. Draw Tooltip Triangle
+    final Path path = Path();
+    path.moveTo(width / 2 - 10, 60);
+    path.lineTo(width / 2, 75);
+    path.lineTo(width / 2 + 10, 60);
+    canvas.drawPath(path, boxPaint);
+
+    // 3. Draw Duration Text
+    TextPainter textPainter = TextPainter(textDirection: TextDirection.ltr);
+    textPainter.text = TextSpan(
+      text: duration,
+      style: GoogleFonts.poppins(
+        fontSize: 24,
+        fontWeight: FontWeight.bold,
+        color: Colors.black,
       ),
     );
+    textPainter.layout();
+    textPainter.paint(canvas, Offset((width - textPainter.width) / 2, (60 - textPainter.height) / 2));
 
-      if (result.points.isNotEmpty) {
-        List<LatLng> polylineCoordinates =
-            result.points.map((p) => LatLng(p.latitude, p.longitude)).toList();
+    // 4. Draw User Dot at Bottom
+    final Paint dotOuterPaint = Paint()..color = Colors.black87;
+    final Paint dotInnerPaint = Paint()..color = Colors.white;
+    
+    canvas.drawCircle(const Offset(width / 2, height - 30), 16, dotOuterPaint);
+    canvas.drawCircle(const Offset(width / 2, height - 30), 12, dotInnerPaint);
 
-        _polylines.add(Polyline(
-          polylineId: const PolylineId("route"),
-          color: Colors.red,
-          points: polylineCoordinates,
-          width: 5,
-        ));
-      } else {
-        debugPrint("❌ Map Route Error: ${result.errorMessage}");
-        debugPrint("❌ Map Route Status: ${result.status}");
-        // Fallback: straight dashed red line
-        _polylines.add(Polyline(
-          polylineId: const PolylineId("fallback_route"),
-          color: Colors.red,
-          points: [
-            LatLng(start.latitude, start.longitude),
-            LatLng(end.latitude, end.longitude),
-          ],
-          width: 5,
-          patterns: [PatternItem.dash(20), PatternItem.gap(10)],
-        ));
-      }
+    final img = await pictureRecorder.endRecording().toImage(width.toInt(), height.toInt());
+    final data = await img.toByteData(format: ui.ImageByteFormat.png);
+    return BitmapDescriptor.fromBytes(data!.buffer.asUint8List());
   }
 
   @override
@@ -177,12 +235,8 @@ class _MechanicUserMapState extends State<MechanicUserMap> {
         elevation: 0,
         backgroundColor: const Color(0xFFFB3300),
         title: Text(
-          'User Location',
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-            fontSize: 18,
-          ),
+          'Track Location',
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 18),
         ),
         centerTitle: true,
         leading: IconButton(

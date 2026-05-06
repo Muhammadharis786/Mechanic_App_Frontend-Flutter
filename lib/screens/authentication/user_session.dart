@@ -14,6 +14,8 @@ class UserSession {
 
   String? userType; // 'USER' or 'MECHANIC'
   int? userId;
+  double? latitude;
+  double? longitude;
   
   // Cache for Dual Login
   String? _cachedUserEmail;
@@ -64,6 +66,16 @@ class UserSession {
     }
   }
 
+  // Update Location (Enable location screen ke waqt call karein)
+  Future<void> saveLocation(double lat, double lng) async {
+    final prefs = await SharedPreferences.getInstance();
+    latitude = lat;
+    longitude = lng;
+    await prefs.setDouble('user_lat', lat);
+    await prefs.setDouble('user_lng', lng);
+    print("📍 Location persisted: $lat, $lng");
+  }
+
   // Update UserId explicitly (e.g. from dashboard or login response)
   Future<void> setUserId(int id) async {
     final prefs = await SharedPreferences.getInstance();
@@ -86,7 +98,10 @@ class UserSession {
       _cachedMechPassword = prefs.getString('cached_mech_pass');
 
       userId = prefs.getInt('userId');
-      print("🔄 Session Loaded: $email as $userType (ID: $userId)");
+      latitude = prefs.getDouble('user_lat');
+      longitude = prefs.getDouble('user_lng');
+      
+      print("🔄 Session Loaded: $email as $userType (ID: $userId, Lat: $latitude, Lng: $longitude)");
       return true;
     }
     print("⚠️ No session found.");
@@ -115,6 +130,8 @@ class UserSession {
       password = null;
       userType = null;
       userId = null;
+      latitude = null;
+      longitude = null;
       
       // Clear caches too? 
       // Usually on explicit logout we want to clear EVERYTHING

@@ -19,7 +19,7 @@ class _EnableLocationScreenState extends State<EnableLocationScreen> {
   String _statusMessage = 'Allow location access to continue using the app.';
 
   Future<void> _updateLocationOnServer(double lat, double lng) async {
-    final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/current/location");
+    final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/user/currentlocation");
 
     try {
       final response = await http.post(
@@ -62,7 +62,8 @@ class _EnableLocationScreenState extends State<EnableLocationScreen> {
       
       // Save to database
       setState(() => _statusMessage = "Saving location...");
-      await _updateLocationOnServer(position.latitude, position.longitude);
+      await UserSession().saveLocation(position.latitude, position.longitude); // Save locally
+      await _updateLocationOnServer(position.latitude, position.longitude); // Save to server
 
       // Navigate to home screen
       if (!mounted) return;

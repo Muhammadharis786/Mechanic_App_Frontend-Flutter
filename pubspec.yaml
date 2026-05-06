@@ -25,8 +25,8 @@ dependencies:
   shared_preferences: ^2.5.1
   
   # Google Maps integration ke liye 
-  google_maps_flutter: ^2.5.3
-  google_maps_flutter_web: ^0.5.12
+  google_maps_flutter: ^2.10.0
+  google_maps_flutter_web: ^0.5.10
   location: ^8.0.1
   latlong2: ^0.8.1
   url_launcher: ^6.3.1
@@ -60,6 +60,18 @@ flutter:
           style: italic
         - asset: assets/fonts/Poppins/Poppins-Bold.ttf
           weight: 700
+    - family: YandexSansDisplay
+      fonts:
+        - asset: assets/fonts/YandexSansDisplay-Bold.ttf
+          weight: 700 # Bold
+    - family: YandexSansText
+      fonts:
+        - asset: assets/fonts/YandexSansText-Regular.ttf
+          weight: 400 # Regular
+        - asset: assets/fonts/YandexSansText-Medium.ttf
+          weight: 500 # Medium
+        - asset: assets/fonts/YandexSansText-Bold.ttf
+          weight: 700 # Bold
 
     - family: LuckiestGuy
       fonts:
