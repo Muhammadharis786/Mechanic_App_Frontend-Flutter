@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:mech_app/screens/authentication/user_session.dart';
 import 'package:mech_app/screens/homescreen.dart';
@@ -43,10 +44,12 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   final TextEditingController addressController = TextEditingController();
   final TextEditingController detailController = TextEditingController();
   Map<String, dynamic>? selectedMechanic;
+  bool _isAutoMode = true; // Default to Auto Assign
 
   // ── Mechanics from API ───────────────────────────────────────────
   List<Map<String, dynamic>> _mechanics = [];
   bool _loadingMechanics = false;
+  bool _bookingInProgress = false; // New state for full screen transition
   String? _mechanicsError;
 
   final List<Map<String, dynamic>> services = [
@@ -59,7 +62,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   List<Map<String, dynamic>> get _filteredMechanics {
     if (selectedService == "All") return _mechanics;
     return _mechanics
-        .where((m) => (m['MechanicType'] ?? '').toString() == selectedService)
+        .where((m) => (m['mechanictype'] ?? '').toString() == selectedService)
         .toList();
   }
 
@@ -170,13 +173,28 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       return;
     }
 
-    setState(() => _loadingMechanics = true); // use it for general loading
+    setState(() => _bookingInProgress = true); 
 
     try {
       final isManual = mechanic != null;
       final endpoint = isManual
           ? '$_baseUrl/api/user/manual/bookappointment'
           : '$_baseUrl/api/user/auto/bookappointment';
+      final mechanicType = (mechanic?['mechanictype'] ?? '').toString().trim();
+      
+      // If service is "All", and we're manual booking, take mechanic's type. 
+      // If auto booking and "All", we should have shown dialog (handled in build), 
+      // but as a fallback default to Bike Mechanic.
+      final String resolvedServiceType;
+      if (selectedService == "All") {
+        if (isManual && mechanicType.isNotEmpty) {
+          resolvedServiceType = mechanicType;
+        } else {
+          resolvedServiceType = "Bike Mechanic";
+        }
+      } else {
+        resolvedServiceType = selectedService;
+      }
 
       // Formatting
       final dateStr = selectedDate!.toIso8601String().split('T')[0];
@@ -184,8 +202,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           "${selectedTime!.hour.toString().padLeft(2, '0')}:${selectedTime!.minute.toString().padLeft(2, '0')}:00";
 
       final Map<String, dynamic> body = {
-        "serviceType":
-            (selectedService == "All" && mechanic == null) ? "Bike Mechanic" : selectedService,
+        "serviceType": resolvedServiceType,
         "latitude": _latitude,
         "longitude": _longitude,
         "problemDescription":
@@ -213,13 +230,112 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
 
       setState(() => _loadingMechanics = false);
 
+      setState(() => _bookingInProgress = false);
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        final rawBody = response.body.trim();
+        dynamic decoded;
+
+        try {
+          decoded = jsonDecode(rawBody);
+        } catch (_) {
+          // Auto booking endpoint may return plain text appointment ID (non-JSON).
+          decoded = rawBody;
+        }
+        Map<String, dynamic>? bookingResponse;
+
+        Map<String, dynamic> normalizeBookingMap(Map<String, dynamic> source) {
+          final normalized = <String, dynamic>{};
+
+          final appointmentId = source['appointmentId'] ??
+              source['appointmentid'] ??
+              source['id'];
+          final serviceType = source['serviceType'] ?? source['servicetype'];
+          final latitude = source['latitude'] ?? source['lat'];
+          final longitude = source['longitude'] ?? source['lng'] ?? source['lon'];
+          final problemDescription = source['problemDescription'] ??
+              source['problemdescription'] ??
+              source['issue'];
+          final appointmentDate =
+              source['appointmentDate'] ?? source['appointmentdate'];
+          final appointmentTime =
+              source['appointmentTime'] ?? source['appointmenttime'];
+          final address = source['address'] ?? source['location'];
+
+          normalized['appointmentId'] = appointmentId?.toString() ?? '--';
+          normalized['serviceType'] = serviceType ?? resolvedServiceType;
+          normalized['latitude'] = latitude ?? _latitude;
+          normalized['longitude'] = longitude ?? _longitude;
+          normalized['problemDescription'] = problemDescription ??
+              (detailController.text.isNotEmpty
+                  ? detailController.text
+                  : "Standard service check");
+          normalized['address'] = address ?? addressController.text;
+          normalized['appointmentDate'] = appointmentDate ?? dateStr;
+          normalized['appointmentTime'] = appointmentTime ?? timeStr;
+
+          final mechanicName = source['mechname'];
+          final mechanicType = source['mechtype'] ?? source['serviceType'];
+          final mechanicImage = source['mechimage'];
+          final mechanicRating = source['mechrating'];
+          final mechanicDistance = source['distance'];
+          final mechanicExperience = source['mechexperience'];
+
+          if (source['mechanic'] is Map<String, dynamic>) {
+            normalized['mechanic'] = source['mechanic'];
+          } else if (mechanicName != null ||
+              mechanicType != null ||
+              mechanicImage != null) {
+            normalized['mechanic'] = {
+              'name': mechanicName ?? 'Auto Expert',
+              'mechanictype': mechanicType ?? 'Mechanical Specialist',
+              'mechanicimgurl': mechanicImage,
+              'averageRating': mechanicRating,
+              'distance': mechanicDistance,
+              'experience': mechanicExperience,
+            };
+          } else {
+            normalized['mechanic'] = isManual ? mechanic : null;
+          }
+
+          return normalized;
+        }
+
+        if (decoded is Map<String, dynamic>) {
+          bookingResponse = normalizeBookingMap(decoded);
+        } else if (decoded is List && decoded.isNotEmpty && decoded.first is Map) {
+          bookingResponse =
+              normalizeBookingMap(Map<String, dynamic>.from(decoded.first as Map));
+        } else if (decoded is num || decoded is String) {
+          // Backend may return only appointmentId in auto flow.
+          bookingResponse = {
+            "appointmentId": decoded.toString(),
+            "serviceType": resolvedServiceType,
+            "appointmentDate": dateStr,
+            "appointmentTime": timeStr,
+            "address": addressController.text,
+            "problemDescription": detailController.text.isNotEmpty
+                ? detailController.text
+                : "Standard service check",
+            "latitude": _latitude,
+            "longitude": _longitude,
+            "mechanic": isManual ? mechanic : null,
+          };
+        }
+
+        if (bookingResponse == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Unexpected booking response format. Please try again."),
+            ),
+          );
+          return;
+        }
+
         if (!mounted) return;
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => BookingConfirmationScreen(bookingData: data),
+            builder: (_) => BookingConfirmationScreen(bookingData: bookingResponse!),
           ),
         );
       } else {
@@ -256,17 +372,29 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           onPressed: () => Navigator.pushReplacement(
               context, MaterialPageRoute(builder: (_) => HomeScreen())),
         ),
-        title: const Text(
+        title: Text(
           "Book Appointment",
-          style: TextStyle(
-            fontFamily: 'YandexSansText',
+          style: GoogleFonts.getFont('Bricolage Grotesque',
             color: Colors.black,
             fontWeight: FontWeight.w500,
             fontSize: 18,
           ),
         ),
       ),
-      body: RefreshIndicator(
+      body: Stack(
+        children: [
+          _buildMainBody(isDark),
+          if (_loadingMechanics && !_isAutoMode && _mechanics.isEmpty) // Initial loading
+             _loadingOverlay("Finding Mechanics..."),
+          if (_bookingInProgress)
+             _loadingOverlay("Securing your appointment..."),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMainBody(bool isDark) {
+    return RefreshIndicator(
         onRefresh: _refresh,
         color: primaryColor,
         child: SingleChildScrollView(
@@ -275,6 +403,8 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              _buildModeToggle(isDark),
+              const SizedBox(height: 20),
               // ── Location map card ───────────────────────────────
               _buildLocationCard(isDark),
               const SizedBox(height: 20),
@@ -290,6 +420,13 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                 "Nearby Mechanics",
                 "See All",
                 () async {
+                  if (selectedService == "All") {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                          content: Text("Please select a specific service to choose a mechanic")),
+                    );
+                    return;
+                  }
                   if (_filteredMechanics.isEmpty) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
@@ -314,36 +451,8 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                 },
               ),
               const SizedBox(height: 12),
-              _buildMechanicsList(isDark),
 
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _latitude == null
-                      ? null
-                      : () {
-                          if (selectedService == "All") {
-                            _showAutoAssignServiceDialog(isDark);
-                          } else {
-                            _autoAssignMechanic();
-                          }
-                        },
-                  icon: const Icon(Icons.auto_fix_high_outlined,
-                      color: Colors.white),
-                  label: const Text("Auto Assign Mechanic",
-                      style: TextStyle(
-                          fontFamily: 'YandexSansText',
-                          fontWeight: FontWeight.w500,
-                          color: Colors.white)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16)),
-                  ),
-                ),
-              ),
+              _buildMechanicsList(isDark),
               const SizedBox(height: 20),
 
               // ── Service detail ──────────────────────────────────
@@ -385,18 +494,26 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                               content: Text("Please select your location")));
                       return;
                     }
-                    if (selectedMechanic == null) {
+                    if (!_isAutoMode && selectedMechanic == null) {
                       ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                              content: Text("Please select a mechanic")));
+                              content: Text("Please choose a mechanic first")));
                       return;
                     }
-                    _bookAppointment(mechanic: selectedMechanic);
+                    
+                    if (_isAutoMode) {
+                       if (selectedService == "All") {
+                        _showAutoAssignServiceDialog(isDark);
+                      } else {
+                        _autoAssignMechanic();
+                      }
+                    } else {
+                      _bookAppointment(mechanic: selectedMechanic);
+                    }
                   },
-                  child: const Text(
-                    "Confirm Appointment",
-                    style: TextStyle(
-                      fontFamily: 'YandexSansText',
+                  child: Text(
+                    _isAutoMode ? "Find Mechanic" : "Book with Selected Mechanic",
+                    style: GoogleFonts.getFont('Bricolage Grotesque',
                       fontSize: 16,
                       fontWeight: FontWeight.w500,
                       color: Colors.white,
@@ -407,6 +524,30 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
               const SizedBox(height: 30),
             ],
           ),
+        ),
+    );
+  }
+
+  Widget _loadingOverlay(String message) {
+    return Container(
+      color: Colors.black.withOpacity(0.7),
+      width: double.infinity,
+      height: double.infinity,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+            const SizedBox(height: 24),
+            Text(
+              message,
+              style: GoogleFonts.getFont('Bricolage Grotesque',
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -447,8 +588,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                 children: [
                   Text(
                     _latitude == null ? "Set Your Location" : "Your Location",
-                    style: const TextStyle(
-                        fontFamily: 'YandexSansText',
+                    style: GoogleFonts.getFont('Bricolage Grotesque',
                         fontSize: 13,
                         fontWeight: FontWeight.w500),
                   ),
@@ -457,8 +597,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                     _locationName ?? "Tap to pick on map",
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontFamily: 'YandexSansText',
+                    style: GoogleFonts.getFont('Bricolage Grotesque',
                         fontSize: 12,
                         color: _latitude != null
                             ? Colors.black87
@@ -550,7 +689,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
             message,
             textAlign: TextAlign.center,
             style: TextStyle(
-                fontFamily: 'YandexSansText',
+                fontFamily: 'Bricolage Grotesque',
                 fontSize: 12,
                 color: Colors.grey.shade500),
           ),
@@ -560,7 +699,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
               onPressed: onRetry,
               child: Text("Retry",
                   style: TextStyle(
-                      fontFamily: 'YandexSansText', color: primaryColor)),
+                      fontFamily: 'Bricolage Grotesque', color: primaryColor)),
             ),
           ],
         ],
@@ -597,10 +736,10 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? Colors.grey[900] : Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-            color: isSelected ? primaryColor : Colors.transparent, width: 2),
+            color: (isSelected && !_isAutoMode) ? primaryColor : Colors.transparent, width: 2),
         boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
       ),
       child: Column(
@@ -629,21 +768,28 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                             name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                fontFamily: 'YandexSansText',
+                            style: GoogleFonts.getFont('Bricolage Grotesque',
                                 fontWeight: FontWeight.w700,
                                 fontSize: 13),
                           ),
                         ),
                         Text(
                           "#$mechId",
-                          style: TextStyle(
-                              fontFamily: 'YandexSansText',
+                          style: GoogleFonts.getFont('Bricolage Grotesque',
                               fontSize: 10,
                               color: primaryColor.withOpacity(0.7),
                               fontWeight: FontWeight.w600),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      mechanic['mechanictype'] ?? 'Mechanical Specialist',
+                      style: TextStyle(
+                          fontFamily: 'Bricolage Grotesque',
+                          fontSize: 10,
+                          color: Colors.grey.shade600,
+                          fontWeight: FontWeight.w500),
                     ),
                     const SizedBox(height: 2),
                     Row(
@@ -653,16 +799,25 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                         const SizedBox(width: 2),
                         Text(rating,
                             style: const TextStyle(
-                                fontFamily: 'YandexSansText',
-                                fontSize: 11,
+                                fontFamily: 'Bricolage Grotesque',
+                                fontSize: 10,
+                                fontWeight: FontWeight.w400)),
+                        const SizedBox(width: 6),
+                        Icon(Icons.work_history_outlined,
+                            size: 12, color: primaryColor.withOpacity(0.6)),
+                        const SizedBox(width: 2),
+                        Text("${mechanic['experience'] ?? '0'} yrs exp",
+                            style: const TextStyle(
+                                fontFamily: 'Bricolage Grotesque',
+                                fontSize: 10,
                                 fontWeight: FontWeight.w400)),
                         const SizedBox(width: 6),
                         Icon(Icons.location_on_outlined,
                             size: 13, color: primaryColor),
                         Text("$distance km",
                             style: const TextStyle(
-                                fontFamily: 'YandexSansText',
-                                fontSize: 11,
+                                fontFamily: 'Bricolage Grotesque',
+                                fontSize: 10,
                                 fontWeight: FontWeight.w400)),
                       ],
                     ),
@@ -688,7 +843,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                     const SizedBox(width: 3),
                     Text(statusLabel,
                         style: TextStyle(
-                            fontFamily: 'YandexSansText',
+                            fontFamily: 'Bricolage Grotesque',
                             fontSize: 10,
                             color: statusColor)),
                   ],
@@ -700,22 +855,40 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              ElevatedButton(
-                onPressed: () => setState(() => selectedMechanic = mechanic),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: primaryColor,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
+              if (!_isAutoMode)
+                ElevatedButton(
+                  onPressed: () => setState(() => selectedMechanic = mechanic),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryColor,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                  ),
+                  child: Text(isSelected ? "Selected" : "Select",
+                      style: const TextStyle(
+                          fontFamily: 'Bricolage Grotesque',
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white)),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    "Available for Auto-Assign",
+                    style: TextStyle(
+                      fontFamily: 'Bricolage Grotesque',
+                      fontSize: 10,
+                      color: Colors.green,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
-                child: Text(isSelected ? "Selected" : "Select",
-                    style: const TextStyle(
-                        fontFamily: 'YandexSansText',
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.white)),
-              ),
               ElevatedButton.icon(
                 onPressed: phone.isNotEmpty ? () => _callMechanic(phone) : null,
                 icon: const Icon(Icons.call_outlined,
@@ -738,10 +911,109 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   }
 
   // ── Helpers ───────────────────────────────────────────────────────
+
+  Widget _buildModeToggle(bool isDark) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.grey[900] : Colors.grey[100],
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _toggleButton(
+                  label: "Auto Assign",
+                  isSelected: _isAutoMode,
+                  isDark: isDark,
+                  isRecommended: true,
+                  onTap: () => setState(() => _isAutoMode = true),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: _toggleButton(
+                  label: "Choose Mechanic",
+                  isSelected: !_isAutoMode,
+                  isDark: isDark,
+                  onTap: () => setState(() => _isAutoMode = false),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _toggleButton(
+      {required String label,
+      required bool isSelected,
+      required bool isDark,
+      bool isRecommended = false,
+      required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 250),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: isSelected ? primaryColor : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: isSelected
+                  ? [
+                      BoxShadow(
+                          color: primaryColor.withOpacity(0.3), blurRadius: 8)
+                    ]
+                  : [],
+            ),
+            child: Center(
+              child: Text(
+                label,
+                style: GoogleFonts.getFont('Bricolage Grotesque',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: isSelected
+                      ? Colors.white
+                      : (isDark ? Colors.white70 : Colors.black54),
+                ),
+              ),
+            ),
+          ),
+          if (isRecommended)
+            Positioned(
+              top: -6,
+              right: 4,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: isSelected ? Colors.white : primaryColor,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  "RECOMMENDED",
+                  style: GoogleFonts.getFont('Bricolage Grotesque',
+                    fontSize: 7,
+                    fontWeight: FontWeight.bold,
+                    color: isSelected ? primaryColor : Colors.white,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _sectionTitle(String text) => Text(text,
-      style: const TextStyle(
-          fontFamily: 'YandexSansText',
-          fontWeight: FontWeight.w500,
+      style: GoogleFonts.getFont('Bricolage Grotesque',
+          fontWeight: FontWeight.w700,
           fontSize: 15));
 
   Widget _sectionTitleWithSeeAll(
@@ -750,9 +1022,8 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(title,
-              style: const TextStyle(
-                  fontFamily: 'YandexSansText',
-                  fontWeight: FontWeight.w500,
+              style: GoogleFonts.getFont('Bricolage Grotesque',
+                  fontWeight: FontWeight.w700,
                   fontSize: 15)),
           TextButton(
             onPressed: onSeeAll,
@@ -761,10 +1032,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
               overlayColor: MaterialStateProperty.all(Colors.deepOrange.shade100),
             ),
             child: Text(seeAllText,
-                style: const TextStyle(
-                    fontFamily: 'YandexSansText',
+                style: GoogleFonts.getFont('Bricolage Grotesque',
                     color: Colors.deepOrange,
-                    fontWeight: FontWeight.w500)),
+                    fontWeight: FontWeight.w600)),
           ),
         ],
       );
@@ -785,7 +1055,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           return GestureDetector(
             onTap: () => setState(() {
               selectedService = label;
-              _fetchNearbyMechanics(); // Re-fetch on filter change
+              // No _fetchNearbyMechanics() here to avoid flickers
             }),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 250),
@@ -815,10 +1085,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                   const SizedBox(width: 8),
                   Text(
                     label,
-                    style: TextStyle(
-                      fontFamily: 'YandexSansText',
+                    style: GoogleFonts.getFont('Bricolage Grotesque',
                       fontSize: 13,
-                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
                       color: isSelected ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
                     ),
                   ),
@@ -843,13 +1112,11 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       TextField(
         controller: controller,
         maxLines: maxLines,
-        style:
-            const TextStyle(fontFamily: 'YandexSansText', fontSize: 14),
+        style: GoogleFonts.getFont('Bricolage Grotesque', fontSize: 14),
         decoration: InputDecoration(
           prefixIcon: Icon(icon, color: primaryColor),
           hintText: hint,
-          hintStyle: const TextStyle(
-              fontFamily: 'YandexSansText', color: Colors.grey),
+          hintStyle: GoogleFonts.getFont('Bricolage Grotesque', color: Colors.grey),
           filled: true,
           fillColor: isDark ? Colors.grey[900] : Colors.white,
           enabledBorder: OutlineInputBorder(
@@ -881,8 +1148,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           selectedDate == null
               ? "Choose Date"
               : "${selectedDate!.day}/${selectedDate!.month}/${selectedDate!.year}",
-          style:
-              const TextStyle(fontFamily: 'YandexSansText', fontSize: 14),
+          style: GoogleFonts.getFont('Bricolage Grotesque', fontSize: 14),
         ),
         onTap: () async {
           final date = await showDatePicker(
@@ -913,8 +1179,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
         leading: Icon(Icons.access_time_outlined, color: primaryColor),
         title: Text(
           selectedTime == null ? "Choose Time" : selectedTime!.format(context),
-          style:
-              const TextStyle(fontFamily: 'YandexSansText', fontSize: 14),
+          style: GoogleFonts.getFont('Bricolage Grotesque', fontSize: 14),
         ),
         onTap: () async {
           final time = await showTimePicker(
@@ -944,8 +1209,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
         content: Text(
           "Your appointment has been booked successfully with ${selectedMechanic!['name'] ?? selectedMechanic!['phonenumber'] ?? 'the mechanic'}!",
           textAlign: TextAlign.center,
-          style: const TextStyle(
-              fontFamily: 'YandexSansText', fontWeight: FontWeight.w400),
+          style: GoogleFonts.getFont('Bricolage Grotesque', fontWeight: FontWeight.w400),
         ),
       );
 
@@ -1056,10 +1320,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: isDark ? Colors.grey[900] : Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
+        title: Text(
           "Select Service Type",
-          style: TextStyle(
-              fontFamily: 'YandexSansText', fontWeight: FontWeight.w600),
+          style: GoogleFonts.getFont('Bricolage Grotesque', fontWeight: FontWeight.w600),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1077,7 +1340,12 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   Widget _serviceOption(BuildContext context, String label, IconData icon) {
     return ListTile(
       leading: Icon(icon, color: primaryColor),
-      title: Text(label, style: const TextStyle(fontFamily: 'YandexSansText')),
+      title: Text(
+        label,
+        style: GoogleFonts.getFont('Bricolage Grotesque',
+          fontWeight: FontWeight.w600,
+        ),
+      ),
       onTap: () {
         Navigator.pop(context);
         setState(() => selectedService = label);

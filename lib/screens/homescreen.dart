@@ -3,6 +3,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
+import 'package:flutter/foundation.dart'; // Added for kIsWeb
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
@@ -15,10 +16,14 @@ import 'package:mech_app/screens/user/my_request_menubar.dart';
 import 'package:mech_app/screens/user/settings_menubar.dart';
 import 'package:mech_app/screens/user/view_detail.dart';
 import 'package:mech_app/screens/user/user_profile.dart';
+import 'package:mech_app/screens/user/user_notification_screen.dart';
+import 'package:mech_app/screens/user/payment_webview_screen.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:url_launcher/url_launcher.dart';
 import './authentication/service_chat_screen.dart';
 import './authentication/user_session.dart';
+import '../../services/user_websocket_service.dart';
+import '../../services/user_notification_controller.dart';
 import 'auto_assign.dart';
 import 'mechanic_list_screen.dart';
 import 'role_selection_screen.dart';
@@ -41,6 +46,9 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Map<String, dynamic>> nearbyMechanics = [];
   String? _mechanicsMessage;
 
+  // Notification state
+  int _unreadNotifCount = 0;
+
   // ---- Filter State ----
   String _selectedFilter = "All";
   final List<String> _filterOptions = ["All", "Puncher", "Bike Mechanic", "Car Mechanic"];
@@ -56,7 +64,104 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _fetchDashboardData();
+    _fetchUnreadCount();
   }
+
+  @override
+  void dispose() {
+    UserNotificationController().removeListener(_onGlobalNotificationReceived);
+    super.dispose();
+  }
+
+  void _onGlobalNotificationReceived() {
+    if (mounted) {
+      _fetchUnreadCount();
+    }
+  }
+
+  void _initUserWebSocket(int userId) {
+    UserNotificationController().init();
+    UserNotificationController().addListener(_onGlobalNotificationReceived);
+  }
+
+  Future<void> _fetchUnreadCount() async {
+    try {
+      final response = await http.get(
+        Uri.parse('https://mechanicapp-service-621632382478.asia-south1.run.app/api/user/appointments/allnotifications'),
+        headers: UserSession().getAuthHeader(),
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> list = jsonDecode(response.body);
+        final unread = list.where((n) => n['isread'] == false).length;
+        if (mounted) setState(() => _unreadNotifCount = unread);
+      }
+    } catch (e) {
+      debugPrint('❌ Error fetching notif count: $e');
+    }
+  }
+
+  Future<void> _handlePayment() async {
+    setState(() => _isLoading = true);
+    try {
+      final response = await http.post(
+        Uri.parse('https://mechanicapp-service-621632382478.asia-south1.run.app/api/payment/create-session'),
+        headers: {
+          'Content-Type': 'application/json',
+          ...UserSession().getAuthHeader(),
+        },
+        body: jsonEncode({
+          "amount": 1500.0,
+          "appointmentId": "AN0000074",
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        // Handle different possible key names for the checkout URL
+        final String? checkoutUrl = data['checkoutUrl'] ?? data['url'] ?? data['data']?['url'];
+        
+        if (checkoutUrl == null) {
+          throw Exception('Payment URL not found in response');
+        }
+        
+        // Printing the URL to terminal as requested
+        debugPrint('🚀 Safepay Checkout URL: $checkoutUrl');
+        
+        if (mounted) {
+          if (kIsWeb) {
+            // Web support: Open in new tab using url_launcher
+            final Uri uri = Uri.parse(checkoutUrl);
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+          } else {
+            // Mobile support: Open in WebView
+            final result = await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => PaymentWebViewScreen(url: checkoutUrl),
+              ),
+            );
+            
+            if (result == 'success') {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Payment Successful!'), backgroundColor: Colors.green),
+              );
+            }
+          }
+        }
+      } else {
+        throw Exception('Failed to create payment session');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Payment Error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
 
   Future<void> _fetchDashboardData() async {
     final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/user/dashboard" );
@@ -87,6 +192,11 @@ class _HomeScreenState extends State<HomeScreen> {
             _userId = user['userid'];
             _userImgUrl = user['userimgurl'] ?? "";
             UserSession().userId = user['userid'];
+            
+            // Init WebSocket once we have user ID
+            if (user['userid'] != null) {
+              _initUserWebSocket(user['userid']);
+            }
           }
           
           if (data['mechanics'] != null) {
@@ -182,6 +292,50 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
           ],
         ),
+        actions: [
+          // Notification Bell with unread badge
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                IconButton(
+                  icon: Icon(Icons.notifications_outlined, color: primaryColor, size: 26),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const UserNotificationScreen()),
+                    ).then((_) {
+                      _fetchUnreadCount();
+                    });
+                  },
+                ),
+                if (_unreadNotifCount > 0)
+                  Positioned(
+                    right: 6,
+                    top: 6,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                      child: Text(
+                        _unreadNotifCount > 99 ? '99+' : '$_unreadNotifCount',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
 
       body: _isLoading 
@@ -196,48 +350,98 @@ class _HomeScreenState extends State<HomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // -------- Auto Assign --------
-                    Container(
-                      padding: const EdgeInsets.all(18),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(18),
-                        gradient: LinearGradient(
-                            colors: [primaryColor, Colors.deepOrange]),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text("Need a Mechanic Now?",
-                              style: TextStyle(
-                                  fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
-                                  color: Colors.white,
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w500)),
-                          const SizedBox(height: 6),
-                          Text("Nearest mechanic will be auto assigned",
-                              style: TextStyle(fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily, color: Colors.white70, fontWeight: FontWeight.w400)),
-                          const SizedBox(height: 14),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.white,
-                              foregroundColor: primaryColor,
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12)),
-                            ),
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (_) => const AutoAssignScreen()),
-                              );
-                            },
-                            child: Text("Auto Assign Mechanic",
-                                style: TextStyle(
-                                    fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
-                                    fontWeight: FontWeight.w400,
-                                    color: Color(0xFFFB3300))),
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(18),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(18),
+                            gradient: LinearGradient(
+                                colors: [primaryColor, Colors.deepOrange]),
                           ),
-                        ],
-                      ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text("Need a Mechanic Now?",
+                                  style: TextStyle(
+                                      fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                                      color: Colors.white,
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w500)),
+                              const SizedBox(height: 6),
+                              Text("Nearest mechanic will be auto assigned",
+                                  style: TextStyle(fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily, color: Colors.white70, fontWeight: FontWeight.w400)),
+                              const SizedBox(height: 14),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: ElevatedButton(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.white,
+                                        foregroundColor: primaryColor,
+                                        shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(12)),
+                                      ),
+                                      onPressed: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                              builder: (_) => const AutoAssignScreen()),
+                                        );
+                                      },
+                                      child: Text("Auto Assign",
+                                          style: TextStyle(
+                                              fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                                              fontWeight: FontWeight.w400,
+                                              color: Color(0xFFFB3300))),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: ElevatedButton(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.black,
+                                        foregroundColor: Colors.white,
+                                        shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(12)),
+                                      ),
+                                      onPressed: _handlePayment,
+                                      child: Text("Pay Now",
+                                          style: TextStyle(
+                                              fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                                              fontWeight: FontWeight.w400,
+                                              color: Colors.white)),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        Positioned(
+                          top: -8,
+                          right: 12,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(8),
+                              boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                            ),
+                            child: Text(
+                              "EMERGENCY",
+                              style: TextStyle(
+                                fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                                color: primaryColor,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
 
                     const SizedBox(height: 26),
@@ -438,32 +642,58 @@ class _HomeScreenState extends State<HomeScreen> {
           MaterialPageRoute(builder: (_) => ServiceChatScreen(serviceType: title, id: id)),
         );
       },
-      child: Container(
-        height: 120,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          image: DecorationImage(image: AssetImage(image), fit: BoxFit.cover),
-        ),
-        alignment: Alignment.bottomLeft,
-        padding: const EdgeInsets.all(16),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-          decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.45),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Text(
-            title.toUpperCase(),
-            style: TextStyle(
-              fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
-              color: Colors.white,
-              fontSize: 26, // Increased size slightly to compensate for tight spacing
-              fontWeight: FontWeight.w900, // Make it as bold as possible
-              // TIGHT character spacing like Yango
-              height: 1.0, 
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            height: 120,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              image: DecorationImage(image: AssetImage(image), fit: BoxFit.cover),
+            ),
+            alignment: Alignment.bottomLeft,
+            padding: const EdgeInsets.all(16),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.45),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                title.toUpperCase(),
+                style: TextStyle(
+                  fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                  color: Colors.white,
+                  fontSize: 26, 
+                  fontWeight: FontWeight.w900,
+                  height: 1.0, 
+                ),
+              ),
             ),
           ),
-        ),
+          Positioned(
+            top: 10,
+            right: 12,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: primaryColor,
+                borderRadius: BorderRadius.circular(6),
+                boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+              ),
+              child: Text(
+                "EMERGENCY",
+                style: TextStyle(
+                  fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                  fontSize: 8,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -557,13 +787,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   Navigator.pop(context);
                   Navigator.push(context, MaterialPageRoute(builder: (_) => const UserProfileScreen()));
                 }),
-                _drawerItem(Icons.history_outlined, "Request History", context, isDark: isDark, onTap: () {
+                _drawerItem(Icons.calendar_today_outlined, "Appointments", context, isDark: isDark, onTap: () {
                   Navigator.pop(context);
                   Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const RequestHistoryScreen()), (route) => false);
-                }),
-                _drawerItem(Icons.calendar_today_outlined, "Book Appointments", context, isDark: isDark, onTap: () {
-                  Navigator.pop(context);
-                  Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const BookAppointmentScreen()), (route) => false);
                 }),
                 
                 Padding(
@@ -619,6 +845,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   );
 
                   await Future.delayed(const Duration(seconds: 1)); 
+                  UserNotificationController().dispose(); // Close WebSocket
                   await UserSession().logout();
 
                   if (context.mounted) {
@@ -638,6 +865,7 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
             child: InkWell(
               onTap: () async {
+                UserNotificationController().dispose(); // Close WebSocket
                 if (await UserSession().trySwitchTo('MECHANIC')) {
                   if (context.mounted) {
                     Navigator.pushAndRemoveUntil(

@@ -12,8 +12,11 @@ import 'mechanic_appointmentrequest.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../authentication/user_session.dart';
+import '../homescreen.dart';
 import '../role_selection_screen.dart';
 import '../../services/websocket_service.dart'; // Re-adding websocket
+import '../../services/mechanic_notification_controller.dart'; // Add Global Controller
+import '../../utils/time_utils.dart'; // Added for relative time formatting
 
 class MechanicDashboardScreen extends StatefulWidget {
   const MechanicDashboardScreen({super.key});
@@ -37,153 +40,66 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
   String mechanicName = "Mechanic";
   String mechanicImageUrl = '';
 
-  late WebSocketService _webSocketService;
-  int _notificationCount = 0;
-  OverlayEntry? _overlayEntry;
-  List<Map<String, dynamic>> _notifications = [];
+  final List<Map<String, dynamic>> _roadRequests = [];
+  final List<Map<String, dynamic>> _appointmentRequests = [];
+
+  int get _dailyUnreadCount => _roadRequests.where((e) => e['isRead'] == false).length;
+  int get _appointmentUnreadCount =>
+      _appointmentRequests.where((e) => e['isRead'] == false).length;
+  int get _notificationCount => _dailyUnreadCount + _appointmentUnreadCount;
 
   @override
   void initState() {
     super.initState();
     _fetchDashboardData();
+    _fetchAppointmentNotifications();
     _initWebSocket();
   }
 
   void _initWebSocket() {
-    if (UserSession().userId == null) {
-      debugPrint("❌ Mechanic Dashboard: User ID is null, cannot connect to WebSocket");
-      return;
+    // 1. Initialize and connect the global controller
+    MechanicNotificationController().init();
+    
+    // 2. Add listener to update dashboard UI when a notification arrives
+    MechanicNotificationController().addListener(_onGlobalNotificationReceived);
+  }
+
+  void _onGlobalNotificationReceived(Map<String, dynamic> request, String type) {
+    if (mounted) {
+      setState(() {
+        if (type == 'appointment' || type == 'cancel') {
+          _appointmentRequests.insert(0, request);
+        } else {
+          _roadRequests.insert(0, request);
+        }
+      });
     }
-
-    _webSocketService = WebSocketService(
-      onNotificationReceived: (data) {
-        setState(() {
-          _notificationCount++;
-          _notifications.insert(0, {
-            'type': 'road',
-            'id': data['userid']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
-            'userName': data['username'] ?? 'Unknown User',
-            'location': data['userlocname'] ?? 'Location not provided',
-            'time': data['eta'] != null ? 'ETA: ${data['eta']}' : "Just now",
-            'issue': 'Emergency Roadside Assistance',
-            'price': data['price'] != null ? 'Rs. ${data['price']}' : 'Rs. 1,200',
-            'distance': data['distance'] != null ? '${data['distance']} km away' : '',
-            'userimage': data['userimage'] ?? '',
-            'lat': data['lat'],
-            'lon': data['lon'],
-            'isRead': false,
-          });
-        });
-        _showNotificationOverlay(data);
-      },
-    );
-    // Use the ID strictly from UserSession saved at Login
-    _webSocketService.connect(UserSession().userId!);
-  }
-
-  void _removeOverlay() {
-    _overlayEntry?.remove();
-    _overlayEntry = null;
-  }
-
-  void _showNotificationOverlay(Map<String, dynamic> data) {
-    _removeOverlay(); // Purana overlay pehle hata do
-
-    final String userName = data['username'] ?? 'New Request';
-    final String location = data['userlocname'] ?? 'Nearby location';
-    final String userimage = data['userimage'] ?? '';
-    final String distance  = data['distance'] != null ? '${data['distance']} km away' : '';
-
-    _overlayEntry = OverlayEntry(
-      builder: (ctx) => Positioned(
-        top: MediaQuery.of(context).padding.top + 10,
-        left: 16,
-        right: 16,
-        child: Material(
-          color: Colors.transparent,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.15),
-                  blurRadius: 20,
-                  offset: const Offset(0, 6),
-                )
-              ],
-            ),
-            child: Row(
-              children: [
-                // User Image
-                CircleAvatar(
-                  radius: 26,
-                  backgroundColor: Colors.grey.shade200,
-                  backgroundImage: userimage.isNotEmpty
-                      ? NetworkImage(userimage)
-                      : null,
-                  child: userimage.isEmpty
-                      ? Text(userName.isNotEmpty ? userName[0].toUpperCase() : '?',
-                          style: GoogleFonts.poppins(color: primaryColor, fontSize: 20, fontWeight: FontWeight.bold))
-                      : null,
-                ),
-                const SizedBox(width: 12),
-                // Text Info
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('🔔 New Service Request!',
-                          style: GoogleFonts.poppins(fontSize: 11, color: Colors.grey)),
-                      Text(userName,
-                          style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.black87)),
-                      if (distance.isNotEmpty)
-                        Text(distance,
-                            style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey[600])),
-                      Text(location,
-                          style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey[500]),
-                          maxLines: 1, overflow: TextOverflow.ellipsis),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // View Button
-                GestureDetector(
-                  onTap: () {
-                    _removeOverlay();
-                    setState(() => _notificationCount = 0);
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => MechanicNotificationScreen(liveRequests: _notifications)));
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: primaryColor,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text('View', style: GoogleFonts.poppins(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-
-    Overlay.of(context).insert(_overlayEntry!);
-
-    // 5 seconds baad auto-remove
-    Future.delayed(const Duration(seconds: 5), _removeOverlay);
   }
 
   @override
   void dispose() {
-    _webSocketService.disconnect();
-    _removeOverlay();
+    MechanicNotificationController().removeListener(_onGlobalNotificationReceived);
     super.dispose();
   }
+
+
+
+  void _openNotificationCenter({int initialTabIndex = 0}) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MechanicNotificationScreen(
+          dailyRequests: _roadRequests,
+          appointmentRequests: _appointmentRequests,
+          initialTabIndex: initialTabIndex,
+          onReadUpdate: _fetchAppointmentNotifications,
+        ),
+      ),
+    ).then((_) {
+      _fetchAppointmentNotifications();
+    });
+  }
+
 
   Future<void> _fetchDashboardData() async {
     final url = Uri.parse(
@@ -194,7 +110,12 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
           await http.get(url, headers: UserSession().getAuthHeader());
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        final dynamic data = jsonDecode(response.body);
+        if (data is! Map) {
+          debugPrint("⚠️ Mechanic Dashboard data is not a Map: $data");
+          setState(() => _isLoading = false);
+          return;
+        }
 
         setState(() {
           mechanicName = data['name'] ?? mechanicName;
@@ -222,6 +143,81 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
     }
   }
 
+  Future<void> _fetchAppointmentNotifications() async {
+    final url = Uri.parse(
+        "https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/appointments/allnotifications");
+
+    try {
+      final response =
+          await http.get(url, headers: UserSession().getAuthHeader());
+
+      if (response.statusCode == 200) {
+        final dynamic decoded = jsonDecode(response.body);
+        if (decoded is List) {
+          setState(() {
+            _appointmentRequests.clear();
+            for (var item in decoded) {
+              if (item is Map) {
+                _appointmentRequests.add(_mapAppointmentRequest(Map<String, dynamic>.from(item)));
+              }
+            }
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint("❌ Error fetching appointment notifications: $e");
+    }
+  }
+
+  Map<String, dynamic> _mapRoadRequest(Map<String, dynamic> data) {
+    return {
+      'type': 'road',
+      'id': data['userid']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      'userName': data['username'] ?? 'Unknown User',
+      'location': data['userlocname'] ?? 'Location not provided',
+      'time': TimeAgo.format(data['created_at']),
+      'issue': 'Emergency Roadside Assistance',
+      'price': data['price'] != null ? 'Rs. ${data['price']}' : 'Rs. --',
+      'distance': data['distance'] != null ? '${data['distance']} km away' : '',
+      'userimage': data['userimage'] ?? '',
+      'lat': data['lat'],
+      'lon': data['lon'],
+      'isRead': false,
+    };
+  }
+
+  Map<String, dynamic> _mapAppointmentRequest(Map<String, dynamic> data) {
+    final rawUser = data['user'];
+    final Map<String, dynamic> user = (rawUser is Map) ? Map<String, dynamic>.from(rawUser) : {};
+    
+    final String username = data['username'] ?? data['userName'] ?? user['username'] ?? user['phonenumber'] ?? data['userphonenumber'] ?? 'Appointment User';
+    final String userImg = data['userimage'] ?? user['userimgurl'] ?? user['image'] ?? '';
+    
+    final rawDate = data['appointmentDate']?.toString() ?? '--';
+    final rawTime = data['appointmentTime']?.toString() ?? '--';
+    final scheduled = '$rawDate | $rawTime';
+
+    final dynamic rawIsRead = data['read'] ?? data['isread'] ?? data['isRead'];
+    final bool isRead = rawIsRead is bool ? rawIsRead : (rawIsRead?.toString().toLowerCase() == 'true');
+
+    return {
+      'type': 'appointment',
+      'id': (data['notificationid'] ?? data['notificationId'] ?? data['id'] ?? data['appointmentid'] ?? data['appointmentId'] ?? DateTime.now().millisecondsSinceEpoch.toString()).toString(),
+      'appointmentId': (data['appointmentid'] ?? data['appointmentId'] ?? '').toString(),
+      'userName': username,
+      'userimage': userImg,
+      'location': data['useraddress'] ?? data['address'] ?? 'Address not provided',
+      'time': TimeAgo.format(data['created_at']),
+      'issue': data['problemDescription'] ?? data['problem'] ?? 'Service appointment request',
+      'price': 'Rs. --',
+      'distance': '',
+      'scheduledTime': scheduled,
+      'serviceType': data['serviceType'] ?? data['servicetype'] ?? 'General Service',
+      'status': data['status']?.toString() ?? 'PENDING',
+      'isRead': isRead,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -238,7 +234,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
       ),
       drawer: _buildDrawer(isDark, theme),
       body: _isLoading
-          ? const _SkeletonMechanicDashboard()
+          ? _SkeletonMechanicDashboard()
           : RefreshIndicator(
               onRefresh: _fetchDashboardData,
               color: primaryColor,
@@ -295,8 +291,10 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
                           children: [
                             IconButton(
                               onPressed: () {
-                                setState(() => _notificationCount = 0);
-                                Navigator.push(context, MaterialPageRoute(builder: (_) => MechanicNotificationScreen(liveRequests: _notifications)));
+                                _openNotificationCenter(
+                                  initialTabIndex:
+                                      _appointmentUnreadCount > 0 ? 1 : 0,
+                                );
                               },
                               icon: Icon(Icons.notifications_outlined, color: primaryColor, size: 28),
                             ),
@@ -456,7 +454,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
 
   // ================= DRAWER STYLED =================
   Widget _drawerItem(IconData icon, String title, BuildContext context, 
-      {bool isLogout = false, required bool isDark, bool isSelected = false, VoidCallback? onTap}) {
+      {bool isLogout = false, required bool isDark, bool isSelected = false, VoidCallback? onTap, int badgeCount = 0}) {
     
     final Color itemColor = isLogout ? Colors.red : (isDark ? Colors.white70 : Colors.black87);
     final Color selectedBgColor = isDark ? primaryColor.withValues(alpha: 0.15) : primaryColor.withValues(alpha: 0.1);
@@ -483,6 +481,24 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
             fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
           ),
         ),
+        trailing: badgeCount > 0
+            ? Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.red,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  badgeCount > 99 ? '99+' : '$badgeCount',
+                  style: GoogleFonts.poppins(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              )
+            : null,
         onTap: onTap,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
         minLeadingWidth: 20,
@@ -568,9 +584,21 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
                 _drawerItem(Icons.dashboard_customize_rounded, "Dashboard", context, isDark: isDark, isSelected: true, onTap: () {
                   Navigator.pop(context);
                 }),
-                _drawerItem(Icons.calendar_today_rounded, "Appointment Requests", context, isDark: isDark, onTap: () {
+                _drawerItem(Icons.calendar_today_rounded, "Appointment Requests", context, isDark: isDark, badgeCount: _appointmentUnreadCount, onTap: () {
                   Navigator.pop(context);
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => const MechanicAppointmentRequestScreen()));
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => MechanicAppointmentRequestScreen(
+                        requests: _appointmentRequests,
+                        onReadUpdate: () {
+                          if (mounted) setState(() {});
+                        },
+                      ),
+                    ),
+                  ).then((_) {
+                    _fetchAppointmentNotifications();
+                  });
                 }),
                 _drawerItem(Icons.event_note_rounded, "Booking Requests", context, isDark: isDark, onTap: () {
                   Navigator.pop(context);
@@ -600,6 +628,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
                 }),
                 _drawerItem(Icons.logout_rounded, "Logout", context, isDark: isDark, isLogout: true, onTap: () async {
                   final nav = Navigator.of(context);
+                  MechanicNotificationController().dispose(); // Close WebSocket
                   await UserSession().logout();
                   nav.pushAndRemoveUntil(
                     MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
@@ -615,11 +644,19 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
             child: InkWell(
               onTap: () async {
                 final nav = Navigator.of(context);
-                // Switch backend role cache logic
-                nav.pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
-                  (route) => false,
-                );
+                MechanicNotificationController().dispose(); // Close WebSocket
+                bool success = await UserSession().trySwitchTo('USER');
+                if (success) {
+                  nav.pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (_) => const HomeScreen()),
+                    (route) => false,
+                  );
+                } else {
+                  nav.pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
+                    (route) => false,
+                  );
+                }
               },
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 14),

@@ -2,6 +2,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'screens/s_screen.dart';
 import 'firebase_options.dart';
+import 'services/fcm_notification_service.dart';
 
 // ===== GLOBAL THEME NOTIFIER =====
 class ThemeNotifier extends ValueNotifier<ThemeMode> {
@@ -12,12 +13,12 @@ class ThemeNotifier extends ValueNotifier<ThemeMode> {
 }
 
 final themeNotifier = ThemeNotifier();
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
-   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await FcmNotificationService.instance.initialize();
   runApp(const MechConnectApp());
 }
 
@@ -30,6 +31,7 @@ class MechConnectApp extends StatelessWidget {
       valueListenable: themeNotifier,
       builder: (context, currentMode, _) {
         return MaterialApp(
+          navigatorKey: navigatorKey,
           debugShowCheckedModeBanner: false,
           title: 'MechConnect',
 
@@ -43,7 +45,6 @@ class MechConnectApp extends StatelessWidget {
               primary: Color(0xFFFB3300),
               secondary: Colors.deepOrange,
               surface: Colors.white,
-              background: Colors.white,
               onPrimary: Colors.white,
               surfaceTint: Colors.transparent,
             ),
@@ -57,7 +58,6 @@ class MechConnectApp extends StatelessWidget {
               primary: Colors.deepOrange,
               secondary: Colors.orange,
               surface: Colors.black,
-              background: Colors.black,
               onPrimary: Colors.white,
               surfaceTint: Colors.transparent,
             ),
@@ -80,11 +80,13 @@ class _NoGlowScrollBehavior extends ScrollBehavior {
 
   @override
   Widget buildOverscrollIndicator(
-      BuildContext context, Widget child, ScrollableDetails details) {
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) {
     return child; // No glow indicator
   }
 }
-
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});

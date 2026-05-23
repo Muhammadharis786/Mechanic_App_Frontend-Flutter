@@ -7,6 +7,7 @@ import 'role_selection_screen.dart';
 import 'authentication/user_session.dart';
 import 'homescreen.dart';
 import 'mechanic/mechanic_dashboard.dart';
+import '../services/fcm_notification_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -54,6 +55,9 @@ class _SplashScreenState extends State<SplashScreen>
     if (!mounted) return;
 
     if (isLoggedIn) {
+      await FcmNotificationService.instance.syncTokenWithBackend();
+      if (!mounted) return;
+
       if (UserSession().userType == 'MECHANIC') {
         Navigator.pushReplacement(
           context,
@@ -68,6 +72,7 @@ class _SplashScreenState extends State<SplashScreen>
     } else {
       final prefs = await SharedPreferences.getInstance();
       bool isFirstTime = prefs.getBool('isFirstTime') ?? true;
+      if (!mounted) return;
 
       if (isFirstTime) {
         Navigator.pushReplacement(
@@ -112,7 +117,7 @@ class _SplashScreenState extends State<SplashScreen>
                 child: _buildContentLayer(
                   backgroundColor: Colors.white,
                   textColor: const Color(0xFFFB2A00),
-                  taglineColor: Colors.grey.withOpacity(0.8),
+                  taglineColor: Colors.grey.withValues(alpha: 0.8),
                 ),
               );
             },
@@ -158,15 +163,20 @@ class _SplashScreenState extends State<SplashScreen>
                 curve: const Interval(0.6, 1.0, curve: Curves.easeIn),
               ),
               child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0, 0.5),
-                  end: Offset.zero,
-                ).animate(
-                  CurvedAnimation(
-                    parent: _entranceController,
-                    curve: const Interval(0.6, 1.0, curve: Curves.easeOutBack),
-                  ),
-                ),
+                position:
+                    Tween<Offset>(
+                      begin: const Offset(0, 0.5),
+                      end: Offset.zero,
+                    ).animate(
+                      CurvedAnimation(
+                        parent: _entranceController,
+                        curve: const Interval(
+                          0.6,
+                          1.0,
+                          curve: Curves.easeOutBack,
+                        ),
+                      ),
+                    ),
                 child: Text(
                   _taglineText,
                   style: GoogleFonts.poppins(
@@ -210,15 +220,13 @@ class _CharacterDrop extends StatelessWidget {
       curve: Interval(start, end, curve: Curves.easeIn),
     );
 
-    final Animation<Offset> slide = Tween<Offset>(
-      begin: const Offset(0, -1.8),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: controller,
-        curve: Interval(start, end, curve: Curves.bounceOut),
-      ),
-    );
+    final Animation<Offset> slide =
+        Tween<Offset>(begin: const Offset(0, -1.8), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: controller,
+            curve: Interval(start, end, curve: Curves.bounceOut),
+          ),
+        );
 
     return FadeTransition(
       opacity: fade,

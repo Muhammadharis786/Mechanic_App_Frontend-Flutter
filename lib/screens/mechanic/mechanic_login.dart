@@ -3,10 +3,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:mech_app/screens/mechanic/mechanic_register_phone.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'mechanic_dashboard.dart';
 import 'mechanic_location_screen.dart';
 import 'mechanic_under_review_screen.dart';
 import '../authentication/user_session.dart';
+import '../../services/fcm_notification_service.dart';
 
 class MechanicLoginScreen extends StatefulWidget {
   const MechanicLoginScreen({super.key});
@@ -40,8 +40,10 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
     final password = passwordController.text.trim();
 
     try {
-      final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/login");
-      
+      final url = Uri.parse(
+        "https://mechanicapp-service-621632382478.asia-south1.run.app/api/login",
+      );
+
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
@@ -54,16 +56,16 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
 
       if (response.statusCode == 200) {
         // Parse user data if needed, for now just expecting success
-        // final data = jsonDecode(response.body); 
+        // final data = jsonDecode(response.body);
 
         // Save Mechanic Session
         await UserSession().saveSession(phone, password, 'MECHANIC');
-        
+
         // Extract Mechanic ID from the login response and save to Session
         try {
           final data = jsonDecode(response.body);
           int? mechanicId;
-          
+
           if (data is Map) {
             if (data.containsKey('id') && data['id'] != null) {
               // Convert to int in case the backend returns it as string unexpectedly
@@ -72,16 +74,20 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
               mechanicId = int.tryParse(data['userId'].toString());
             }
           }
-          
+
           if (mechanicId != null) {
-             await UserSession().setUserId(mechanicId);
-             debugPrint("✅ Mechanic ID ($mechanicId) saved to UserSession during login.");
+            await UserSession().setUserId(mechanicId);
+            debugPrint(
+              "✅ Mechanic ID ($mechanicId) saved to UserSession during login.",
+            );
           } else {
-             debugPrint("⚠️ Mechanic ID not found in login response.");
+            debugPrint("⚠️ Mechanic ID not found in login response.");
           }
         } catch (e) {
           debugPrint("❌ Error parsing login response for ID: $e");
         }
+
+        await FcmNotificationService.instance.syncTokenWithBackend();
 
         debugPrint("Login Success: ${response.body}");
 
@@ -90,15 +96,20 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
           if (mounted) {
             Navigator.pushReplacement(
               context,
-              MaterialPageRoute(builder: (_) => const MechanicUnderReviewScreen()),
+              MaterialPageRoute(
+                builder: (_) => const MechanicUnderReviewScreen(),
+              ),
             );
           }
           return;
         }
 
         if (mounted) {
-           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Login Successful!'), backgroundColor: Colors.green),
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Login Successful!'),
+              backgroundColor: Colors.green,
+            ),
           );
 
           Navigator.pushReplacement(
@@ -120,19 +131,21 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
           }
         } catch (e) {
           // If parsing fails, use response body as is (but keep it clean)
-          errorMessage = response.body.isNotEmpty && response.body.length < 100 
-              ? response.body 
+          errorMessage = response.body.isNotEmpty && response.body.length < 100
+              ? response.body
               : 'Login failed. Please check your credentials.';
         }
-        
+
         debugPrint("Login Failed: ${response.body}");
-        
+
         // --- ADMIN CHECK ---
         if (response.body.toLowerCase().contains('admin')) {
           if (mounted) {
             Navigator.pushReplacement(
               context,
-              MaterialPageRoute(builder: (_) => const MechanicUnderReviewScreen()),
+              MaterialPageRoute(
+                builder: (_) => const MechanicUnderReviewScreen(),
+              ),
             );
           }
           return;
@@ -140,10 +153,7 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(errorMessage),
-              backgroundColor: Colors.red,
-            ),
+            SnackBar(content: Text(errorMessage), backgroundColor: Colors.red),
           );
         }
       }
@@ -196,7 +206,10 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
 
               Text(
                 "Login with your phone number and password",
-                style: GoogleFonts.poppins(fontSize: 14, color: isDark ? Colors.white70 : Colors.grey),
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  color: isDark ? Colors.white70 : Colors.grey,
+                ),
               ),
 
               const SizedBox(height: 30),
@@ -204,7 +217,10 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
               /// Phone Number
               Text(
                 "Phone Number",
-                style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: theme.textTheme.bodyLarge?.color),
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.w600,
+                  color: theme.textTheme.bodyLarge?.color,
+                ),
               ),
               const SizedBox(height: 8),
 
@@ -215,9 +231,13 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
                 onChanged: (_) => _checkFields(),
                 decoration: InputDecoration(
                   hintText: "3XXXXXXXXX",
-                  hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.grey),
+                  hintStyle: TextStyle(
+                    color: isDark ? Colors.white38 : Colors.grey,
+                  ),
                   filled: true,
-                  fillColor: isDark ? Colors.grey[900] : const Color(0xFFF3F3F3),
+                  fillColor: isDark
+                      ? Colors.grey[900]
+                      : const Color(0xFFF3F3F3),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 14,
@@ -234,7 +254,9 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: isDark ? Colors.grey[800]! : primaryColor),
+                    borderSide: BorderSide(
+                      color: isDark ? Colors.grey[800]! : primaryColor,
+                    ),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
@@ -251,7 +273,10 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
               /// Password
               Text(
                 "Password",
-                style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: theme.textTheme.bodyLarge?.color),
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.w600,
+                  color: theme.textTheme.bodyLarge?.color,
+                ),
               ),
               const SizedBox(height: 8),
 
@@ -262,9 +287,13 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
                 onChanged: (_) => _checkFields(),
                 decoration: InputDecoration(
                   hintText: "Min 8 characters",
-                  hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.grey),
+                  hintStyle: TextStyle(
+                    color: isDark ? Colors.white38 : Colors.grey,
+                  ),
                   filled: true,
-                  fillColor: isDark ? Colors.grey[900] : const Color(0xFFF3F3F3),
+                  fillColor: isDark
+                      ? Colors.grey[900]
+                      : const Color(0xFFF3F3F3),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 14,
@@ -284,7 +313,9 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: isDark ? Colors.grey[800]! : primaryColor),
+                    borderSide: BorderSide(
+                      color: isDark ? Colors.grey[800]! : primaryColor,
+                    ),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
@@ -303,7 +334,9 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
-                  onPressed: (_isButtonEnabled && !_isLoading) ? _onLogin : null,
+                  onPressed: (_isButtonEnabled && !_isLoading)
+                      ? _onLogin
+                      : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _isButtonEnabled
                         ? primaryColor
@@ -314,16 +347,23 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
                       borderRadius: BorderRadius.circular(14),
                     ),
                   ),
-                  child: _isLoading 
-                    ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : Text(
-                    "Login",
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : Text(
+                          "Login",
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
                 ),
               ),
 
@@ -353,7 +393,9 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
                   children: [
                     Text(
                       "Don't have an account? ",
-                      style: GoogleFonts.poppins(color: theme.textTheme.bodyMedium?.color),
+                      style: GoogleFonts.poppins(
+                        color: theme.textTheme.bodyMedium?.color,
+                      ),
                     ),
                     GestureDetector(
                       onTap: () {

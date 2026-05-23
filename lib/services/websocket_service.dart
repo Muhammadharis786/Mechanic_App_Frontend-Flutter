@@ -1,43 +1,71 @@
 import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 import 'package:stomp_dart_client/stomp_dart_client.dart';
+
 import '../screens/authentication/user_session.dart';
 
 class WebSocketService {
   StompClient? client;
-  final Function(Map<String, dynamic>) onNotificationReceived;
+  final Function(dynamic data, String type) onNotificationReceived;
 
   WebSocketService({required this.onNotificationReceived});
 
   void connect(int mechanicId) {
     client = StompClient(
       config: StompConfig(
-        url: 'wss://mechanicapp-service-621632382478.asia-south1.run.app/ws-notifications/websocket',
+        url:
+            'wss://mechanicapp-service-621632382478.asia-south1.run.app/ws-notifications/websocket',
         stompConnectHeaders: UserSession().getAuthHeader(),
         webSocketConnectHeaders: UserSession().getAuthHeader(),
         onConnect: (StompFrame frame) {
-          print('✅ Connected to WebSocket');
+          debugPrint('Connected to WebSocket');
           _subscribe(mechanicId);
         },
-        onStompError: (frame) => print('❌ STOMP Error: ${frame.body}'),
-        onWebSocketError: (error) => print('❌ WebSocket Error: $error'),
-        onDisconnect: (frame) => print('ℹ️ Disconnected from WebSocket'),
+        onStompError: (frame) => debugPrint('STOMP Error: ${frame.body}'),
+        onWebSocketError: (error) => debugPrint('WebSocket Error: $error'),
+        onDisconnect: (frame) => debugPrint('Disconnected from WebSocket'),
       ),
     );
     client?.activate();
   }
 
   void _subscribe(int mechanicId) {
+    _subscribeToTopic('/topic/nearbymechanics/$mechanicId', 'road');
+    _subscribeToTopic(
+      '/topic/bookappointment/nearbymechanics/$mechanicId',
+      'appointment',
+    );
+    _subscribeToTopic(
+      '/topic/appointment/cancelappointment/$mechanicId',
+      'cancel',
+    );
+    _subscribeToTopic('/topic/appointment/expired/$mechanicId', 'expired');
+  }
+
+  void _subscribeToTopic(String destination, String type) {
     client?.subscribe(
-      destination: '/topic/nearbymechanics/$mechanicId',
+      destination: destination,
       callback: (frame) {
-        if (frame.body != null) {
-          print('📩 Notification received: ${frame.body}');
-          try {
-            final data = jsonDecode(frame.body!);
-            onNotificationReceived(data);
-          } catch (e) {
-            print('❌ Error decoding notification: $e');
+        if (frame.body == null) return;
+
+        debugPrint(
+          '[$type] Notification received on $destination: ${frame.body}',
+        );
+        try {
+          final dynamic decoded = jsonDecode(frame.body!);
+
+          if (decoded is List) {
+            for (final item in decoded) {
+              if (item is Map) {
+                onNotificationReceived(item, type);
+              }
+            }
+          } else {
+            onNotificationReceived(decoded, type);
           }
+        } catch (e) {
+          debugPrint('Error decoding notification: $e');
         }
       },
     );

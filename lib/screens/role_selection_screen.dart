@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'verify_screen.dart';
 import 'mechanic/mechanic_login.dart';
+import 'homescreen.dart';
+import 'mechanic/mechanic_dashboard.dart';
+import 'authentication/user_session.dart';
 
 class RoleSelectionScreen extends StatelessWidget {
   const RoleSelectionScreen({super.key});
@@ -56,11 +59,20 @@ class RoleSelectionScreen extends StatelessWidget {
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const VerifyScreen()),
-                    );
+                  onPressed: () async {
+                    bool success = await UserSession().trySwitchTo('USER');
+                    if (success) {
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(builder: (_) => const HomeScreen()),
+                        (route) => false,
+                      );
+                    } else {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const VerifyScreen()),
+                      );
+                    }
                   },
                   icon: const Icon(Icons.person_outline, color: Colors.white),
                   label: Text(
@@ -87,11 +99,20 @@ class RoleSelectionScreen extends StatelessWidget {
                 width: double.infinity,
                 height: 56,
                 child: OutlinedButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const MechanicLoginScreen()),
-                    );
+                  onPressed: () async {
+                    bool success = await UserSession().trySwitchTo('MECHANIC');
+                    if (success) {
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(builder: (_) => const MechanicDashboardScreen()),
+                        (route) => false,
+                      );
+                    } else {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const MechanicLoginScreen()),
+                      );
+                    }
                   },
                   icon: Icon(Icons.build_outlined, color: primary),
                   label: Text(

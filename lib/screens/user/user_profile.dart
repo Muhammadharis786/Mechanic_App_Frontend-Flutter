@@ -194,7 +194,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(msg, style: const TextStyle(fontFamily: 'YandexSansText', color: Colors.white, fontWeight: FontWeight.w400)),
+        content: Text(msg, style: const TextStyle(fontFamily: 'Bricolage Grotesque', color: Colors.white, fontWeight: FontWeight.w400)),
         backgroundColor: isError ? Colors.red : Colors.green,
         duration: const Duration(seconds: 3),
       ),
@@ -219,7 +219,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       appBar: AppBar(
         title: Text(
           'My Profile',
-          style: const TextStyle(fontFamily: 'YandexSansText', color: Colors.black, fontWeight: FontWeight.w500, fontSize: 18),
+          style: const TextStyle(fontFamily: 'Bricolage Grotesque', color: Colors.black, fontWeight: FontWeight.w500, fontSize: 18),
         ),
         backgroundColor: Colors.white,
         elevation: 0.5,
@@ -285,7 +285,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         padding: const EdgeInsets.only(top: 8),
                         child: Text(
                           '✓ New image selected — will upload on Save',
-                          style: const TextStyle(fontFamily: 'YandexSansText', fontSize: 11, color: Colors.green, fontWeight: FontWeight.w400),
+                          style: const TextStyle(fontFamily: 'Bricolage Grotesque', fontSize: 11, color: Colors.green, fontWeight: FontWeight.w400),
                         ),
                       ),
 
@@ -306,7 +306,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         alignment: Alignment.centerLeft,
                         child: Text(
                           'Leave blank to keep current password',
-                          style: const TextStyle(fontFamily: 'YandexSansText', fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w400),
+                          style: const TextStyle(fontFamily: 'Bricolage Grotesque', fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w400),
                         ),
                       ),
                     ],
@@ -337,7 +337,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                               : Text(
                                   'Save Changes',
                                   style: const TextStyle(
-                                    fontFamily: 'YandexSansText',
+                                    fontFamily: 'Bricolage Grotesque',
                                     fontSize: 16,
                                     fontWeight: FontWeight.w500,
                                     color: Colors.white,
@@ -362,7 +362,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         Text(
           label,
           style: TextStyle(
-              fontFamily: 'YandexSansText',
+              fontFamily: 'Bricolage Grotesque',
               fontSize: 14, fontWeight: FontWeight.w500, color: Colors.grey.shade700),
         ),
         const SizedBox(height: 8),
@@ -375,7 +375,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                   ? TextInputType.emailAddress
                   : TextInputType.text,
           style: TextStyle(
-            fontFamily: 'YandexSansText',
+            fontFamily: 'Bricolage Grotesque',
             fontSize: 15, 
             fontWeight: FontWeight.w400, 
             color: alwaysDisabled ? Colors.black54 : Colors.black87
@@ -414,14 +414,14 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         Text(
           'New Password',
           style: TextStyle(
-              fontFamily: 'YandexSansText',
+              fontFamily: 'Bricolage Grotesque',
               fontSize: 14, fontWeight: FontWeight.w500, color: Colors.grey.shade700),
         ),
         const SizedBox(height: 8),
         TextFormField(
           controller: _passwordController,
           obscureText: _obscurePassword,
-          style: TextStyle(fontFamily: 'YandexSansText', fontSize: 15, fontWeight: FontWeight.w400, color: Colors.black87),
+          style: TextStyle(fontFamily: 'Bricolage Grotesque', fontSize: 15, fontWeight: FontWeight.w400, color: Colors.black87),
           decoration: InputDecoration(
             prefixIcon: Icon(Icons.lock_outline, color: primaryColor),
             suffixIcon: IconButton(

@@ -3,10 +3,11 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'authentication/user_session.dart'; 
+import 'authentication/user_session.dart';
 import 'otpScreenforgotpassword.dart';
 import 'r_screen.dart';
 import 'enable_loc.dart';
+import '../services/fcm_notification_service.dart';
 
 class VerifyScreen extends StatefulWidget {
   const VerifyScreen({super.key});
@@ -20,10 +21,10 @@ class _VerifyScreenState extends State<VerifyScreen> {
   final TextEditingController _passwordController = TextEditingController();
 
   bool isValid = false;
-  bool isLoading = false; 
-  bool isForgotLoading = false; 
+  bool isLoading = false;
+  bool isForgotLoading = false;
   bool _obscurePassword = true;
-  
+
   final Color kButtonColor = const Color(0xFFFB3300);
 
   @override
@@ -57,7 +58,9 @@ class _VerifyScreenState extends State<VerifyScreen> {
     final phone = '92${_phoneController.text.trim()}';
     final password = _passwordController.text.trim();
 
-    final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/login");
+    final url = Uri.parse(
+      "https://mechanicapp-service-621632382478.asia-south1.run.app/api/login",
+    );
 
     try {
       final response = await http.post(
@@ -73,6 +76,7 @@ class _VerifyScreenState extends State<VerifyScreen> {
       if (response.statusCode == 200) {
         // Save Session with phone number
         await UserSession().saveSession(phone, password, 'USER');
+        await FcmNotificationService.instance.syncTokenWithBackend();
 
         if (!mounted) return;
         Navigator.pushReplacement(
@@ -112,7 +116,9 @@ class _VerifyScreenState extends State<VerifyScreen> {
 
     setState(() => isForgotLoading = true);
 
-    final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/user/forgot");
+    final url = Uri.parse(
+      "https://mechanicapp-service-621632382478.asia-south1.run.app/api/user/forgot",
+    );
 
     try {
       final response = await http.post(
@@ -138,9 +144,9 @@ class _VerifyScreenState extends State<VerifyScreen> {
   }
 
   void _showSnackBar(String message, Color color) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: color),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message), backgroundColor: color));
   }
 
   @override
@@ -156,23 +162,38 @@ class _VerifyScreenState extends State<VerifyScreen> {
               // Back button
               IconButton(
                 onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.arrow_back_ios, color: Colors.black54, size: 20),
+                icon: const Icon(
+                  Icons.arrow_back_ios,
+                  color: Colors.black54,
+                  size: 20,
+                ),
                 padding: EdgeInsets.zero,
                 alignment: Alignment.centerLeft,
               ),
               const SizedBox(height: 10),
 
-              Text("Welcome Back 👋",
-                  style: GoogleFonts.poppins(fontSize: 28, fontWeight: FontWeight.w700)),
+              Text(
+                "Welcome Back 👋",
+                style: GoogleFonts.poppins(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
               const SizedBox(height: 8),
               Text(
                 "Login with your WhatsApp number and password",
-                style: GoogleFonts.poppins(fontSize: 15, color: Colors.black54)
+                style: GoogleFonts.poppins(fontSize: 15, color: Colors.black54),
               ),
               const SizedBox(height: 30),
 
               // WhatsApp Number
-              Text("WhatsApp Number", style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w500)),
+              Text(
+                "WhatsApp Number",
+                style: GoogleFonts.poppins(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
               const SizedBox(height: 6),
               TextField(
                 controller: _phoneController,
@@ -196,7 +217,13 @@ class _VerifyScreenState extends State<VerifyScreen> {
               const SizedBox(height: 22),
 
               // PASSWORD
-              Text("Password", style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w500)),
+              Text(
+                "Password",
+                style: GoogleFonts.poppins(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
               const SizedBox(height: 6),
               TextField(
                 controller: _passwordController,
@@ -205,10 +232,13 @@ class _VerifyScreenState extends State<VerifyScreen> {
                 decoration: _inputDecoration("Min 6 characters").copyWith(
                   suffixIcon: IconButton(
                     icon: Icon(
-                      _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                      _obscurePassword
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
                       color: kButtonColor,
                     ),
-                    onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                    onPressed: () =>
+                        setState(() => _obscurePassword = !_obscurePassword),
                   ),
                 ),
               ),
@@ -222,14 +252,22 @@ class _VerifyScreenState extends State<VerifyScreen> {
                 child: ElevatedButton(
                   onPressed: (isValid && !isLoading) ? _login : null,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: isValid ? kButtonColor : Colors.grey.shade400,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    backgroundColor: isValid
+                        ? kButtonColor
+                        : Colors.grey.shade400,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
                   ),
                   child: isLoading
                       ? const CircularProgressIndicator(color: Colors.white)
                       : Text(
-                          "Login", 
-                          style: GoogleFonts.poppins(fontSize: 17, color: Colors.white, fontWeight: FontWeight.w600)
+                          "Login",
+                          style: GoogleFonts.poppins(
+                            fontSize: 17,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                 ),
               ),
@@ -248,7 +286,10 @@ class _VerifyScreenState extends State<VerifyScreen> {
                         const SizedBox(
                           width: 14,
                           height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFFB3300)),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Color(0xFFFB3300),
+                          ),
                         ),
                       if (isForgotLoading) const SizedBox(width: 8),
                       Text(
@@ -270,11 +311,23 @@ class _VerifyScreenState extends State<VerifyScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text("Don't have an account? ", style: GoogleFonts.poppins(fontSize: 14)),
+                  Text(
+                    "Don't have an account? ",
+                    style: GoogleFonts.poppins(fontSize: 14),
+                  ),
                   GestureDetector(
-                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen())),
-                    child: Text("Register",
-                        style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: kButtonColor)),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const RegisterScreen()),
+                    ),
+                    child: Text(
+                      "Register",
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: kButtonColor,
+                      ),
+                    ),
                   ),
                 ],
               ),

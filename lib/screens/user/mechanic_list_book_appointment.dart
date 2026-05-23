@@ -34,14 +34,14 @@ class MechanicListScreenn extends StatelessWidget {
             const Text(
               "Nearby Mechanics",
               style: TextStyle(
-                  fontFamily: 'YandexSansText',
+                  fontFamily: 'Bricolage Grotesque',
                   color: Colors.black,
                   fontSize: 18,
                   fontWeight: FontWeight.w500),
             ),
             Text(serviceType,
                 style: const TextStyle(
-                    fontFamily: 'YandexSansText',
+                    fontFamily: 'Bricolage Grotesque',
                     fontSize: 13,
                     color: Colors.grey,
                     fontWeight: FontWeight.w400)),
@@ -59,7 +59,7 @@ class MechanicListScreenn extends StatelessWidget {
                   Text(
                     "No mechanics found nearby",
                     style: TextStyle(
-                        fontFamily: 'YandexSansText',
+                        fontFamily: 'Bricolage Grotesque',
                         color: Colors.grey.shade500,
                         fontSize: 14),
                   ),
@@ -138,14 +138,14 @@ class MechanicListScreenn extends StatelessWidget {
                   children: [
                     Text(name,
                         style: const TextStyle(
-                            fontFamily: 'YandexSansText',
+                            fontFamily: 'Bricolage Grotesque',
                             fontWeight: FontWeight.w500,
                             fontSize: 14)),
                     const SizedBox(height: 2),
                     if (mechanicType != null)
                       Text(mechanicType,
                           style: TextStyle(
-                              fontFamily: 'YandexSansText',
+                              fontFamily: 'Bricolage Grotesque',
                               fontSize: 11,
                               color: primaryColor)),
                     const SizedBox(height: 3),
@@ -156,7 +156,7 @@ class MechanicListScreenn extends StatelessWidget {
                         const SizedBox(width: 3),
                         Text(rating,
                             style: const TextStyle(
-                                fontFamily: 'YandexSansText',
+                                fontFamily: 'Bricolage Grotesque',
                                 fontSize: 12,
                                 fontWeight: FontWeight.w400)),
                         const SizedBox(width: 8),
@@ -164,7 +164,7 @@ class MechanicListScreenn extends StatelessWidget {
                             size: 14, color: primaryColor),
                         Text("$distance km",
                             style: const TextStyle(
-                                fontFamily: 'YandexSansText',
+                                fontFamily: 'Bricolage Grotesque',
                                 fontSize: 12,
                                 fontWeight: FontWeight.w400)),
                       ],
@@ -175,7 +175,7 @@ class MechanicListScreenn extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                              fontFamily: 'YandexSansText',
+                              fontFamily: 'Bricolage Grotesque',
                               fontSize: 11,
                               color: Colors.grey.shade600)),
                     ]
@@ -200,7 +200,7 @@ class MechanicListScreenn extends StatelessWidget {
                     const SizedBox(width: 4),
                     Text(statusLabel,
                         style: TextStyle(
-                            fontFamily: 'YandexSansText',
+                            fontFamily: 'Bricolage Grotesque',
                             fontSize: 11,
                             color: statusColor,
                             fontWeight: FontWeight.w500)),
@@ -226,7 +226,7 @@ class MechanicListScreenn extends StatelessWidget {
                 ),
                 child: Text(isSelected ? "Selected" : "Select",
                     style: const TextStyle(
-                        fontFamily: 'YandexSansText',
+                        fontFamily: 'Bricolage Grotesque',
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                         color: Colors.white)),

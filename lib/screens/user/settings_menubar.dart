@@ -6,6 +6,7 @@ import 'package:mech_app/main.dart';
 import 'package:mech_app/screens/homescreen.dart';
 import 'package:mech_app/screens/role_selection_screen.dart';
 import 'package:mech_app/screens/authentication/user_session.dart';
+import 'package:mech_app/services/user_notification_controller.dart';
 
 class SettingsMenuBar extends StatefulWidget {
   const SettingsMenuBar({super.key});
@@ -84,7 +85,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
           title: Text(
             t("settings"),
             style: TextStyle(
-              fontFamily: 'YandexSansText',
+              fontFamily: 'Bricolage Grotesque',
               color: isDark ? Colors.white : Colors.black,
               fontWeight: FontWeight.w500,
               fontSize: 18,
@@ -115,7 +116,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
       title: Text(
         title,
         style: TextStyle(
-          fontFamily: 'YandexSansText',
+          fontFamily: 'Bricolage Grotesque',
           fontSize: 16,
           fontWeight: FontWeight.w400,
           color: danger
@@ -129,7 +130,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
           ? Text(
               sub,
               style: TextStyle(
-                fontFamily: 'YandexSansText',
+                fontFamily: 'Bricolage Grotesque',
                 fontSize: 13,
                 fontWeight: FontWeight.w400,
                 color: isDark ? Colors.white70 : Colors.black54,
@@ -161,13 +162,13 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
             children: [
               Text(
                 t("changeNum"),
-                style: const TextStyle(fontFamily: 'YandexSansText', fontSize: 18, fontWeight: FontWeight.w500),
+                style: const TextStyle(fontFamily: 'Bricolage Grotesque', fontSize: 18, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 8),
               Text(
                 t("changeSub"),
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontFamily: 'YandexSansText', fontSize: 13, fontWeight: FontWeight.w400),
+                style: const TextStyle(fontFamily: 'Bricolage Grotesque', fontSize: 13, fontWeight: FontWeight.w400),
               ),
               const SizedBox(height: 20),
               TextField(
@@ -175,7 +176,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
                 keyboardType: TextInputType.phone,
                 decoration: InputDecoration(
                   prefixText: "+92 ",
-                  prefixStyle: const TextStyle(fontFamily: 'YandexSansText', color: Colors.black, fontWeight: FontWeight.w400),
+                  prefixStyle: const TextStyle(fontFamily: 'Bricolage Grotesque', color: Colors.black, fontWeight: FontWeight.w400),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide(color: primaryColor),
@@ -305,12 +306,16 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
               backgroundColor: primaryColor,
               foregroundColor: Colors.white,
             ),
-            onPressed: () {
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
-                (_) => false,
-              );
+            onPressed: () async {
+              UserNotificationController().dispose();
+              await UserSession().logout();
+              if (context.mounted) {
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
+                  (_) => false,
+                );
+              }
             },
             child: const Text("Yes"),
           ),
@@ -335,7 +340,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
             Text(
               t("deleteQ"),
               style: TextStyle(
-                fontFamily: 'YandexSansText',
+                fontFamily: 'Bricolage Grotesque',
                 fontSize: 18,
                 fontWeight: FontWeight.w500,
                 color: isDark ? Colors.white : Colors.black,
@@ -346,7 +351,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
         content: Text(
           t("deleteSub"),
           style: TextStyle(
-            fontFamily: 'YandexSansText',
+            fontFamily: 'Bricolage Grotesque',
             fontSize: 13,
             fontWeight: FontWeight.w400,
             color: isDark ? Colors.white70 : Colors.black54,
@@ -358,7 +363,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
             child: Text(
               "Cancel",
               style: TextStyle(
-                fontFamily: 'YandexSansText',
+                fontFamily: 'Bricolage Grotesque',
                 color: isDark ? Colors.white70 : Colors.black54,
                 fontWeight: FontWeight.w400,
               ),
@@ -373,7 +378,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
             onPressed: () => _performDeleteAccount(),
             child: Text(
               "Delete",
-              style: const TextStyle(fontFamily: 'YandexSansText', fontWeight: FontWeight.w500),
+              style: const TextStyle(fontFamily: 'Bricolage Grotesque', fontWeight: FontWeight.w500),
             ),
           ),
         ],
@@ -437,7 +442,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
             SnackBar(
               content: Text(
                 backendMessage,
-                style: const TextStyle(fontFamily: 'YandexSansText', color: Colors.white, fontWeight: FontWeight.w400),
+                style: const TextStyle(fontFamily: 'Bricolage Grotesque', color: Colors.white, fontWeight: FontWeight.w400),
               ),
               backgroundColor: Colors.green,
               duration: const Duration(seconds: 2),
@@ -463,7 +468,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
             SnackBar(
               content: Text(
                 backendMessage,
-                style: const TextStyle(fontFamily: 'YandexSansText', color: Colors.white, fontWeight: FontWeight.w400),
+                style: const TextStyle(fontFamily: 'Bricolage Grotesque', color: Colors.white, fontWeight: FontWeight.w400),
               ),
               backgroundColor: Colors.red,
             ),

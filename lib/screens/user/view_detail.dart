@@ -51,7 +51,7 @@ class MechanicDetailScreen extends StatefulWidget {
 
 class _MechanicDetailScreenState extends State<MechanicDetailScreen> {
   final Color primaryColor = const Color(0xFFFB3300);
-  final String uiFont = 'YandexSansText';
+  final String uiFont = 'Bricolage Grotesque';
   BitmapDescriptor? _markerIcon;
 
   @override
@@ -342,7 +342,7 @@ class _MechanicDetailScreenState extends State<MechanicDetailScreen> {
                             Text(
                               "Service Details",
                               style: TextStyle(
-                                fontFamily: 'YandexSansText',
+                                fontFamily: 'Bricolage Grotesque',
                                 fontWeight: FontWeight.w500, 
                                 fontSize: 16,
                                 color: theme.textTheme.titleLarge?.color,
@@ -399,7 +399,7 @@ class _MechanicDetailScreenState extends State<MechanicDetailScreen> {
                                 ),
                                 child: Text(
                                   'Send Request', 
-                                  style: TextStyle(fontFamily: 'YandexSansText', fontWeight: FontWeight.w500, fontSize: 16)
+                                  style: TextStyle(fontFamily: 'Bricolage Grotesque', fontWeight: FontWeight.w500, fontSize: 16)
                                 ),
                               ),
                             ),
@@ -448,7 +448,7 @@ class _MechanicDetailScreenState extends State<MechanicDetailScreen> {
               child: Text(
                 widget.mechanic.name,
                 style: TextStyle(
-                  fontFamily: 'YandexSansText',
+                  fontFamily: 'Bricolage Grotesque',
                   fontSize: 24, 
                   fontWeight: FontWeight.w500, 
                   color: Colors.white,
@@ -464,7 +464,7 @@ class _MechanicDetailScreenState extends State<MechanicDetailScreen> {
         Text(
           widget.mechanic.mechanictype,
           style: TextStyle(
-            fontFamily: 'YandexSansText',
+            fontFamily: 'Bricolage Grotesque',
             fontSize: 14, 
             color: isHeaderFilled ? Colors.white.withOpacity(0.9) : Colors.grey.shade600, 
             fontWeight: FontWeight.w400
@@ -503,7 +503,7 @@ class _MechanicDetailScreenState extends State<MechanicDetailScreen> {
           Text(
             isOnline ? "Online" : "Offline",
             style: TextStyle(
-              fontFamily: 'YandexSansText',
+              fontFamily: 'Bricolage Grotesque',
               fontSize: 11, 
               fontWeight: FontWeight.w500, 
               color: isHeaderFilled ? Colors.white : (isOnline ? Colors.green.shade700 : (isDark ? Colors.white54 : Colors.grey.shade700))
@@ -525,7 +525,7 @@ class _MechanicDetailScreenState extends State<MechanicDetailScreen> {
             label,
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontFamily: 'YandexSansText',
+              fontFamily: 'Bricolage Grotesque',
               color: color, 
               fontWeight: FontWeight.w500, 
               fontSize: 13,
@@ -564,11 +564,11 @@ class _MechanicDetailScreenState extends State<MechanicDetailScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: TextStyle(fontFamily: 'YandexSansText', fontWeight: FontWeight.w400, color: isDark ? Colors.white38 : Colors.grey.shade500, fontSize: 12)),
+              Text(title, style: TextStyle(fontFamily: 'Bricolage Grotesque', fontWeight: FontWeight.w400, color: isDark ? Colors.white38 : Colors.grey.shade500, fontSize: 12)),
               const SizedBox(height: 2),
               Text(
                 value.isNotEmpty ? value : "Not specified",
-                style: TextStyle(fontFamily: 'YandexSansText', fontSize: 14, fontWeight: FontWeight.w400, color: theme.textTheme.bodyLarge?.color),
+                style: TextStyle(fontFamily: 'Bricolage Grotesque', fontSize: 14, fontWeight: FontWeight.w400, color: theme.textTheme.bodyLarge?.color),
               ),
             ],
           ),
@@ -667,11 +667,11 @@ class FullScreenMapScreen extends StatelessWidget {
                       children: [
                         Text(
                           mechanic.name, 
-                          style: TextStyle(fontFamily: 'YandexSansText', fontWeight: FontWeight.w500, fontSize: 16, color: theme.textTheme.titleLarge?.color)
+                          style: TextStyle(fontFamily: 'Bricolage Grotesque', fontWeight: FontWeight.w500, fontSize: 16, color: theme.textTheme.titleLarge?.color)
                         ),
                         Text(
                           '${mechanic.distanceKm.toStringAsFixed(1)} km away', 
-                          style: TextStyle(fontFamily: 'YandexSansText', fontWeight: FontWeight.w400, fontSize: 12, color: isDark ? Colors.white54 : Colors.grey)
+                          style: TextStyle(fontFamily: 'Bricolage Grotesque', fontWeight: FontWeight.w400, fontSize: 12, color: isDark ? Colors.white54 : Colors.grey)
                         ),
                       ],
                     ),

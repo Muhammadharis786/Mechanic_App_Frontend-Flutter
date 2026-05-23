@@ -312,7 +312,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
               child: const Text(
                 'Confirm Location',
                 style: TextStyle(
-                  fontFamily: 'YandexSansText',
+                  fontFamily: 'Bricolage Grotesque',
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                   color: Colors.white,
@@ -393,7 +393,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
         style: const TextStyle(
-          fontFamily: 'YandexSansText',
+          fontFamily: 'Bricolage Grotesque',
           color: Colors.white,
           fontSize: 12,
           fontWeight: FontWeight.w400,
@@ -440,11 +440,11 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
                 controller: _searchCtrl,
                 focusNode: _searchFocus,
                 style: const TextStyle(
-                    fontFamily: 'YandexSansText', fontSize: 14),
+                    fontFamily: 'Bricolage Grotesque', fontSize: 14),
                 decoration: InputDecoration(
                   hintText: 'Search location...',
                   hintStyle: TextStyle(
-                      fontFamily: 'YandexSansText',
+                      fontFamily: 'Bricolage Grotesque',
                       color: Colors.grey.shade500,
                       fontSize: 13),
                   prefixIcon:
@@ -515,7 +515,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                fontFamily: 'YandexSansText',
+                                fontFamily: 'Bricolage Grotesque',
                                 fontSize: 13,
                                 fontWeight: FontWeight.w500,
                               ),
@@ -526,7 +526,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                  fontFamily: 'YandexSansText',
+                                  fontFamily: 'Bricolage Grotesque',
                                   fontSize: 11,
                                   color: Colors.grey.shade600,
                                 ),
