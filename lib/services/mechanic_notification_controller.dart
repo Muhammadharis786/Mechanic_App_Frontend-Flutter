@@ -5,6 +5,7 @@ import '../main.dart'; // To access navigatorKey
 import '../screens/authentication/user_session.dart';
 import '../utils/time_utils.dart';
 import 'websocket_service.dart';
+import '../screens/mechanic/mechanic_request_alert_screen.dart'; // Added Import
 
 class MechanicNotificationController {
   // Singleton
@@ -42,6 +43,25 @@ class MechanicNotificationController {
       onNotificationReceived: (data, type) {
         if (data is! Map) return;
         final mapData = Map<String, dynamic>.from(data);
+
+        // Detect new Service Request format (has userLatitude & requestId)
+        if (mapData.containsKey('userLatitude') && mapData.containsKey('requestId') || mapData.containsKey('userNotes')) {
+          if (navigatorKey.currentState != null) {
+            navigatorKey.currentState!.push(
+              MaterialPageRoute(
+                builder: (_) => MechanicRequestAlertScreen(requestData: mapData),
+              ),
+            );
+          }
+          
+          // Optionally still notify listeners so dashboard updates its list
+          // But do NOT show the standard overlay
+          final request = _mapRoadRequest(mapData); // Fallback mapping for lists
+          for (var listener in _listeners) {
+            listener(request, type);
+          }
+          return;
+        }
 
         final String backendType = mapData['type']?.toString() ?? '';
 

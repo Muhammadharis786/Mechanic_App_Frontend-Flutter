@@ -1,4 +1,4 @@
-﻿// Merged Version: API Logic + Design Updates
+// Merged Version: API Logic + Design Updates
 
 import 'dart:convert';
 import 'dart:io';
@@ -21,6 +21,7 @@ import 'package:mech_app/screens/user/payment_webview_screen.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:url_launcher/url_launcher.dart';
 import './authentication/service_chat_screen.dart';
+import 'user/service_request_notes_screen.dart';
 import './authentication/user_session.dart';
 import '../../services/user_websocket_service.dart';
 import '../../services/user_notification_controller.dart';
@@ -96,7 +97,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (mounted) setState(() => _unreadNotifCount = unread);
       }
     } catch (e) {
-      debugPrint('❌ Error fetching notif count: $e');
+      debugPrint('? Error fetching notif count: $e');
     }
   }
 
@@ -125,7 +126,7 @@ class _HomeScreenState extends State<HomeScreen> {
         }
         
         // Printing the URL to terminal as requested
-        debugPrint('🚀 Safepay Checkout URL: $checkoutUrl');
+        debugPrint('?? Safepay Checkout URL: $checkoutUrl');
         
         if (mounted) {
           if (kIsWeb) {
@@ -168,23 +169,23 @@ class _HomeScreenState extends State<HomeScreen> {
 
     try {
       final headers = UserSession().getAuthHeader();
-      debugPrint('ðŸ”‘ Auth Header: ${headers['Authorization']}');
-      debugPrint('ðŸ”‘ UserSession: email=${UserSession().email}, userType=${UserSession().userType}');
+      debugPrint('🔑 Auth Header: ${headers['Authorization']}');
+      debugPrint('🔑 UserSession: email=${UserSession().email}, userType=${UserSession().userType}');
       
       final response = await http.get(
         url,
         headers: headers,
       );
 
-      debugPrint('ðŸ“¡ Dashboard Response Status: ${response.statusCode}');
-      debugPrint('ðŸ“¡ Dashboard Response Body: ${response.body.length > 200 ? response.body.substring(0, 200) : response.body}');
+      debugPrint('📡 Dashboard Response Status: ${response.statusCode}');
+      debugPrint('📡 Dashboard Response Body: ${response.body.length > 200 ? response.body.substring(0, 200) : response.body}');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         
         // Handle both flat and nested response formats
         final user = data['user'] ?? data; // If no 'user' key, data itself is the user object
-        debugPrint('âœ… Dashboard data parsed. User: ${user['username']}');
+        debugPrint('✅ Dashboard data parsed. User: ${user['username']}');
         
         setState(() {
           if (user['username'] != null || user['userid'] != null) {
@@ -227,8 +228,8 @@ class _HomeScreenState extends State<HomeScreen> {
           _isLoading = false;
         });
       } else {
-        debugPrint("âŒ Failed to fetch dashboard: ${response.statusCode}");
-        debugPrint("âŒ Response body: ${response.body}");
+        debugPrint("❌ Failed to fetch dashboard: ${response.statusCode}");
+        debugPrint("❌ Response body: ${response.body}");
         setState(() {
           _userName = "USER";
           _isLoading = false;
@@ -639,7 +640,7 @@ class _HomeScreenState extends State<HomeScreen> {
       onTap: () {
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => ServiceChatScreen(serviceType: title, id: id)),
+          MaterialPageRoute(builder: (_) => ServiceRequestNotesScreen(serviceType: title)),
         );
       },
       child: Stack(

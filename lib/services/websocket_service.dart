@@ -41,6 +41,7 @@ class WebSocketService {
       'cancel',
     );
     _subscribeToTopic('/topic/appointment/expired/$mechanicId', 'expired');
+    _subscribeToTopic('/topic/mechanic/requests/$mechanicId', 'serviceRequest');
   }
 
   void _subscribeToTopic(String destination, String type) {

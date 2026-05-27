@@ -31,6 +31,8 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
   final Color accentOrange = const Color(0xFFFF6D00);
 
   bool _isLoading = true;
+  bool _isToggleLoading = false;
+  bool isOnline = false;
 
   double totalEarnings = 0;
   double todaysEarnings = 0;
@@ -133,6 +135,13 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
               (data['todaysServices'] as num?)?.toInt() ??
                   todaysServices;
 
+          if (data['isonline'] != null) {
+            final onlineStatus = data['isonline'];
+            isOnline = onlineStatus is bool 
+                ? onlineStatus 
+                : onlineStatus.toString().toLowerCase() == 'true';
+          }
+
           _isLoading = false;
         });
       } else {
@@ -140,6 +149,56 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
       }
     } catch (e) {
       setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _toggleOnlineStatus(bool value) async {
+    setState(() {
+      _isToggleLoading = true;
+    });
+
+    final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/isactive");
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          ...UserSession().getAuthHeader(),
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({"isonline": value ? "true" : "false"}),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        setState(() {
+          isOnline = value;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(value ? 'You are now online' : 'You are now offline'),
+              backgroundColor: value ? Colors.green : Colors.orange,
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to update status. Please try again.')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error updating status: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isToggleLoading = false;
+        });
+      }
     }
   }
 
@@ -319,6 +378,74 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
                           ],
                         ),
                       ],
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    /// ONLINE / OFFLINE TOGGLE (Centered)
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: isDark ? Colors.grey[850] : Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: isDark ? Border.all(color: Colors.grey.shade800) : null,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05),
+                            blurRadius: 10,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            isOnline ? Icons.sensors_rounded : Icons.sensors_off_rounded,
+                            color: isOnline ? Colors.green.shade600 : Colors.red.shade400,
+                            size: 24,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            'Offline',
+                            style: GoogleFonts.poppins(
+                              color: isOnline ? (isDark ? Colors.grey.shade600 : Colors.grey.shade400) : Colors.red.shade400,
+                              fontWeight: isOnline ? FontWeight.w500 : FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          _isToggleLoading
+                              ? const SizedBox(
+                                  width: 48,
+                                  height: 36,
+                                  child: Center(
+                                    child: SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    ),
+                                  ),
+                                )
+                              : Switch(
+                                  value: isOnline,
+                                  activeColor: Colors.green.shade500,
+                                  activeTrackColor: Colors.green.shade200,
+                                  inactiveThumbColor: Colors.red.shade400,
+                                  inactiveTrackColor: Colors.red.shade100,
+                                  onChanged: _toggleOnlineStatus,
+                                ),
+                          const SizedBox(width: 12),
+                          Text(
+                            'Online',
+                            style: GoogleFonts.poppins(
+                              color: isOnline ? Colors.green.shade600 : (isDark ? Colors.grey.shade600 : Colors.grey.shade400),
+                              fontWeight: isOnline ? FontWeight.bold : FontWeight.w500,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
 
                     const SizedBox(height: 28),
