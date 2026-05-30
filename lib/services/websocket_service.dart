@@ -45,22 +45,16 @@ class WebSocketService {
   }
 
   void _subscribeToTopic(String destination, String type) {
-    client?.subscribe(
+    subscribe(
       destination: destination,
-      callback: (frame) {
-        if (frame.body == null) return;
-
-        debugPrint(
-          '[$type] Notification received on $destination: ${frame.body}',
-        );
+      onMessage: (body) {
+        if (body == null) return;
+        debugPrint('[$type] Notification received on $destination: $body');
         try {
-          final dynamic decoded = jsonDecode(frame.body!);
-
+          final dynamic decoded = jsonDecode(body);
           if (decoded is List) {
             for (final item in decoded) {
-              if (item is Map) {
-                onNotificationReceived(item, type);
-              }
+              if (item is Map) onNotificationReceived(item, type);
             }
           } else {
             onNotificationReceived(decoded, type);
@@ -69,6 +63,16 @@ class WebSocketService {
           debugPrint('Error decoding notification: $e');
         }
       },
+    );
+  }
+
+  StompUnsubscribe? subscribe({
+    required String destination,
+    required Function(String? body) onMessage,
+  }) {
+    return client?.subscribe(
+      destination: destination,
+      callback: (frame) => onMessage(frame.body),
     );
   }
 

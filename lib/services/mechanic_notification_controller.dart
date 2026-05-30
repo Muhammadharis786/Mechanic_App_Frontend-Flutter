@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:stomp_dart_client/stomp_dart_client.dart';
 import '../main.dart'; // To access navigatorKey
 import '../screens/authentication/user_session.dart';
 import '../utils/time_utils.dart';
@@ -43,6 +45,15 @@ class MechanicNotificationController {
       onNotificationReceived: (data, type) {
         if (data is! Map) return;
         final mapData = Map<String, dynamic>.from(data);
+        final String backendType = mapData['type']?.toString() ?? '';
+
+        if (backendType == 'ROAD_REQUEST_CANCELLED') {
+          _removeOverlay();
+          for (var listener in _listeners) {
+            listener(mapData, type);
+          }
+          return;
+        }
 
         // Detect new Service Request format (has userLatitude & requestId)
         if (mapData.containsKey('userLatitude') && mapData.containsKey('requestId') || mapData.containsKey('userNotes')) {
@@ -62,8 +73,6 @@ class MechanicNotificationController {
           }
           return;
         }
-
-        final String backendType = mapData['type']?.toString() ?? '';
 
         final request = type == 'appointment'
             ? _mapAppointmentRequest(mapData)
@@ -96,6 +105,31 @@ class MechanicNotificationController {
   void _removeOverlay() {
     _overlayEntry?.remove();
     _overlayEntry = null;
+  }
+
+  StompUnsubscribe? subscribeToTopic({
+    required String destination,
+    required Function(Map<String, dynamic> data) onMessage,
+  }) {
+    if (_webSocketService == null) {
+      debugPrint("❌ MechanicNotificationController: Cannot subscribe, WebSocket is null");
+      return null;
+    }
+
+    return _webSocketService!.subscribe(
+      destination: destination,
+      onMessage: (body) {
+        if (body == null) return;
+        try {
+          final data = jsonDecode(body);
+          if (data is Map) {
+            onMessage(Map<String, dynamic>.from(data));
+          }
+        } catch (e) {
+          debugPrint('Error decoding topic message: $e');
+        }
+      },
+    );
   }
 
   void showNotificationOverlay(
@@ -271,8 +305,10 @@ class MechanicNotificationController {
   Map<String, dynamic> _mapRoadRequest(Map<String, dynamic> data) {
     return {
       'type': 'road',
+      'requestId': data['requestId'] ?? data['requestid'],
       'id':
           data['userid']?.toString() ??
+          data['requestId']?.toString() ??
           DateTime.now().millisecondsSinceEpoch.toString(),
       'userName': data['username'] ?? 'Unknown User',
       'location': data['userlocname'] ?? 'Location not provided',

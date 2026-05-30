@@ -22,7 +22,9 @@ import 'package:shimmer/shimmer.dart';
 import 'package:url_launcher/url_launcher.dart';
 import './authentication/service_chat_screen.dart';
 import 'user/service_request_notes_screen.dart';
+import 'user/service_request_map_screen.dart';
 import './authentication/user_session.dart';
+import '../services/active_service_request_tracking.dart';
 import '../../services/user_websocket_service.dart';
 import '../../services/user_notification_controller.dart';
 import 'auto_assign.dart';
@@ -350,6 +352,19 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    ValueListenableBuilder<Map<String, dynamic>?>(
+                      valueListenable: ActiveServiceRequestTracking.current,
+                      builder: (context, tracking, _) {
+                        if (!ActiveServiceRequestTracking.isActive(tracking)) {
+                          return const SizedBox.shrink();
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: _buildActiveTrackingCard(tracking!, isDark),
+                        );
+                      },
+                    ),
+
                     // -------- Auto Assign --------
                     Stack(
                       clipBehavior: Clip.none,
@@ -630,6 +645,113 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
+    );
+  }
+
+  Widget _buildActiveTrackingCard(Map<String, dynamic> tracking, bool isDark) {
+    final status = (tracking['requestStatus'] ?? '').toString().toUpperCase();
+    final isPending = status == 'PENDING';
+    final name = (tracking['mechanicName'] ?? 'Mechanic').toString();
+    final eta = (tracking['eta'] ?? '--').toString();
+    final distance =
+        (tracking['distanceText'] ?? tracking['distance'] ?? '--').toString();
+    final image = (tracking['mechanicImage'] ?? '').toString();
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ServiceRequestMapScreen(
+              serviceType: (tracking['serviceType'] ?? 'Service').toString(),
+              userNotes: (tracking['userNotes'] ?? '').toString(),
+              resumedTracking: tracking,
+            ),
+          ),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: isDark ? Colors.grey[900] : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: primaryColor.withOpacity(0.25)),
+          boxShadow: const [
+            BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 3)),
+          ],
+        ),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 22,
+              backgroundColor: Colors.grey.shade200,
+              backgroundImage:
+                  image.startsWith('http') ? NetworkImage(image) : null,
+              child: image.startsWith('http')
+                  ? null
+                  : Icon(Icons.handyman_rounded, color: primaryColor),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isPending ? 'Request in progress' : 'Mechanic on the way',
+                    style: TextStyle(
+                      fontFamily:
+                          GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                      color: primaryColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Text(
+                    isPending ? 'Waiting for nearby mechanic' : name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontFamily:
+                          GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                      color: isDark ? Colors.white : Colors.black87,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Text(
+                    '$distance • $eta',
+                    style: TextStyle(
+                      fontFamily:
+                          GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                      color: isDark ? Colors.white60 : Colors.grey.shade600,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: primaryColor,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                'Track',
+                style: TextStyle(
+                  fontFamily:
+                      GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

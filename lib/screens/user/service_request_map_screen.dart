@@ -2,9 +2,15 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import 'package:http/http.dart' as http;
+import 'package:stomp_dart_client/stomp_dart_client.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../services/active_service_request_tracking.dart';
 import '../authentication/user_session.dart';
 
 const String _mapStyle = '''
@@ -25,11 +31,13 @@ const String _googleApiKey = 'AIzaSyBpyZg2i30gOLUKK0furYdGDbWXe4lqpkU';
 class ServiceRequestMapScreen extends StatefulWidget {
   final String serviceType;
   final String userNotes;
+  final Map<String, dynamic>? resumedTracking;
 
   const ServiceRequestMapScreen({
     super.key,
     required this.serviceType,
     required this.userNotes,
+    this.resumedTracking,
   });
 
   @override
@@ -46,6 +54,28 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
   bool _isDragging = false;
   String? _locationLabel;
   bool _isLoading = false;
+
+  // --- Nearby mechanics state ---
+  bool _isWaiting = false; // true after request sent & nearby mechanics fetched
+  bool _isAccepted = false;
+  String? _activeRequestId;
+  Map<String, dynamic>? _acceptedMechanic;
+  LatLng? _acceptedMechanicPosition;
+  String? _acceptedDistanceText;
+  String? _acceptedEta;
+  Set<Marker> _mechanicMarkers = {};
+  Set<Polyline> _polylines = {};
+  StompClient? _trackingClient;
+  StompClient? _requestClient;
+  bool _liveLocationSubscribed = false;
+  DateTime? _lastRouteFetchAt;
+  LatLng? _lastRouteOrigin;
+
+  // Animation support
+  final Map<String, LatLng> _markerTargetPositions = {};
+  final Map<String, LatLng> _markerCurrentPositions = {};
+  final Map<String, String> _markerTitles = {}; // Track titles so we don't reload icons
+  late final Ticker _markerTicker;
 
   late AnimationController _spinController;
 
@@ -70,7 +100,68 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       }
     });
 
-    _initializePosition();
+    if (widget.resumedTracking != null) {
+      _restoreRequestedLocation(widget.resumedTracking!);
+    } else {
+      _initializePosition();
+    }
+
+    // Initialize the smooth marker animation ticker
+    _markerTicker = createTicker(_onMarkerTick);
+
+    if (widget.resumedTracking != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _restoreTracking(widget.resumedTracking!);
+      });
+    }
+  }
+
+  void _onMarkerTick(Duration elapsed) {
+    if (_markerTargetPositions.isEmpty) return;
+
+    bool needsUpdate = false;
+    const double speed = 0.05; // Adjust for faster/slower gliding
+
+    final newMarkers = Set<Marker>.from(_mechanicMarkers);
+    
+    _markerTargetPositions.forEach((id, target) {
+      final current = _markerCurrentPositions[id] ?? target;
+      
+      // Calculate distance between current and target
+      final latDiff = target.latitude - current.latitude;
+      final lngDiff = target.longitude - current.longitude;
+      
+      if (latDiff.abs() > 0.000001 || lngDiff.abs() > 0.000001) {
+        // Linearly interpolate towards the target
+        final newLat = current.latitude + (latDiff * speed);
+        final newLng = current.longitude + (lngDiff * speed);
+        final newPos = LatLng(newLat, newLng);
+        
+        _markerCurrentPositions[id] = newPos;
+        
+        // Update the marker in the set
+        final markerId = MarkerId('mechanic_$id');
+        newMarkers.removeWhere((m) => m.markerId == markerId);
+        newMarkers.add(
+          Marker(
+            markerId: markerId,
+            position: newPos,
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+            infoWindow: InfoWindow(title: _markerTitles[id] ?? 'Mechanic #$id'),
+          ),
+        );
+        needsUpdate = true;
+      }
+    });
+
+    if (needsUpdate) {
+      setState(() {
+        _mechanicMarkers = newMarkers;
+      });
+    } else {
+      // If all caught up, stop ticker to save battery
+      _markerTicker.stop();
+    }
   }
 
   void _initializePosition() {
@@ -83,13 +174,40 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     _getUserLocation();
   }
 
+  void _restoreRequestedLocation(Map<String, dynamic> tracking) {
+    final userLat = _toDouble(
+      tracking['userLat'] ??
+          tracking['userLatitude'] ??
+          tracking['latitude'],
+    );
+    final userLng = _toDouble(
+      tracking['userLng'] ??
+          tracking['userLongitude'] ??
+          tracking['longitude'],
+    );
+
+    if (userLat != null && userLng != null) {
+      _markerPos = LatLng(userLat, userLng);
+    }
+
+    final label = tracking['locationName'] ??
+        tracking['userlocationname'] ??
+        tracking['location'];
+    if (label != null) {
+      _locationLabel = label.toString();
+    }
+  }
+
   @override
   void dispose() {
+    _markerTicker.dispose();
     _spinController.dispose();
     _searchCtrl.dispose();
     _searchFocus.dispose();
     _debounce?.cancel();
     _geocodeDebounce?.cancel();
+    _trackingClient?.deactivate();
+    _requestClient?.deactivate();
     _mapController?.dispose();
     super.dispose();
   }
@@ -218,6 +336,11 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
+        _captureRequestId(response.body);
+        if (_activeRequestId != null) {
+          _saveActiveTracking();
+          _connectRequestStatus(_activeRequestId!);
+        }
         if (mounted) {
            ScaffoldMessenger.of(context).showSnackBar(
              SnackBar(
@@ -225,8 +348,8 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
                backgroundColor: Colors.green.shade600
              ),
            );
-           // Pop to Home Screen
-           Navigator.popUntil(context, (route) => route.isFirst);
+           // Now fetch nearby mechanics
+           await _fetchNearbyMechanics(mappedServiceType);
         }
       } else {
         if (mounted) {
@@ -250,6 +373,629 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     }
   }
 
+  void _captureRequestId(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      final requestId = _findRequestId(decoded);
+      _activeRequestId = requestId?.toString();
+      debugPrint('Service request id captured: $_activeRequestId');
+    } catch (e) {
+      debugPrint('Request id parse error: $e');
+    }
+  }
+
+  dynamic _findRequestId(dynamic value) {
+    if (value is List && value.isNotEmpty) {
+      return _findRequestId(value.first);
+    }
+
+    if (value is Map) {
+      final direct = value['requestId'] ?? value['requestid'];
+      if (direct != null) return direct;
+
+      final body = value['body'];
+      if (body != null) return _findRequestId(body);
+
+      final data = value['data'];
+      if (data != null) return _findRequestId(data);
+    }
+
+    return null;
+  }
+
+  void _connectRequestStatus(String requestId) {
+    _requestClient?.deactivate();
+    _requestClient = StompClient(
+      config: StompConfig(
+        url:
+            'wss://mechanicapp-service-621632382478.asia-south1.run.app/ws-notifications/websocket',
+        stompConnectHeaders: UserSession().getAuthHeader(),
+        webSocketConnectHeaders: UserSession().getAuthHeader(),
+        onConnect: (_) {
+          _requestClient?.subscribe(
+            destination: '/topic/request/$requestId',
+            callback: (frame) {
+              if (frame.body == null || !mounted) return;
+              try {
+                final decoded = jsonDecode(frame.body!);
+                if (decoded is! Map) return;
+
+                final acceptedData = Map<String, dynamic>.from(decoded);
+                final mechanicName =
+                    (acceptedData['mechanicName'] ?? acceptedData['name'])
+                        ?.toString();
+
+                _handleAcceptedMechanic(acceptedData, requestId);
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      mechanicName == null
+                          ? 'Mechanic accepted your request'
+                          : '$mechanicName accepted your request',
+                    ),
+                    backgroundColor: Colors.green.shade600,
+                  ),
+                );
+              } catch (_) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text('Mechanic accepted your request'),
+                    backgroundColor: Colors.green.shade600,
+                  ),
+                );
+              }
+            },
+          );
+        },
+        onStompError: (frame) =>
+            debugPrint('Request status STOMP error: ${frame.body}'),
+        onWebSocketError: (error) =>
+            debugPrint('Request status socket error: $error'),
+      ),
+    );
+    _requestClient?.activate();
+  }
+
+  Future<void> _cancelRequest() async {
+    if (_activeRequestId == null) return;
+    
+    setState(() => _isLoading = true);
+    
+    try {
+      final response = await http.post(
+        Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/cancel/$_activeRequestId"),
+        headers: {
+          'Content-Type': 'application/json',
+          ...UserSession().getAuthHeader(),
+        },
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        ActiveServiceRequestTracking.clear();
+        if (mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(
+             const SnackBar(
+               content: Text('Request Cancelled Successfully'),
+               backgroundColor: Colors.orange,
+             ),
+           );
+           Navigator.of(context).pop(); // Go back to home
+        }
+      } else {
+        if (mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(
+             SnackBar(content: Text('Cancel failed: ${response.body}')),
+           );
+        }
+      }
+    } catch(e) {
+      if (mounted) {
+         ScaffoldMessenger.of(context).showSnackBar(
+           SnackBar(content: Text('Cancel Error: $e')),
+         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  void _restoreTracking(Map<String, dynamic> tracking) {
+    final requestId = tracking['requestId']?.toString();
+    final userLat = _toDouble(tracking['userLat'] ?? tracking['userLatitude']);
+    final userLng = _toDouble(tracking['userLng'] ?? tracking['userLongitude']);
+
+    if (userLat != null && userLng != null) {
+      _markerPos = LatLng(userLat, userLng);
+    }
+
+    if (requestId != null && requestId.isNotEmpty) {
+      _activeRequestId = requestId;
+      _connectRequestStatus(requestId);
+      _refreshResumedTracking(requestId);
+    }
+
+    final hasAcceptedMechanic =
+        tracking['mechanicId'] != null ||
+        tracking['mechanicLatitude'] != null ||
+        tracking['latitude'] != null;
+
+    if (hasAcceptedMechanic) {
+      _handleAcceptedMechanic(tracking, requestId);
+    } else {
+      setState(() {
+        _isWaiting = true;
+        _isAccepted = false;
+      });
+    }
+  }
+
+  Future<void> _refreshResumedTracking(String requestId) async {
+    try {
+      final response = await http.get(
+        Uri.parse(
+          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/tracking/$requestId',
+        ),
+        headers: UserSession().getAuthHeader(),
+      );
+
+      if (response.statusCode != 200 || response.body.isEmpty) return;
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map || !mounted) return;
+
+      final data = Map<String, dynamic>.from(decoded);
+      final status = (data['requestStatus'] ?? '').toString().toUpperCase();
+      if (status == 'CANCELLED' || status == 'REJECTED' || status == 'EXPIRED') {
+        ActiveServiceRequestTracking.clear();
+        Navigator.popUntil(context, (route) => route.isFirst);
+        return;
+      }
+
+      final hasAcceptedMechanic =
+          data['mechanicId'] != null || data['mechanicLatitude'] != null;
+      if (hasAcceptedMechanic) {
+        _handleAcceptedMechanic(data, requestId);
+      }
+    } catch (e) {
+      debugPrint('Refresh resumed tracking failed: $e');
+    }
+  }
+
+  void _handleAcceptedMechanic(
+    Map<String, dynamic> data,
+    String? fallbackRequestId,
+  ) {
+    final requestId =
+        (data['requestId'] ?? fallbackRequestId ?? _activeRequestId)
+            ?.toString();
+    final mechanicId = (data['mechanicId'] ?? data['id'])?.toString();
+    final lat = _toDouble(
+      data['mechanicLatitude'] ?? data['latitude'] ?? data['lat'],
+    );
+    final lng = _toDouble(
+      data['mechanicLongitude'] ?? data['longitude'] ?? data['lng'],
+    );
+
+    if (requestId == null || mechanicId == null || lat == null || lng == null) {
+      debugPrint('Accepted mechanic payload missing route fields: $data');
+      return;
+    }
+
+    final position = LatLng(lat, lng);
+    final name = (data['mechanicName'] ?? data['name'] ?? 'Mechanic').toString();
+    final distance = _toDouble(data['distance']);
+    final eta = data['eta']?.toString();
+
+    _trackingClient?.deactivate();
+    _trackingClient = null;
+
+    _markerCurrentPositions
+      ..clear()
+      ..[mechanicId] = position;
+    _markerTargetPositions
+      ..clear()
+      ..[mechanicId] = position;
+    _markerTitles
+      ..clear()
+      ..[mechanicId] = name;
+
+    final acceptedData = Map<String, dynamic>.from(data)
+      ..['requestId'] = requestId
+      ..['mechanicId'] = mechanicId
+      ..['mechanicName'] = name
+      ..['mechanicLatitude'] = lat
+      ..['mechanicLongitude'] = lng
+      ..['requestStatus'] = 'ACCEPTED'
+      ..['userLat'] = _markerPos.latitude
+      ..['userLng'] = _markerPos.longitude;
+
+    setState(() {
+      _activeRequestId = requestId;
+      _isWaiting = true;
+      _isAccepted = true;
+      _acceptedMechanic = acceptedData;
+      _acceptedMechanicPosition = position;
+      _acceptedDistanceText =
+          distance == null ? data['distance']?.toString() : '${distance.toStringAsFixed(1)} km';
+      _acceptedEta = eta;
+      _mechanicMarkers = {
+        Marker(
+          markerId: MarkerId('mechanic_$mechanicId'),
+          position: position,
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+          infoWindow: InfoWindow(title: name),
+        ),
+      };
+    });
+
+    _saveActiveTracking();
+    _subscribeAcceptedLiveLocation(requestId);
+    _fetchAcceptedRoute(force: true);
+    _fitAcceptedBounds();
+  }
+
+  void _subscribeAcceptedLiveLocation(String requestId) {
+    if (_liveLocationSubscribed || _requestClient == null) return;
+    _liveLocationSubscribed = true;
+
+    _requestClient?.subscribe(
+      destination: '/topic/request/$requestId/live-location',
+      callback: (frame) {
+        if (frame.body == null || !mounted) return;
+        try {
+          final decoded = jsonDecode(frame.body!);
+          if (decoded is Map) {
+            _handleAcceptedLiveLocation(Map<String, dynamic>.from(decoded));
+          }
+        } catch (e) {
+          debugPrint('Accepted live location decode error: $e');
+        }
+      },
+    );
+  }
+
+  void _connectAcceptedLiveLocation(String requestId) {
+    _requestClient?.deactivate();
+    _liveLocationSubscribed = false;
+    _requestClient = StompClient(
+      config: StompConfig(
+        url:
+            'wss://mechanicapp-service-621632382478.asia-south1.run.app/ws-notifications/websocket',
+        stompConnectHeaders: UserSession().getAuthHeader(),
+        webSocketConnectHeaders: UserSession().getAuthHeader(),
+        onConnect: (_) => _subscribeAcceptedLiveLocation(requestId),
+        onStompError: (frame) =>
+            debugPrint('Accepted tracking STOMP error: ${frame.body}'),
+        onWebSocketError: (error) =>
+            debugPrint('Accepted tracking socket error: $error'),
+      ),
+    );
+    _requestClient?.activate();
+  }
+
+  void _handleAcceptedLiveLocation(Map<String, dynamic> data) {
+    final mechanicId =
+        (data['mechanicId'] ?? _acceptedMechanic?['mechanicId'])?.toString();
+    final lat = _toDouble(data['latitude']);
+    final lng = _toDouble(data['longitude']);
+    if (mechanicId == null || lat == null || lng == null) return;
+
+    final target = LatLng(lat, lng);
+    final distance = _toDouble(data['distance']);
+    final eta = data['eta']?.toString();
+    final name =
+        (_acceptedMechanic?['mechanicName'] ?? 'Mechanic').toString();
+
+    _markerCurrentPositions.putIfAbsent(mechanicId, () => target);
+    _markerTargetPositions[mechanicId] = target;
+    _markerTitles[mechanicId] = name;
+
+    setState(() {
+      _acceptedMechanicPosition = target;
+      _acceptedMechanic = {
+        ...?_acceptedMechanic,
+        'mechanicLatitude': lat,
+        'mechanicLongitude': lng,
+        if (distance != null) 'distance': distance,
+        if (eta != null) 'eta': eta,
+      };
+      if (distance != null) {
+        _acceptedDistanceText = '${distance.toStringAsFixed(1)} km';
+      }
+      if (eta != null && eta.isNotEmpty) {
+        _acceptedEta = eta;
+      }
+    });
+
+    if (!_markerTicker.isTicking) {
+      _markerTicker.start();
+    }
+
+    _saveActiveTracking();
+    _fetchAcceptedRoute();
+  }
+
+  void _saveActiveTracking() {
+    if (_activeRequestId == null) return;
+
+    if (_acceptedMechanic == null) {
+      ActiveServiceRequestTracking.save({
+        'requestId': _activeRequestId,
+        'requestStatus': 'PENDING',
+        'serviceType': widget.serviceType,
+        'userNotes': widget.userNotes,
+        'userLat': _markerPos.latitude,
+        'userLng': _markerPos.longitude,
+        if (_locationLabel != null) 'locationName': _locationLabel,
+      });
+      return;
+    }
+
+    ActiveServiceRequestTracking.save({
+      ..._acceptedMechanic!,
+      'requestId': _activeRequestId,
+      'requestStatus': 'ACCEPTED',
+      'serviceType': widget.serviceType,
+      'userNotes': widget.userNotes,
+      'userLat': _markerPos.latitude,
+      'userLng': _markerPos.longitude,
+      if (_acceptedDistanceText != null) 'distanceText': _acceptedDistanceText,
+      if (_acceptedEta != null) 'eta': _acceptedEta,
+    });
+  }
+
+  Future<void> _fetchAcceptedRoute({bool force = false}) async {
+    final mechanicPosition = _acceptedMechanicPosition;
+    if (mechanicPosition == null) return;
+
+    final now = DateTime.now();
+    final movedEnough = _lastRouteOrigin == null ||
+        _distanceMeters(_lastRouteOrigin!, mechanicPosition) >= 30;
+    final timeEnough = _lastRouteFetchAt == null ||
+        now.difference(_lastRouteFetchAt!).inSeconds >= 8;
+
+    if (!force && !movedEnough && !timeEnough) return;
+
+    _lastRouteFetchAt = now;
+    _lastRouteOrigin = mechanicPosition;
+
+    try {
+      final polylinePoints = PolylinePoints(apiKey: _googleApiKey);
+      final result = await polylinePoints.getRouteBetweenCoordinates(
+        request: PolylineRequest(
+          origin: PointLatLng(
+            mechanicPosition.latitude,
+            mechanicPosition.longitude,
+          ),
+          destination: PointLatLng(_markerPos.latitude, _markerPos.longitude),
+          mode: TravelMode.driving,
+        ),
+      );
+
+      if (!mounted || result.points.isEmpty) return;
+
+      final points =
+          result.points.map((p) => LatLng(p.latitude, p.longitude)).toList();
+      setState(() {
+        _polylines = {
+          Polyline(
+            polylineId: const PolylineId('accepted_route'),
+            points: points,
+            color: _primary,
+            width: 6,
+            startCap: Cap.roundCap,
+            endCap: Cap.roundCap,
+            jointType: JointType.round,
+          ),
+        };
+      });
+    } catch (e) {
+      debugPrint('Accepted route fetch error: $e');
+    }
+  }
+
+  void _fitAcceptedBounds() {
+    final mechanicPosition = _acceptedMechanicPosition;
+    if (mechanicPosition == null) return;
+
+    final minLat = math.min(_markerPos.latitude, mechanicPosition.latitude);
+    final maxLat = math.max(_markerPos.latitude, mechanicPosition.latitude);
+    final minLng = math.min(_markerPos.longitude, mechanicPosition.longitude);
+    final maxLng = math.max(_markerPos.longitude, mechanicPosition.longitude);
+
+    _mapController?.animateCamera(
+      CameraUpdate.newLatLngBounds(
+        LatLngBounds(
+          southwest: LatLng(minLat, minLng),
+          northeast: LatLng(maxLat, maxLng),
+        ),
+        80,
+      ),
+    );
+  }
+
+  Future<void> _fetchNearbyMechanics(String serviceType) async {
+    try {
+      final nearbyPayload = {
+        "latitude": _markerPos.latitude,
+        "longitude": _markerPos.longitude,
+        "serviceType": serviceType,
+      };
+
+      final res = await http.post(
+        Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/nearbymechanic"),
+        headers: {
+          'Content-Type': 'application/json',
+          ...UserSession().getAuthHeader(),
+        },
+        body: jsonEncode(nearbyPayload),
+      );
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final String sessionId = data['mapSessionId'] ?? '';
+        final List mechanics = data['mechanics'] ?? [];
+
+        final Set<Marker> markers = {};
+        for (final m in mechanics) {
+          final double lat = (m['latitude'] is num)
+              ? (m['latitude'] as num).toDouble()
+              : double.tryParse(m['latitude'].toString()) ?? 0;
+          final double lng = (m['longitude'] is num)
+              ? (m['longitude'] as num).toDouble()
+              : double.tryParse(m['longitude'].toString()) ?? 0;
+          final int id = m['mechanicId'] ?? 0;
+          final String mid = id.toString();
+          final pos = LatLng(lat, lng);
+
+          // Initialize animation state for loaded mechanics
+          _markerCurrentPositions[mid] = pos;
+          _markerTargetPositions[mid] = pos;
+          _markerTitles[mid] = 'Mechanic #$id';
+
+          markers.add(
+            Marker(
+              markerId: MarkerId('mechanic_$id'),
+              position: pos,
+              icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+              infoWindow: InfoWindow(title: 'Mechanic #$id'),
+            ),
+          );
+        }
+
+        if (mounted) {
+          setState(() {
+            _mechanicMarkers = markers;
+            _isWaiting = true;
+          });
+          _connectNearbyMechanicTracking(sessionId);
+
+          // Zoom the map to fit both user and mechanics
+          if (markers.isNotEmpty) {
+            _fitMapBounds(markers);
+          }
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('No nearby mechanics found: ${res.body}')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error finding nearby mechanics: $e')),
+        );
+      }
+    }
+  }
+
+  void _connectNearbyMechanicTracking(String mapSessionId) {
+    if (mapSessionId.isEmpty) return;
+
+    _trackingClient?.deactivate();
+    _trackingClient = StompClient(
+      config: StompConfig(
+        url:
+            'wss://mechanicapp-service-621632382478.asia-south1.run.app/ws-notifications/websocket',
+        stompConnectHeaders: UserSession().getAuthHeader(),
+        webSocketConnectHeaders: UserSession().getAuthHeader(),
+        onConnect: (_) {
+          _trackingClient?.subscribe(
+            destination: '/topic/nearby-mechanics/$mapSessionId',
+            callback: (frame) {
+              if (frame.body == null) return;
+              try {
+                final decoded = jsonDecode(frame.body!);
+                if (decoded is Map) {
+                  _updateMechanicMarker(Map<String, dynamic>.from(decoded));
+                }
+              } catch (e) {
+                debugPrint('Nearby mechanic tracking decode error: $e');
+              }
+            },
+          );
+        },
+        onStompError: (frame) =>
+            debugPrint('Nearby mechanic STOMP error: ${frame.body}'),
+        onWebSocketError: (error) =>
+            debugPrint('Nearby mechanic socket error: $error'),
+      ),
+    );
+    _trackingClient?.activate();
+  }
+
+  void _updateMechanicMarker(Map<String, dynamic> data) {
+    final mechanicId = data['mechanicId']?.toString();
+    final lat = _toDouble(data['latitude']);
+    final lng = _toDouble(data['longitude']);
+    if (mechanicId == null || lat == null || lng == null || !mounted) return;
+
+    final target = LatLng(lat, lng);
+    
+    // Initialize if brand new mechanic (not in initial list)
+    _markerCurrentPositions.putIfAbsent(mechanicId, () => target);
+    _markerTitles[mechanicId] = 'Mechanic #$mechanicId';
+
+    // Set the new target
+    _markerTargetPositions[mechanicId] = target;
+
+    // Start ticker if not already running
+    if (!_markerTicker.isTicking) {
+      _markerTicker.start();
+    }
+    
+    debugPrint('🎬 Marker update received for $mechanicId → Animating to $lat, $lng');
+  }
+
+  double? _toDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+    if (value == null) return null;
+    return double.tryParse(value.toString());
+  }
+
+  double _distanceMeters(LatLng a, LatLng b) {
+    const earthRadiusMeters = 6371000.0;
+    final dLat = (b.latitude - a.latitude) * math.pi / 180;
+    final dLng = (b.longitude - a.longitude) * math.pi / 180;
+    final lat1 = a.latitude * math.pi / 180;
+    final lat2 = b.latitude * math.pi / 180;
+    final h = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(lat1) *
+            math.cos(lat2) *
+            math.sin(dLng / 2) *
+            math.sin(dLng / 2);
+    return earthRadiusMeters * 2 * math.atan2(math.sqrt(h), math.sqrt(1 - h));
+  }
+
+  void _fitMapBounds(Set<Marker> markers) {
+    double minLat = _markerPos.latitude;
+    double maxLat = _markerPos.latitude;
+    double minLng = _markerPos.longitude;
+    double maxLng = _markerPos.longitude;
+
+    for (final m in markers) {
+      if (m.position.latitude < minLat) minLat = m.position.latitude;
+      if (m.position.latitude > maxLat) maxLat = m.position.latitude;
+      if (m.position.longitude < minLng) minLng = m.position.longitude;
+      if (m.position.longitude > maxLng) maxLng = m.position.longitude;
+    }
+
+    _mapController?.animateCamera(
+      CameraUpdate.newLatLngBounds(
+        LatLngBounds(
+          southwest: LatLng(minLat - 0.01, minLng - 0.01),
+          northeast: LatLng(maxLat + 0.01, maxLng + 0.01),
+        ),
+        60,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -265,21 +1011,33 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
               target: _markerPos,
               zoom: 14,
             ),
-            myLocationEnabled: true,
+            markers: _isWaiting
+                ? {
+                    Marker(
+                      markerId: const MarkerId('user_location'),
+                      position: _markerPos,
+                      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+                      infoWindow: const InfoWindow(title: 'Your Location'),
+                    ),
+                    ..._mechanicMarkers,
+                  }
+                : {},
+            polylines: _polylines,
+            myLocationEnabled: !_isWaiting,
             myLocationButtonEnabled: false,
             zoomControlsEnabled: false,
             compassEnabled: false,
             mapToolbarEnabled: false,
-            onCameraMoveStarted: () {
+            onCameraMoveStarted: _isWaiting ? null : () {
               setState(() {
                 _isDragging = true;
                 _locationLabel = null;
               });
             },
-            onCameraMove: (pos) {
+            onCameraMove: _isWaiting ? null : (pos) {
               setState(() => _markerPos = pos.target);
             },
-            onCameraIdle: () {
+            onCameraIdle: _isWaiting ? null : () {
               setState(() => _isDragging = false);
               _geocodeDebounce?.cancel();
               _geocodeDebounce = Timer(const Duration(milliseconds: 600), () {
@@ -288,32 +1046,34 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
             },
           ),
 
-          Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildMarkerWidget(),
-                Container(
-                  width: 3,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: _primary,
-                    borderRadius: BorderRadius.circular(2),
+          // Show the draggable pin ONLY when NOT in waiting mode
+          if (!_isWaiting)
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildMarkerWidget(),
+                  Container(
+                    width: 3,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: _primary,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
-                ),
-                Container(
-                  width: 10,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.black26,
-                    borderRadius: BorderRadius.circular(4),
+                  Container(
+                    width: 10,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.black26,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
 
-          if (_locationLabel != null && !_isDragging)
+          if (_locationLabel != null && !_isDragging && !_isWaiting)
             Center(
               child: Padding(
                 padding: const EdgeInsets.only(bottom: 80),
@@ -321,57 +1081,97 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
               ),
             ),
 
-          SafeArea(
-            child: Column(
-              children: [
-                _buildSearchBar(),
-                if (_showSuggestions) _buildSuggestionsList(),
-              ],
+          if (!_isWaiting)
+            SafeArea(
+              child: Column(
+                children: [
+                  _buildSearchBar(),
+                  if (_showSuggestions) _buildSuggestionsList(),
+                ],
+              ),
             ),
-          ),
 
-          Positioned(
-            right: 16,
-            bottom: 120,
-            child: FloatingActionButton.small(
-              backgroundColor: Colors.white,
-              elevation: 4,
-              onPressed: _getUserLocation,
-              child: const Icon(Icons.my_location_rounded, color: _primary),
-            ),
-          ),
-
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: 32,
-            child: ElevatedButton(
-              onPressed: _isLoading ? null : _sendServiceRequest,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _primary,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
+          if (!_isWaiting)
+            Positioned(
+              right: 16,
+              bottom: 120,
+              child: FloatingActionButton.small(
+                backgroundColor: Colors.white,
                 elevation: 4,
+                onPressed: _getUserLocation,
+                child: const Icon(Icons.my_location_rounded, color: _primary),
               ),
-              child: _isLoading 
-                ? const SizedBox(
-                    width: 24, 
-                    height: 24, 
-                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
-                  )
-                : const Text(
-                'Send Request',
-                style: TextStyle(
-                  fontFamily: 'Bricolage Grotesque',
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
+            ),
+
+          // Bottom: Send Request button OR Waiting card
+          if (!_isWaiting)
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 32,
+              child: ElevatedButton(
+                onPressed: _isLoading ? null : _sendServiceRequest,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _primary,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  elevation: 4,
+                ),
+                child: _isLoading 
+                  ? const SizedBox(
+                      width: 24, 
+                      height: 24, 
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
+                    )
+                  : const Text(
+                  'Send Request',
+                  style: TextStyle(
+                    fontFamily: 'Bricolage Grotesque',
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
                 ),
               ),
             ),
-          ),
+
+          // Waiting for Response card
+          if (_isWaiting)
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 32,
+              child: _isAccepted ? _buildAcceptedMechanicCard() : _buildWaitingCard(),
+            ),
+
+          // Back button in waiting mode
+          if (_isWaiting)
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                child: GestureDetector(
+                  onTap: () {
+                    _saveActiveTracking();
+                    Navigator.popUntil(context, (route) => route.isFirst);
+                  },
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(color: Colors.black12, blurRadius: 6)
+                      ],
+                    ),
+                    child: Icon(_isAccepted ? Icons.close : Icons.arrow_back_ios_new,
+                        color: Colors.black87, size: 18),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -586,6 +1386,300 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
             }).toList(),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildAcceptedMechanicCard() {
+    final mechanic = _acceptedMechanic ?? {};
+    final name = (mechanic['mechanicName'] ?? 'Mechanic').toString();
+    final number = (mechanic['mechanicNumber'] ?? '').toString();
+    final image = (mechanic['mechanicImage'] ?? '').toString();
+    final type = (mechanic['mechanicType'] ?? 'Mechanic').toString();
+    final shop = (mechanic['mechanicShopName'] ?? 'Shop location').toString();
+    final experience = mechanic['mechanicExperience']?.toString() ?? '0';
+    final reviews = mechanic['mechanicTotalReviews']?.toString() ?? '0';
+    final rating = _toDouble(mechanic['mechanicRating']);
+    final distance = _acceptedDistanceText ??
+        (mechanic['distanceText'] ?? mechanic['distance'] ?? '--').toString();
+    final eta = _acceptedEta ?? mechanic['eta']?.toString() ?? '--';
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black26,
+            blurRadius: 15,
+            offset: Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 28,
+                backgroundColor: Colors.grey.shade200,
+                backgroundImage:
+                    image.startsWith('http') ? NetworkImage(image) : null,
+                child: image.startsWith('http')
+                    ? null
+                    : const Icon(Icons.person, color: Colors.grey),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '$type • $experience yrs exp',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                    Text(
+                      shop,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        color: Colors.grey.shade500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.star_rounded,
+                          color: Colors.amber, size: 16),
+                      const SizedBox(width: 2),
+                      Text(
+                        rating == null ? '--' : rating.toStringAsFixed(1),
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    '$reviews reviews',
+                    style: GoogleFonts.poppins(
+                      fontSize: 10,
+                      color: Colors.grey.shade500,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _trackingMetric(
+                  Icons.route_rounded,
+                  'Distance',
+                  distance,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _trackingMetric(
+                  Icons.schedule_rounded,
+                  'ETA',
+                  eta,
+                ),
+              ),
+              if (number.isNotEmpty) ...[
+                const SizedBox(width: 10),
+                InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: () => launchUrl(Uri.parse('tel:$number')),
+                  child: Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: _primary,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(Icons.phone_rounded, color: Colors.white),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            height: 46,
+            child: OutlinedButton.icon(
+              onPressed: _isLoading ? null : _cancelRequest,
+              icon: _isLoading 
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.red, strokeWidth: 2))
+                : const Icon(Icons.cancel_rounded, color: Colors.red),
+              label: Text(
+                _isLoading ? 'Cancelling...' : 'Cancel Request',
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                  color: Colors.red,
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                side: const BorderSide(color: Colors.red),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _trackingMetric(IconData icon, String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: _primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: GoogleFonts.poppins(
+                    fontSize: 10,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black87,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWaitingCard() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black26,
+            blurRadius: 15,
+            offset: Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(
+            width: 36,
+            height: 36,
+            child: CircularProgressIndicator(
+              color: Color(0xFFFB3300),
+              strokeWidth: 3,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Waiting for Response...',
+            style: GoogleFonts.poppins(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${_mechanicMarkers.length} nearby mechanic${_mechanicMarkers.length == 1 ? '' : 's'} notified',
+            style: GoogleFonts.poppins(
+              fontSize: 13,
+              color: Colors.grey.shade600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Please wait while a mechanic accepts your request.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              color: Colors.grey.shade400,
+            ),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            height: 46,
+            child: TextButton.icon(
+              onPressed: _isLoading ? null : _cancelRequest,
+              icon: _isLoading 
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.redAccent, strokeWidth: 2))
+                : const Icon(Icons.cancel_outlined, color: Colors.redAccent),
+              label: Text(
+                _isLoading ? 'Cancelling...' : 'Cancel Request',
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                  color: Colors.redAccent,
+                ),
+              ),
+              style: TextButton.styleFrom(
+                backgroundColor: Colors.red.withOpacity(0.1),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

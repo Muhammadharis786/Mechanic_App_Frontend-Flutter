@@ -1,265 +1,592 @@
+import 'dart:async';
 import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'dart:ui' as ui;
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:geocoding/geocoding.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../services/active_service_request_tracking.dart';
+import '../../services/mechanic_notification_controller.dart';
+import 'package:stomp_dart_client/stomp_dart_client.dart';
+import '../authentication/user_session.dart';
+import 'mechanic_dashboard.dart';
 
 class MechanicUserMap extends StatefulWidget {
-  final String address;
-  final double? userLat;
-  final double? userLon;
+  final Map<String, dynamic> requestData;
 
   const MechanicUserMap({
     Key? key,
-    required this.address,
-    this.userLat,
-    this.userLon,
+    required this.requestData,
   }) : super(key: key);
 
   @override
   State<MechanicUserMap> createState() => _MechanicUserMapState();
 }
 
-class _MechanicUserMapState extends State<MechanicUserMap> {
-  late GoogleMapController mapController;
+class _MechanicUserMapState extends State<MechanicUserMap>
+    with TickerProviderStateMixin {
+  GoogleMapController? _mapController;
+  
+  // Locations
   LatLng? _userLocation;
-  Position? _mechanicLocation;
-  bool _isLoading = true;
-
-  Set<Marker> _markers = {};
+  LatLng? _mechanicCurrentPos;
+  LatLng? _mechanicTargetPos;
+  
+  // Tracking
+  StreamSubscription<Position>? _positionSub;
+  late final Ticker _animTicker;
+  
+  // Polylines
   Set<Polyline> _polylines = {};
-  String _travelTime = "Calculating...";
+  List<LatLng> _routePoints = [];
+  String _currentDistance = '--';
+  String _currentEta = '--';
+  DateTime? _lastRouteFetchAt;
+  LatLng? _lastRouteOrigin;
+  StompClient? _mapClient;
+  bool _isClosingForCancellation = false;
+  
+  // State
+  bool _isLoading = true;
+  final Color _primary = const Color(0xFFFB3300);
+  final String _googleApiKey = "AIzaSyBpyZg2i30gOLUKK0furYdGDbWXe4lqpkU";
 
   @override
   void initState() {
     super.initState();
-    _setupMap();
+    _parseInitialData();
+    _currentDistance = widget.requestData['distance']?.toString() ?? 
+                       (widget.requestData['distanceKm'] != null ? '${widget.requestData['distanceKm']} km' : '--');
+    _currentEta = widget.requestData['eta']?.toString() ?? '--';
+    _startLiveTracking();
+    _subscribeToBackendUpdates();
+    _animTicker = createTicker(_onTick);
+    
+    // Add a global fallback listener just in case backend routes the cancellation to the global mechanic topic
+    MechanicNotificationController().addListener(_onGlobalFallbackNotification);
   }
 
-  Future<void> _setupMap() async {
-    try {
-      Position mechanicPos = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high);
-
-      LatLng userLatLng;
-      if (widget.userLat != null && widget.userLon != null) {
-        userLatLng = LatLng(widget.userLat!, widget.userLon!);
-      } else {
-        List<Location> locations = await locationFromAddress(widget.address);
-        if (locations.isEmpty) {
-          if (mounted) setState(() => _isLoading = false);
-          return;
-        }
-        userLatLng = LatLng(locations[0].latitude, locations[0].longitude);
-      }
-
-      // Show basic markers immediately
-      final LatLng mechLatLng = LatLng(mechanicPos.latitude, mechanicPos.longitude);
-      final mechanicIcon = await _createLollipopMarker();
-      final userIconInitial = await _createUserDotMarker("Calculating...");
-
-      if (mounted) {
-        setState(() {
-          _mechanicLocation = mechanicPos;
-          _userLocation = userLatLng;
-          _markers = {
-            Marker(markerId: const MarkerId('mechanic_location'), position: mechLatLng, icon: mechanicIcon, anchor: const Offset(0.5, 1.0)),
-            Marker(markerId: const MarkerId('user_location'), position: userLatLng, icon: userIconInitial, anchor: const Offset(0.5, 0.9)),
-          };
-          _isLoading = false;
-        });
-      }
-
-      const String apiKey = "AIzaSyBpyZg2i30gOLUKK0furYdGDbWXe4lqpkU";
+  void _onGlobalFallbackNotification(Map<String, dynamic> data, String type) {
+    if (data['type'] == 'ROAD_REQUEST_CANCELLED' || data['backendType'] == 'ROAD_REQUEST_CANCELLED') {
+      final incomingReqId = data['requestId']?.toString() ?? data['requestid']?.toString();
+      final myReqId = widget.requestData['requestId']?.toString() ?? widget.requestData['requestid']?.toString();
       
-      // Fetch duration & route (async)
-      _updateRouteAndDuration(mechLatLng, userLatLng, apiKey, mechanicIcon);
+      if (incomingReqId != null && myReqId != null && incomingReqId == myReqId) {
+        _goToDashboardAfterCancellation();
+      }
+    }
+  }
 
+  void _goToDashboardAfterCancellation() {
+    if (_isClosingForCancellation) return;
+    _isClosingForCancellation = true;
+    ActiveServiceRequestTracking.clear();
+    _positionSub?.cancel();
+    _mapClient?.deactivate();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Customer has cancelled the request!'),
+        backgroundColor: Colors.red,
+      ),
+    );
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const MechanicDashboardScreen()),
+      (route) => false,
+    );
+  }
+
+  void _parseInitialData() {
+    try {
+      final double uLat = _toDouble(
+        widget.requestData['userLatitude'] ?? widget.requestData['userLat'],
+      );
+      final double uLng = _toDouble(
+        widget.requestData['userLongitude'] ?? widget.requestData['userLng'],
+      );
+      _userLocation = LatLng(uLat, uLng);
     } catch (e) {
-      debugPrint('Map error: $e');
+      debugPrint('Error parsing user location: $e');
+    }
+  }
+
+  void _startLiveTracking() async {
+    bool permission = await _checkPermission();
+    if (!permission) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
+
+    // Get initial position
+    try {
+      debugPrint('📍 Fetching initial mechanic position...');
+      Position pos = await Geolocator.getCurrentPosition(
+        timeLimit: const Duration(seconds: 10),
+      ).catchError((e) {
+        debugPrint('Geolocator error: $e');
+        return Position(
+          latitude: 24.8607,
+          longitude: 67.0011,
+          timestamp: DateTime.now(),
+          accuracy: 0,
+          altitude: 0,
+          heading: 0,
+          speed: 0,
+          speedAccuracy: 0,
+          altitudeAccuracy: 0,
+          headingAccuracy: 0,
+        );
+      });
+      
+      _mechanicCurrentPos = LatLng(pos.latitude, pos.longitude);
+      _mechanicTargetPos = LatLng(pos.latitude, pos.longitude);
+      
+      if (mounted) {
+        debugPrint('✅ Initial position found: ${_mechanicCurrentPos!.latitude}, ${_mechanicCurrentPos!.longitude}');
+        setState(() => _isLoading = false);
+        _fetchRoute(force: true);
+      }
+    } catch (e) {
+      debugPrint('❌ Initial position error: $e');
       if (mounted) setState(() => _isLoading = false);
     }
+
+    // Start stream
+    _positionSub = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 5,
+      ),
+    ).listen((Position pos) {
+      if (!mounted) return;
+      
+      final newPos = LatLng(pos.latitude, pos.longitude);
+      _mechanicTargetPos = newPos;
+      
+      if (!_animTicker.isTicking) {
+        _animTicker.start();
+      }
+      
+      _fetchRoute();
+    });
   }
 
-  Future<void> _updateRouteAndDuration(LatLng start, LatLng end, String apiKey, BitmapDescriptor mechanicIcon) async {
-    String travelTime = "Calculated soon";
+  void _onTick(Duration elapsed) {
+    if (_mechanicTargetPos == null || _mechanicCurrentPos == null) return;
 
-    // 1. Fetch Duration
-    try {
-      final String url = "https://maps.googleapis.com/maps/api/directions/json?origin=${start.latitude},${start.longitude}&destination=${end.latitude},${end.longitude}&key=$apiKey";
-      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['routes'].isNotEmpty) {
-          travelTime = data['routes'][0]['legs'][0]['duration']['text'];
-        }
-      }
-    } catch (e) {
-      debugPrint("❌ Duration Fetch Error: $e");
+    final target = _mechanicTargetPos!;
+    final current = _mechanicCurrentPos!;
+
+    final latDiff = target.latitude - current.latitude;
+    final lngDiff = target.longitude - current.longitude;
+
+    if (latDiff.abs() > 0.000001 || lngDiff.abs() > 0.000001) {
+      const double speed = 0.05;
+      _mechanicCurrentPos = LatLng(
+        current.latitude + (latDiff * speed),
+        current.longitude + (lngDiff * speed),
+      );
+      
+      _shortenRoute();
+      setState(() {});
+    } else {
+      _animTicker.stop();
     }
+  }
 
-    // Update markers with real time
-    final userIconUpdated = await _createUserDotMarker(travelTime);
-    if (mounted) {
-      setState(() {
-        _markers = {
-          Marker(markerId: const MarkerId('mechanic_location'), position: start, icon: mechanicIcon, anchor: const Offset(0.5, 1.0)),
-          Marker(markerId: const MarkerId('user_location'), position: end, icon: userIconUpdated, anchor: const Offset(0.5, 0.9)),
-        };
-      });
-    }
+  Future<void> _fetchRoute({bool force = false}) async {
+    if (_mechanicTargetPos == null || _userLocation == null) return;
 
-    // 2. Fetch Polyline
+    final now = DateTime.now();
+    final movedEnough = _lastRouteOrigin == null ||
+        _distanceMeters(_lastRouteOrigin!, _mechanicTargetPos!) >= 30;
+    final timeEnough = _lastRouteFetchAt == null ||
+        now.difference(_lastRouteFetchAt!).inSeconds >= 10;
+
+    if (!force && !movedEnough && !timeEnough) return;
+
+    _lastRouteFetchAt = now;
+    _lastRouteOrigin = _mechanicTargetPos;
+
     try {
-      PolylinePoints polylinePoints = PolylinePoints(apiKey: apiKey);
+      PolylinePoints polylinePoints = PolylinePoints(apiKey: _googleApiKey);
       PolylineResult result = await polylinePoints.getRouteBetweenCoordinates(
         request: PolylineRequest(
-          origin: PointLatLng(start.latitude, start.longitude),
-          destination: PointLatLng(end.latitude, end.longitude),
+          origin: PointLatLng(_mechanicTargetPos!.latitude, _mechanicTargetPos!.longitude),
+          destination: PointLatLng(_userLocation!.latitude, _userLocation!.longitude),
           mode: TravelMode.driving,
         ),
       );
 
-      if (mounted) {
-        setState(() {
-          if (result.points.isNotEmpty) {
-            _polylines = {
-              Polyline(
-                polylineId: const PolylineId("route"),
-                color: Colors.red,
-                points: result.points.map((p) => LatLng(p.latitude, p.longitude)).toList(),
-                width: 5,
-                jointType: JointType.round,
-                startCap: Cap.roundCap,
-                endCap: Cap.roundCap,
-              )
-            };
-          } else {
-            _polylines = {
-              Polyline(
-                polylineId: const PolylineId("fallback_route"),
-                color: Colors.red,
-                points: [start, end],
-                width: 5,
-                patterns: [PatternItem.dash(20), PatternItem.gap(10)],
-              )
-            };
-          }
-        });
+      if (mounted && result.points.isNotEmpty) {
+        _routePoints = result.points.map((p) => LatLng(p.latitude, p.longitude)).toList();
+        _updatePolyline();
       }
     } catch (e) {
-      debugPrint("❌ Polyline Fetch Error: $e");
+      debugPrint('Route fetch error: $e');
     }
   }
 
-  Future<BitmapDescriptor> _createLollipopMarker() async {
-    final ui.PictureRecorder pictureRecorder = ui.PictureRecorder();
-    final Canvas canvas = Canvas(pictureRecorder);
-    const double size = 120.0;
-    
-    // Draw Pin Line
-    final Paint linePaint = Paint()
-      ..color = Colors.red
-      ..strokeWidth = 4
-      ..strokeCap = StrokeCap.round;
-    canvas.drawLine(const Offset(size / 2, size / 2), const Offset(size / 2, size), linePaint);
+  void _shortenRoute() {
+    if (_routePoints.isEmpty || _mechanicCurrentPos == null) return;
 
-    // Draw Big Red Circle
-    final Paint circlePaint = Paint()..color = Colors.red;
-    canvas.drawCircle(const Offset(size / 2, size / 2), 35, circlePaint);
+    // Remove points from the start if we've passed them
+    int indexToRemove = -1;
+    for (int i = 0; i < _routePoints.length - 1; i++) {
+      if (_distanceMeters(_mechanicCurrentPos!, _routePoints[i]) < 15) {
+        indexToRemove = i;
+      }
+    }
 
-    // Draw White Dot in Center
-    final Paint dotPaint = Paint()..color = Colors.white;
-    canvas.drawCircle(const Offset(size / 2, size / 2), 8, dotPaint);
-
-    final img = await pictureRecorder.endRecording().toImage(size.toInt(), size.toInt());
-    final data = await img.toByteData(format: ui.ImageByteFormat.png);
-    return BitmapDescriptor.fromBytes(data!.buffer.asUint8List());
+    if (indexToRemove != -1) {
+      _routePoints.removeRange(0, indexToRemove + 1);
+      _updatePolyline();
+    }
   }
 
-  Future<BitmapDescriptor> _createUserDotMarker(String duration) async {
-    final ui.PictureRecorder pictureRecorder = ui.PictureRecorder();
-    final Canvas canvas = Canvas(pictureRecorder);
-    
-    const double width = 240.0;
-    const double height = 180.0;
+  void _updatePolyline() {
+    setState(() {
+      _polylines = {
+        Polyline(
+          polylineId: const PolylineId('route'),
+          points: [_mechanicCurrentPos!, ..._routePoints],
+          color: _primary,
+          width: 6,
+          startCap: Cap.roundCap,
+          endCap: Cap.roundCap,
+          jointType: JointType.round,
+        )
+      };
+    });
+  }
 
-    // 1. Draw Tooltip Box (White)
-    final Paint boxPaint = Paint()..color = Colors.white;
-    final RRect rRect = RRect.fromLTRBR(20, 0, width - 20, 60, const Radius.circular(12));
-    
-    // Shadow for tooltip
-    canvas.drawRRect(rRect.shift(const Offset(0, 2)), Paint()..color = Colors.black26..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4));
-    canvas.drawRRect(rRect, boxPaint);
+  double _distanceMeters(LatLng a, LatLng b) {
+    const double earthRadius = 6371000;
+    final dLat = (b.latitude - a.latitude) * math.pi / 180;
+    final dLng = (b.longitude - a.longitude) * math.pi / 180;
+    final lat1 = a.latitude * math.pi / 180;
+    final lat2 = b.latitude * math.pi / 180;
 
-    // 2. Draw Tooltip Triangle
-    final Path path = Path();
-    path.moveTo(width / 2 - 10, 60);
-    path.lineTo(width / 2, 75);
-    path.lineTo(width / 2 + 10, 60);
-    canvas.drawPath(path, boxPaint);
+    final h = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(lat1) * math.cos(lat2) * math.sin(dLng / 2) * math.sin(dLng / 2);
+    return earthRadius * 2 * math.asin(math.sqrt(h));
+  }
 
-    // 3. Draw Duration Text
-    TextPainter textPainter = TextPainter(textDirection: TextDirection.ltr);
-    textPainter.text = TextSpan(
-      text: duration,
-      style: GoogleFonts.poppins(
-        fontSize: 24,
-        fontWeight: FontWeight.bold,
-        color: Colors.black,
+  Future<bool> _checkPermission() async {
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    return permission == LocationPermission.always || permission == LocationPermission.whileInUse;
+  }
+
+  double _toDouble(dynamic val) {
+    if (val is num) return val.toDouble();
+    return double.tryParse(val?.toString() ?? '0') ?? 0;
+  }
+
+  @override
+  void dispose() {
+    MechanicNotificationController().removeListener(_onGlobalFallbackNotification);
+    _animTicker.dispose();
+    _positionSub?.cancel();
+    _mapClient?.deactivate();
+    _mapController?.dispose();
+    super.dispose();
+  }
+
+  void _subscribeToBackendUpdates() {
+    final requestId = widget.requestData['requestId'];
+    if (requestId == null) return;
+
+    _mapClient?.deactivate();
+    _mapClient = StompClient(
+      config: StompConfig(
+        url: 'wss://mechanicapp-service-621632382478.asia-south1.run.app/ws-notifications/websocket',
+        stompConnectHeaders: UserSession().getAuthHeader(),
+        webSocketConnectHeaders: UserSession().getAuthHeader(),
+        onConnect: (frame) {
+          // Listen for status changes (like Cancellation)
+          _mapClient?.subscribe(
+            destination: '/topic/request/$requestId',
+            callback: (message) {
+              if (message.body == null || !mounted) return;
+              try {
+                final data = jsonDecode(message.body!);
+                if (data is Map && (data['type'] == 'ROAD_REQUEST_CANCELLED' || data['backendType'] == 'ROAD_REQUEST_CANCELLED')) {
+                  _goToDashboardAfterCancellation();
+                }
+              } catch (_) {}
+            },
+          );
+
+          // Listen for Live Location updates from Backend
+          _mapClient?.subscribe(
+            destination: '/topic/request/$requestId/live-location',
+            callback: (message) {
+              if (message.body == null || !mounted) return;
+              try {
+                final data = jsonDecode(message.body!);
+                if (data is Map) {
+                  setState(() {
+                    if (data.containsKey('distance')) {
+                      _currentDistance = data['distance'].toString();
+                    }
+                    if (data.containsKey('eta')) {
+                      _currentEta = data['eta'].toString();
+                    }
+                  });
+                }
+              } catch (_) {}
+            },
+          );
+        },
+        onStompError: (frame) => debugPrint('Mechanic Map STOMP error: ${frame.body}'),
+        onWebSocketError: (error) => debugPrint('Mechanic Map socket error: $error'),
       ),
     );
-    textPainter.layout();
-    textPainter.paint(canvas, Offset((width - textPainter.width) / 2, (60 - textPainter.height) / 2));
-
-    // 4. Draw User Dot at Bottom
-    final Paint dotOuterPaint = Paint()..color = Colors.black87;
-    final Paint dotInnerPaint = Paint()..color = Colors.white;
-    
-    canvas.drawCircle(const Offset(width / 2, height - 30), 16, dotOuterPaint);
-    canvas.drawCircle(const Offset(width / 2, height - 30), 12, dotInnerPaint);
-
-    final img = await pictureRecorder.endRecording().toImage(width.toInt(), height.toInt());
-    final data = await img.toByteData(format: ui.ImageByteFormat.png);
-    return BitmapDescriptor.fromBytes(data!.buffer.asUint8List());
+    _mapClient?.activate();
   }
 
   @override
   Widget build(BuildContext context) {
+    final Map<String, dynamic> data = widget.requestData;
+    final String customerName = (data['username'] ?? 'Customer').toString();
+    final String customerImg = (data['userimage'] ?? data['userimgurl'] ?? '').toString();
+    final String locationName = (data['userlocationname'] ??
+            data['locationName'] ??
+            data['location'] ??
+            'Customer Location')
+        .toString();
+    final String serviceType = (data['serviceType'] ?? data['mechanicType'] ?? 'General').toString();
+    final String userNotes = (data['userNotes'] ?? 'No special notes').toString();
+    final String customerPhone =
+        (data['userPhoneNumber'] ?? data['userphonenumber'] ?? data['phone'] ?? '')
+            .toString();
+
     return Scaffold(
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: const Color(0xFFFB3300),
-        title: Text(
-          'Track Location',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: Colors.white, fontSize: 18),
-        ),
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: _isLoading || _userLocation == null
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFFFB3300)))
-          : GoogleMap(
-              onMapCreated: (controller) => mapController = controller,
-              initialCameraPosition: CameraPosition(
-                target: _mechanicLocation != null
-                    ? LatLng(_mechanicLocation!.latitude, _mechanicLocation!.longitude)
-                    : _userLocation!,
-                zoom: 14,
+      body: Stack(
+        children: [
+          _isLoading || _userLocation == null
+              ? const Center(child: CircularProgressIndicator())
+              : GoogleMap(
+                  onMapCreated: (c) => _mapController = c,
+                  initialCameraPosition: CameraPosition(
+                    target: _mechanicCurrentPos ?? _userLocation!,
+                    zoom: 15,
+                  ),
+                  myLocationEnabled: false,
+                  zoomControlsEnabled: false,
+                  markers: {
+                    if (_mechanicCurrentPos != null)
+                      Marker(
+                        markerId: const MarkerId('mechanic'),
+                        position: _mechanicCurrentPos!,
+                        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+                        infoWindow: const InfoWindow(title: 'You'),
+                      ),
+                    Marker(
+                      markerId: const MarkerId('user'),
+                      position: _userLocation!,
+                      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+                      infoWindow: const InfoWindow(title: 'Customer'),
+                    ),
+                  },
+                  polylines: _polylines,
+                ),
+
+          // Top Header
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+                      ),
+                      child: const Icon(Icons.arrow_back_ios_new, size: 20),
+                    ),
+                  ),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: _primary,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      'EN ROUTE',
+                      style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                    ),
+                  ),
+                ],
               ),
-              myLocationEnabled: true,
-              myLocationButtonEnabled: true,
-              zoomControlsEnabled: false,
-              markers: _markers,
-              polylines: _polylines,
             ),
+          ),
+
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Container(
+              margin: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.black26,
+                    blurRadius: 15,
+                    offset: Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100], 
+                          shape: BoxShape.circle,
+                          image: customerImg.isNotEmpty 
+                            ? DecorationImage(image: NetworkImage(customerImg), fit: BoxFit.cover)
+                            : null,
+                        ),
+                        child: customerImg.isEmpty ? Icon(Icons.person, color: _primary) : null,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              customerName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                            Text(
+                              '$serviceType request',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey.shade600),
+                            ),
+                            Text(
+                              locationName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.poppins(fontSize: 11, color: Colors.grey.shade500),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (customerPhone.isNotEmpty)
+                        InkWell(
+                          borderRadius: BorderRadius.circular(14),
+                          onTap: () => launchUrl(Uri.parse('tel:$customerPhone')),
+                          child: Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: _primary,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: const Icon(Icons.phone_rounded, color: Colors.white),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(child: _trackingMetric(Icons.route_rounded, 'Distance', _currentDistance)),
+                      const SizedBox(width: 10),
+                      Expanded(child: _trackingMetric(Icons.schedule_rounded, 'ETA', _currentEta)),
+                    ],
+                  ),
+                  if (userNotes != 'No special notes') ...[
+                    const SizedBox(height: 14),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Text(
+                        'Notes: $userNotes',
+                        style: GoogleFonts.poppins(fontSize: 12, color: Colors.black87),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        ActiveServiceRequestTracking.clear();
+                        Navigator.pop(context);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _primary,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      child: Text(
+                        'I HAVE ARRIVED',
+                        style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _trackingMetric(IconData icon, String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: _primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: GoogleFonts.poppins(fontSize: 10, color: Colors.grey.shade600)),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.black87),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'screens/s_screen.dart';
 import 'firebase_options.dart';
 import 'services/fcm_notification_service.dart';
+import 'services/connectivity_controller.dart';
 
 // ===== GLOBAL THEME NOTIFIER =====
 class ThemeNotifier extends ValueNotifier<ThemeMode> {
@@ -19,6 +20,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await FcmNotificationService.instance.initialize();
+  ConnectivityController().init();
   runApp(const MechConnectApp());
 }
 

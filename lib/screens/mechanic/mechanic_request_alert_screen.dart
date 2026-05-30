@@ -1,8 +1,15 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:http/http.dart' as http;
+import '../../services/mechanic_live_location_service.dart';
+import '../../services/active_service_request_tracking.dart';
 import '../../services/mechanic_notification_controller.dart';
+import 'mechanic_usermap.dart';
+import 'mechanic_dashboard.dart';
+import '../authentication/user_session.dart';
 
 const String _mapStyle = '''
 [
@@ -39,6 +46,8 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
   Timer? _timer;
   int _secondsLeft = 60;
   final int _totalSeconds = 60;
+  bool _isAccepting = false;
+  bool _isClosingForCancellation = false;
   
   final Color primaryColor = const Color(0xFFFB3300);
 
@@ -67,8 +76,44 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
     
     _targetPos = LatLng(lat, lng);
 
+    MechanicNotificationController().addListener(_onNotification);
+    ActiveServiceRequestTracking.save({
+      ...widget.requestData,
+      'requestStatus': 'PENDING',
+    });
+
     // Start 60 second countdown
     _startTimer();
+  }
+
+  void _onNotification(Map<String, dynamic> data, String type) {
+    if (data['type'] == 'ROAD_REQUEST_CANCELLED' || data['backendType'] == 'ROAD_REQUEST_CANCELLED') {
+      final incomingReqId = data['requestId']?.toString() ?? data['requestid']?.toString();
+      final myReqId = widget.requestData['requestId']?.toString() ?? widget.requestData['requestid']?.toString();
+      
+      if (incomingReqId != null && myReqId != null && incomingReqId == myReqId) {
+         _goToDashboardAfterCancellation();
+      }
+    }
+  }
+
+  void _goToDashboardAfterCancellation() {
+    if (_isClosingForCancellation) return;
+    _isClosingForCancellation = true;
+    _timer?.cancel();
+    ActiveServiceRequestTracking.clear();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Customer has cancelled the request!'),
+        backgroundColor: Colors.red,
+      ),
+    );
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const MechanicDashboardScreen()),
+      (route) => false,
+    );
   }
 
   void _startTimer() {
@@ -81,6 +126,7 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
         }
       } else {
         _timer?.cancel();
+        ActiveServiceRequestTracking.clear();
         // Time expired, pop screen
         if (mounted) {
           Navigator.of(context).pop();
@@ -91,11 +137,13 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
 
   @override
   void dispose() {
+    MechanicNotificationController().removeListener(_onNotification);
     _timer?.cancel();
     _mapController?.dispose();
     super.dispose();
   }
 
+  // ignore: unused_element
   void _acceptRequest() {
     // TODO: Actually hit the API to accept the request
     // api/service-request/accept ...
@@ -108,6 +156,80 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
       ),
     );
     Navigator.of(context).pop();
+  }
+
+  Future<void> _acceptRequestFromBackend() async {
+    if (_isAccepting) return;
+
+    final requestId = widget.requestData['requestId']?.toString();
+    if (requestId == null || requestId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Request id missing')),
+      );
+      return;
+    }
+
+    setState(() => _isAccepting = true);
+
+    try {
+      final response = await http.post(
+        Uri.parse(
+          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/accept/$requestId',
+        ),
+        headers: {
+          ...UserSession().getAuthHeader(),
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final acceptedData = jsonDecode(response.body);
+        
+        // Merge original request data with acceptance response
+        // so the map has serviceType, userNotes, and user location from the original notification
+        final mergedData = <String, dynamic>{
+          ...widget.requestData,  // original notification data (serviceType, userNotes, userLatitude, etc.)
+          ...Map<String, dynamic>.from(acceptedData),  // acceptance response (mechanic details, user info)
+          'requestStatus': 'ACCEPTED',
+        };
+        
+        await MechanicLiveLocationService.instance.start();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Request Accepted!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        ActiveServiceRequestTracking.save(mergedData);
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => MechanicUserMap(requestData: mergedData),
+          ),
+        );
+      } else {
+        String message = response.body;
+        try {
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map && decoded['message'] != null) {
+            message = decoded['message'].toString();
+          }
+        } catch (_) {}
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message)),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Accept request failed: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isAccepting = false);
+      }
+    }
   }
 
   @override
@@ -318,7 +440,7 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: _acceptRequest,
+                      onPressed: _isAccepting ? null : _acceptRequestFromBackend,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: primaryColor,
                         padding: const EdgeInsets.symmetric(vertical: 16),
@@ -327,16 +449,25 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
                         ),
                         elevation: 4,
                       ),
-                      child: const Text(
-                        "ACCEPT REQUEST",
-                        style: TextStyle(
-                          fontFamily: 'Bricolage Grotesque',
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
+                      child: _isAccepting
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text(
+                              "ACCEPT REQUEST",
+                              style: TextStyle(
+                                fontFamily: 'Bricolage Grotesque',
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
                     ),
                   ),
                 ],

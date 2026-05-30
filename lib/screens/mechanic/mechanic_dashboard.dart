@@ -1,4 +1,8 @@
 import 'dart:async';
+import 'mechanic_usermap.dart';
+import 'mechanic_request_alert_screen.dart';
+import '../../services/active_service_request_tracking.dart';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shimmer/shimmer.dart';
@@ -16,6 +20,7 @@ import '../homescreen.dart';
 import '../role_selection_screen.dart';
 import '../../services/websocket_service.dart'; // Re-adding websocket
 import '../../services/mechanic_notification_controller.dart'; // Add Global Controller
+import '../../services/mechanic_live_location_service.dart';
 import '../../utils/time_utils.dart'; // Added for relative time formatting
 
 class MechanicDashboardScreen extends StatefulWidget {
@@ -144,6 +149,9 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
 
           _isLoading = false;
         });
+        if (isOnline) {
+          MechanicLiveLocationService.instance.start();
+        }
       } else {
         setState(() => _isLoading = false);
       }
@@ -172,6 +180,11 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
         setState(() {
           isOnline = value;
         });
+        if (value) {
+          MechanicLiveLocationService.instance.start();
+        } else {
+          MechanicLiveLocationService.instance.stop();
+        }
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -305,6 +318,95 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
                   crossAxisAlignment:
                       CrossAxisAlignment.start,
                   children: [
+                    ValueListenableBuilder<Map<String, dynamic>?>(
+                      valueListenable: ActiveServiceRequestTracking.current,
+                      builder: (context, activeRequest, _) {
+                        if (!ActiveServiceRequestTracking.isActive(activeRequest)) {
+                          return const SizedBox.shrink();
+                        }
+                        final request = activeRequest!;
+                        final isPendingRoadRequest =
+                            (request['requestStatus'] ?? '')
+                                    .toString()
+                                    .toUpperCase() ==
+                                'PENDING' &&
+                            request['mechanicId'] == null;
+                        
+                        return Container(
+                          margin: const EdgeInsets.symmetric(vertical: 10),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [primaryColor, accentOrange],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: primaryColor.withValues(alpha: 0.3),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              const CircleAvatar(
+                                backgroundColor: Colors.white24,
+                                child: Icon(Icons.navigation_rounded, color: Colors.white),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      isPendingRoadRequest
+                                          ? 'Pending Service Request'
+                                          : 'Active Service in Progress',
+                                      style: GoogleFonts.poppins(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    Text(
+                                      isPendingRoadRequest
+                                          ? 'Tap to view request details'
+                                          : 'Tap to resume tracking map',
+                                      style: GoogleFonts.poppins(
+                                        color: Colors.white70,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              ElevatedButton(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => isPendingRoadRequest
+                                          ? MechanicRequestAlertScreen(requestData: request)
+                                          : MechanicUserMap(requestData: request),
+                                    ),
+                                  );
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.white,
+                                  foregroundColor: primaryColor,
+                                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                                child: const Text('RESUME'),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
                     const SizedBox(height: 10),
 
                     /// HEADER 
@@ -332,12 +434,16 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
                                   const Icon(Icons.star_rounded,
                                       color: Colors.amber, size: 20),
                                   const SizedBox(width: 4),
-                                  Text(
-                                    '$mechanicRating Rating',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 14,
-                                      color: theme.textTheme.bodyMedium?.color
-                                          ?.withValues(alpha: 0.7),
+                                  Flexible(
+                                    child: Text(
+                                      '$mechanicRating Rating',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 14,
+                                        color: theme.textTheme.bodyMedium?.color
+                                            ?.withValues(alpha: 0.7),
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
                                 ],
@@ -756,6 +862,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
                 _drawerItem(Icons.logout_rounded, "Logout", context, isDark: isDark, isLogout: true, onTap: () async {
                   final nav = Navigator.of(context);
                   MechanicNotificationController().dispose(); // Close WebSocket
+                  MechanicLiveLocationService.instance.stop();
                   await UserSession().logout();
                   nav.pushAndRemoveUntil(
                     MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
@@ -772,6 +879,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
               onTap: () async {
                 final nav = Navigator.of(context);
                 MechanicNotificationController().dispose(); // Close WebSocket
+                MechanicLiveLocationService.instance.stop();
                 bool success = await UserSession().trySwitchTo('USER');
                 if (success) {
                   nav.pushAndRemoveUntil(
