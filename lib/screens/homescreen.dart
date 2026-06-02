@@ -649,8 +649,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildActiveTrackingCard(Map<String, dynamic> tracking, bool isDark) {
-    final status = (tracking['requestStatus'] ?? '').toString().toUpperCase();
+    final status = (tracking['requestStatus'] ?? tracking['status'] ?? '')
+        .toString()
+        .toUpperCase();
     final isPending = status == 'PENDING';
+    final isWaitingForPayment = tracking['workCompleted'] == true ||
+        status == 'WAITING_FOR_PAYMENT' ||
+        status == 'WORK_COMPLETED';
     final name = (tracking['mechanicName'] ?? 'Mechanic').toString();
     final eta = (tracking['eta'] ?? '--').toString();
     final distance =
@@ -666,6 +671,9 @@ class _HomeScreenState extends State<HomeScreen> {
             builder: (_) => ServiceRequestMapScreen(
               serviceType: (tracking['serviceType'] ?? 'Service').toString(),
               userNotes: (tracking['userNotes'] ?? '').toString(),
+              isFixedChargeAccepted:
+                  tracking['isFixedChargeAccepted'] == true ||
+                  tracking['isfixedchargeaccepted'] == true,
               resumedTracking: tracking,
             ),
           ),
@@ -698,7 +706,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    isPending ? 'Request in progress' : 'Mechanic on the way',
+                    isPending
+                        ? 'Request in progress'
+                        : isWaitingForPayment
+                            ? 'Work completed'
+                            : 'Mechanic on the way',
                     style: TextStyle(
                       fontFamily:
                           GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
@@ -708,7 +720,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   Text(
-                    isPending ? 'Waiting for nearby mechanic' : name,
+                    isPending
+                        ? 'Waiting for nearby mechanic'
+                        : isWaitingForPayment
+                            ? 'Tap to pay now'
+                            : name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -739,7 +755,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
-                'Track',
+                isWaitingForPayment ? 'Pay' : 'Track',
                 style: TextStyle(
                   fontFamily:
                       GoogleFonts.getFont('Bricolage Grotesque').fontFamily,

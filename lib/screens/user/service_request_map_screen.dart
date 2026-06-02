@@ -9,9 +9,12 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import 'package:http/http.dart' as http;
 import 'package:stomp_dart_client/stomp_dart_client.dart';
+import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../services/active_service_request_tracking.dart';
 import '../authentication/user_session.dart';
+import '../../widgets/service_charges_price_badge.dart';
+import 'payment_webview_screen.dart';
 
 const String _mapStyle = '''
 [
@@ -31,12 +34,14 @@ const String _googleApiKey = 'AIzaSyBpyZg2i30gOLUKK0furYdGDbWXe4lqpkU';
 class ServiceRequestMapScreen extends StatefulWidget {
   final String serviceType;
   final String userNotes;
+  final bool isFixedChargeAccepted;
   final Map<String, dynamic>? resumedTracking;
 
   const ServiceRequestMapScreen({
     super.key,
     required this.serviceType,
     required this.userNotes,
+    required this.isFixedChargeAccepted,
     this.resumedTracking,
   });
 
@@ -68,6 +73,17 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
   StompClient? _trackingClient;
   StompClient? _requestClient;
   bool _liveLocationSubscribed = false;
+  bool _userInitiatedCancel = false;
+  bool _cancelExitHandled = false;
+  bool _isPriceReceived = false;
+  bool _isApprovingPayment = false;
+  bool _paymentApproved = false;
+  bool _workCompleted = false;
+  bool _paymentPending = false;
+  bool _cashHandoverMarked = false;
+  bool _isPaying = false;
+  double? _finalPrice;
+  double? _arrivalPrice;
   DateTime? _lastRouteFetchAt;
   LatLng? _lastRouteOrigin;
 
@@ -102,6 +118,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
 
     if (widget.resumedTracking != null) {
       _restoreRequestedLocation(widget.resumedTracking!);
+      _restoreTrackingSync(widget.resumedTracking!);
     } else {
       _initializePosition();
     }
@@ -111,7 +128,11 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
 
     if (widget.resumedTracking != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _restoreTracking(widget.resumedTracking!);
+        final requestId = widget.resumedTracking!['requestId']?.toString();
+        if (requestId != null && requestId.isNotEmpty) {
+          _connectRequestStatus(requestId);
+          _refreshResumedTracking(requestId);
+        }
       });
     }
   }
@@ -319,10 +340,11 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     final payload = {
       "serviceType": mappedServiceType,
       "userNotes": widget.userNotes,
+      "isfixedchargeaccepted": widget.isFixedChargeAccepted,
       "userphonenumber": userPhoneNumber,
       "userLatitude": _markerPos.latitude,
       "userLongitude": _markerPos.longitude,
-      "locationName": _locationLabel
+      "locationName": _locationLabel,
     };
 
     try {
@@ -419,31 +441,12 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
               try {
                 final decoded = jsonDecode(frame.body!);
                 if (decoded is! Map) return;
-
-                final acceptedData = Map<String, dynamic>.from(decoded);
-                final mechanicName =
-                    (acceptedData['mechanicName'] ?? acceptedData['name'])
-                        ?.toString();
-
-                _handleAcceptedMechanic(acceptedData, requestId);
-
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      mechanicName == null
-                          ? 'Mechanic accepted your request'
-                          : '$mechanicName accepted your request',
-                    ),
-                    backgroundColor: Colors.green.shade600,
-                  ),
+                _onRequestStatusUpdate(
+                  Map<String, dynamic>.from(decoded),
+                  requestId,
                 );
-              } catch (_) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text('Mechanic accepted your request'),
-                    backgroundColor: Colors.green.shade600,
-                  ),
-                );
+              } catch (e) {
+                debugPrint('Request status decode error: $e');
               }
             },
           );
@@ -457,9 +460,157 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     _requestClient?.activate();
   }
 
+  void _onRequestStatusUpdate(Map<String, dynamic> data, String requestId) {
+    final backendType =
+        (data['type'] ?? data['backendType'])?.toString().toUpperCase() ?? '';
+    final status = (data['status'] ?? data['requestStatus'])
+            ?.toString()
+            .toUpperCase() ??
+        '';
+
+    if (backendType == 'ROAD_REQUEST_CANCELLED') {
+      _handleRequestCancelledBySocket(data);
+      return;
+    }
+
+    if (backendType == 'FINAL_PRICE_SENT') {
+      final price = _toDouble(data['finalPrice']);
+      if (price != null && mounted) {
+        setState(() {
+          _isPriceReceived = true;
+          _finalPrice = price;
+          _paymentApproved = false;
+        });
+      }
+      return;
+    }
+
+    if (backendType == 'USER_APPROVED' ||
+        status == 'APPROVED_PAYMENT_REQUEST' ||
+        status == 'WORK_STARTED') {
+      if (!mounted) return;
+      setState(() => _applyApprovedPaymentPayload(data));
+      _saveActiveTracking();
+      return;
+    }
+
+    if (backendType == 'WORK_COMPLETED' ||
+        _statusMeansWaitingForPayment(_normalizeTrackingStatus(data))) {
+      if (!mounted) return;
+      final local = ActiveServiceRequestTracking.current.value;
+      final merged = local != null
+          ? {...local, ...data}
+          : Map<String, dynamic>.from(data);
+      setState(() => _applyWorkCompletedPayload(merged));
+      _saveActiveTracking();
+      return;
+    }
+
+    if (backendType == 'PAYMENT_PENDING' || status == 'PAYMENT_PENDING') {
+      if (!mounted) return;
+      final local = ActiveServiceRequestTracking.current.value;
+      final merged = local != null
+          ? {...local, ...data}
+          : Map<String, dynamic>.from(data);
+      setState(() => _applyPaymentPendingPayload(merged));
+      _saveActiveTracking();
+      return;
+    }
+
+    if (backendType == 'PAYMENT_DONE' ||
+        status == 'COMPLETED' ||
+        _normalizeTrackingStatus(data) == 'COMPLETED') {
+      if (!mounted) return;
+      _exitToUserHome(
+        snackMessage:
+            data['message']?.toString() ?? 'Payment received successfully',
+        snackColor: Colors.green,
+      );
+      return;
+    }
+
+    if (!_handleAcceptedMechanic(data, requestId)) {
+      debugPrint('Ignored request topic message: $data');
+      return;
+    }
+
+    final mechanicName =
+        (data['mechanicName'] ?? data['name'])?.toString();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          mechanicName == null
+              ? 'Mechanic accepted your request'
+              : '$mechanicName accepted your request',
+        ),
+        backgroundColor: Colors.green.shade600,
+      ),
+    );
+  }
+
+  void _teardownRequestConnections() {
+    _requestClient?.deactivate();
+    _trackingClient?.deactivate();
+    _liveLocationSubscribed = false;
+  }
+
+  void _exitToUserHome({String? snackMessage, Color? snackColor}) {
+    if (_cancelExitHandled) return;
+    _cancelExitHandled = true;
+
+    _teardownRequestConnections();
+    ActiveServiceRequestTracking.clear();
+
+    if (!mounted) return;
+
+    setState(() {
+      _isWaiting = false;
+      _isAccepted = false;
+      _acceptedMechanic = null;
+      _acceptedMechanicPosition = null;
+      _acceptedDistanceText = null;
+      _acceptedEta = null;
+      _mechanicMarkers = {};
+      _polylines = {};
+      _activeRequestId = null;
+      _workCompleted = false;
+      _paymentApproved = false;
+      _isPriceReceived = false;
+      _isLoading = false;
+    });
+
+    if (snackMessage != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(snackMessage),
+          backgroundColor: snackColor ?? Colors.orange,
+        ),
+      );
+    }
+
+    Navigator.of(context).popUntil((route) => route.isFirst);
+  }
+
+  void _handleRequestCancelledBySocket(Map<String, dynamic> data) {
+    if (_cancelExitHandled) return;
+
+    if (!_userInitiatedCancel) {
+      final message = data['message']?.toString();
+      _exitToUserHome(
+        snackMessage:
+            message?.isNotEmpty == true ? message! : 'Request cancelled',
+      );
+      return;
+    }
+
+    _teardownRequestConnections();
+    ActiveServiceRequestTracking.clear();
+  }
+
   Future<void> _cancelRequest() async {
     if (_activeRequestId == null) return;
-    
+
+    _userInitiatedCancel = true;
     setState(() => _isLoading = true);
     
     try {
@@ -472,16 +623,9 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        ActiveServiceRequestTracking.clear();
-        if (mounted) {
-           ScaffoldMessenger.of(context).showSnackBar(
-             const SnackBar(
-               content: Text('Request Cancelled Successfully'),
-               backgroundColor: Colors.orange,
-             ),
-           );
-           Navigator.of(context).pop(); // Go back to home
-        }
+        _exitToUserHome(
+          snackMessage: 'Request cancelled successfully',
+        );
       } else {
         if (mounted) {
            ScaffoldMessenger.of(context).showSnackBar(
@@ -492,17 +636,75 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     } catch(e) {
       if (mounted) {
          ScaffoldMessenger.of(context).showSnackBar(
-           SnackBar(content: Text('Cancel Error: $e')),
+           SnackBar(content: Text('Cancel error: $e')),
          );
       }
     } finally {
-      if (mounted) {
+      _userInitiatedCancel = false;
+      if (mounted && !_cancelExitHandled) {
         setState(() => _isLoading = false);
       }
     }
   }
 
-  void _restoreTracking(Map<String, dynamic> tracking) {
+  String _normalizeTrackingStatus(Map<String, dynamic> data) {
+    return (data['requestStatus'] ?? data['status'])
+            ?.toString()
+            .toUpperCase() ??
+        '';
+  }
+
+  double? _pickPrice(Map<String, dynamic> data) {
+    for (final key in ['finalPrice', 'inspectionPrice', 'inspectionprice']) {
+      final value = _toDouble(data[key]);
+      if (value != null && value > 0) return value;
+    }
+    return null;
+  }
+
+  double? _pickArrivalPrice(Map<String, dynamic> data) {
+    final value = _toDouble(data['arrivalPrice']) ?? _toDouble(data['arrivalprice']);
+    if (value != null && value > 0) return value;
+    return null;
+  }
+
+  void _applyTrackingWorkflow(Map<String, dynamic> data) {
+    final status = _normalizeTrackingStatus(data);
+    final type =
+        (data['type'] ?? data['backendType'])?.toString().toUpperCase() ?? '';
+
+    if (_statusMeansPaymentPending(status) ||
+        type == 'PAYMENT_PENDING' ||
+        data['paymentPending'] == true) {
+      _applyPaymentPendingPayload(data);
+      _cashHandoverMarked = data['cashHandoverMarked'] == true;
+      return;
+    }
+
+    if (_statusMeansWaitingForPayment(status) ||
+        type == 'WORK_COMPLETED' ||
+        data['workCompleted'] == true) {
+      _applyWorkCompletedPayload(data);
+      return;
+    }
+
+    if (status == 'APPROVED_PAYMENT_REQUEST' ||
+        status == 'APPROVED_PRICE_REQUEST' ||
+        status == 'WORK_STARTED' ||
+        data['paymentApproved'] == true ||
+        type == 'USER_APPROVED') {
+      _applyApprovedPaymentPayload(data);
+      return;
+    }
+
+    final price = _pickPrice(data);
+    if (price != null) _finalPrice = price;
+    if (!_paymentApproved && price != null) {
+      _isPriceReceived = _statusMeansWaitingForUserApproval(status);
+    }
+  }
+
+  void _restoreTrackingSync(Map<String, dynamic> tracking) {
     final requestId = tracking['requestId']?.toString();
     final userLat = _toDouble(tracking['userLat'] ?? tracking['userLatitude']);
     final userLng = _toDouble(tracking['userLng'] ?? tracking['userLongitude']);
@@ -513,8 +715,6 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
 
     if (requestId != null && requestId.isNotEmpty) {
       _activeRequestId = requestId;
-      _connectRequestStatus(requestId);
-      _refreshResumedTracking(requestId);
     }
 
     final hasAcceptedMechanic =
@@ -523,12 +723,13 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
         tracking['latitude'] != null;
 
     if (hasAcceptedMechanic) {
-      _handleAcceptedMechanic(tracking, requestId);
+      _handleAcceptedMechanic(tracking, requestId, updateState: false);
+      _applyTrackingWorkflow(tracking);
+      _cashHandoverMarked = tracking['cashHandoverMarked'] == true;
+      _isWaiting = true;
     } else {
-      setState(() {
-        _isWaiting = true;
-        _isAccepted = false;
-      });
+      _isWaiting = true;
+      _isAccepted = false;
     }
   }
 
@@ -547,7 +748,12 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       if (decoded is! Map || !mounted) return;
 
       final data = Map<String, dynamic>.from(decoded);
-      final status = (data['requestStatus'] ?? '').toString().toUpperCase();
+      final local = ActiveServiceRequestTracking.current.value;
+      final merged = local != null &&
+              local['requestId']?.toString() == requestId
+          ? {...local, ...data}
+          : data;
+      final status = _normalizeTrackingStatus(merged);
       if (status == 'CANCELLED' || status == 'REJECTED' || status == 'EXPIRED') {
         ActiveServiceRequestTracking.clear();
         Navigator.popUntil(context, (route) => route.isFirst);
@@ -555,19 +761,47 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       }
 
       final hasAcceptedMechanic =
-          data['mechanicId'] != null || data['mechanicLatitude'] != null;
+          merged['mechanicId'] != null || merged['mechanicLatitude'] != null;
       if (hasAcceptedMechanic) {
-        _handleAcceptedMechanic(data, requestId);
+        _handleAcceptedMechanic(merged, requestId, updateState: false);
+        if (!mounted) return;
+        setState(() => _applyTrackingWorkflow(merged));
+        _saveActiveTracking();
       }
     } catch (e) {
       debugPrint('Refresh resumed tracking failed: $e');
     }
   }
 
-  void _handleAcceptedMechanic(
+  bool _statusMeansWaitingForUserApproval(String status) {
+    if (_statusMeansWaitingForPayment(status)) return false;
+    return status.contains('WAITING') ||
+        status == 'WAITING_USER_APPROVAL' ||
+        status == 'WAITING_FOR_USER_APPROVAL';
+  }
+
+  bool _statusMeansWaitingForPayment(String status) {
+    return status == 'WAITING_FOR_PAYMENT' ||
+        status == 'WORK_COMPLETED' ||
+        status == 'WAITING_FOR_PAYMENT_REQUEST';
+  }
+
+  bool _statusMeansPaymentPending(String status) {
+    return status == 'PAYMENT_PENDING';
+  }
+
+  bool _handleAcceptedMechanic(
     Map<String, dynamic> data,
-    String? fallbackRequestId,
-  ) {
+    String? fallbackRequestId, {
+    bool updateState = true,
+  }) {
+    final backendType =
+        (data['type'] ?? data['backendType'])?.toString().toUpperCase() ?? '';
+    if (backendType == 'ROAD_REQUEST_CANCELLED' ||
+        backendType == 'ROAD_REQUEST_EXPIRED') {
+      return false;
+    }
+
     final requestId =
         (data['requestId'] ?? fallbackRequestId ?? _activeRequestId)
             ?.toString();
@@ -581,7 +815,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
 
     if (requestId == null || mechanicId == null || lat == null || lng == null) {
       debugPrint('Accepted mechanic payload missing route fields: $data');
-      return;
+      return false;
     }
 
     final position = LatLng(lat, lng);
@@ -608,18 +842,20 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       ..['mechanicName'] = name
       ..['mechanicLatitude'] = lat
       ..['mechanicLongitude'] = lng
-      ..['requestStatus'] = 'ACCEPTED'
+      ..['requestStatus'] =
+          data['requestStatus'] ?? data['status'] ?? 'ACCEPTED'
       ..['userLat'] = _markerPos.latitude
       ..['userLng'] = _markerPos.longitude;
 
-    setState(() {
+    void applyAccepted() {
       _activeRequestId = requestId;
       _isWaiting = true;
       _isAccepted = true;
       _acceptedMechanic = acceptedData;
       _acceptedMechanicPosition = position;
-      _acceptedDistanceText =
-          distance == null ? data['distance']?.toString() : '${distance.toStringAsFixed(1)} km';
+      _acceptedDistanceText = distance == null
+          ? data['distance']?.toString()
+          : '${distance.toStringAsFixed(1)} km';
       _acceptedEta = eta;
       _mechanicMarkers = {
         Marker(
@@ -629,12 +865,19 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
           infoWindow: InfoWindow(title: name),
         ),
       };
-    });
+    }
+
+    if (updateState) {
+      setState(applyAccepted);
+    } else {
+      applyAccepted();
+    }
 
     _saveActiveTracking();
     _subscribeAcceptedLiveLocation(requestId);
     _fetchAcceptedRoute(force: true);
     _fitAcceptedBounds();
+    return true;
   }
 
   void _subscribeAcceptedLiveLocation(String requestId) {
@@ -727,6 +970,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
         'requestStatus': 'PENDING',
         'serviceType': widget.serviceType,
         'userNotes': widget.userNotes,
+        'isFixedChargeAccepted': widget.isFixedChargeAccepted,
         'userLat': _markerPos.latitude,
         'userLng': _markerPos.longitude,
         if (_locationLabel != null) 'locationName': _locationLabel,
@@ -737,11 +981,22 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     ActiveServiceRequestTracking.save({
       ..._acceptedMechanic!,
       'requestId': _activeRequestId,
-      'requestStatus': 'ACCEPTED',
+      'requestStatus': _paymentPending
+          ? 'PAYMENT_PENDING'
+          : (_workCompleted
+              ? 'WORK_COMPLETED'
+              : (_paymentApproved ? 'APPROVED_PAYMENT_REQUEST' : 'ACCEPTED')),
+      'paymentApproved': _paymentApproved,
+      'workCompleted': _workCompleted,
+      'paymentPending': _paymentPending,
+      'cashHandoverMarked': _cashHandoverMarked,
+      if (_arrivalPrice != null) 'arrivalPrice': _arrivalPrice,
       'serviceType': widget.serviceType,
       'userNotes': widget.userNotes,
+      'isFixedChargeAccepted': widget.isFixedChargeAccepted,
       'userLat': _markerPos.latitude,
       'userLng': _markerPos.longitude,
+      if (_finalPrice != null) 'finalPrice': _finalPrice,
       if (_acceptedDistanceText != null) 'distanceText': _acceptedDistanceText,
       if (_acceptedEta != null) 'eta': _acceptedEta,
     });
@@ -1143,7 +1398,11 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
               left: 16,
               right: 16,
               bottom: 32,
-              child: _isAccepted ? _buildAcceptedMechanicCard() : _buildWaitingCard(),
+              child: _isPriceReceived
+                  ? _buildPriceApprovalCard()
+                  : (_isAccepted
+                      ? _buildAcceptedMechanicCard()
+                      : _buildWaitingCard()),
             ),
 
           // Back button in waiting mode
@@ -1390,6 +1649,571 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     );
   }
 
+  int _defaultArrivalPrice() {
+    final type = widget.serviceType.toLowerCase();
+    if (type.contains('bike')) return 300;
+    if (type.contains('car')) return 500;
+    if (type.contains('puncher')) return 100;
+    return 300;
+  }
+
+  void _applyApprovedPaymentPayload(Map<String, dynamic> data) {
+    final status =
+        (data['status'] ?? data['requestStatus'])?.toString().toUpperCase() ??
+            '';
+    final type =
+        (data['type'] ?? data['backendType'])?.toString().toUpperCase() ?? '';
+
+    if (_statusMeansWaitingForPayment(status) ||
+        _statusMeansPaymentPending(status) ||
+        type == 'WORK_COMPLETED' ||
+        type == 'PAYMENT_PENDING' ||
+        data['workCompleted'] == true) {
+      if (_statusMeansPaymentPending(status) || type == 'PAYMENT_PENDING') {
+        _applyPaymentPendingPayload(data);
+      } else {
+        _applyWorkCompletedPayload(data);
+      }
+      return;
+    }
+
+    final isApproved = data['paymentApproved'] == true ||
+        status == 'APPROVED_PAYMENT_REQUEST' ||
+        status == 'APPROVED_PRICE_REQUEST' ||
+        status == 'WORK_STARTED' ||
+        type == 'USER_APPROVED';
+
+    if (isApproved && !_workCompleted) {
+      _paymentApproved = true;
+      _isPriceReceived = false;
+    }
+
+    final price = _pickPrice(data);
+    if (price != null) _finalPrice = price;
+    _arrivalPrice = _pickArrivalPrice(data) ??
+        _arrivalPrice ??
+        (isApproved ? _defaultArrivalPrice().toDouble() : null);
+  }
+
+  void _applyWorkCompletedPayload(Map<String, dynamic> data) {
+    _workCompleted = true;
+    _paymentApproved = true;
+    _isPriceReceived = false;
+    _paymentPending = false;
+    _cashHandoverMarked = false;
+    final price = _pickPrice(data);
+    if (price != null) _finalPrice = price;
+    _arrivalPrice = _pickArrivalPrice(data) ??
+        _arrivalPrice ??
+        _defaultArrivalPrice().toDouble();
+  }
+
+  void _applyPaymentPendingPayload(Map<String, dynamic> data) {
+    _paymentPending = true;
+    _workCompleted = true;
+    _paymentApproved = true;
+    _isPriceReceived = false;
+
+    final price = _pickPrice(data) ?? _toDouble(data['amount']);
+    if (price != null) _finalPrice = price;
+
+    final visiting = _pickArrivalPrice(data) ??
+        _toDouble(data['visiting charges']) ??
+        _toDouble(data['visitingCharges']);
+    _arrivalPrice = visiting ?? _arrivalPrice ?? _defaultArrivalPrice().toDouble();
+  }
+
+  double _totalPayableAmount() {
+    return (_finalPrice ?? 0) + (_arrivalPrice ?? 0);
+  }
+
+  Future<void> _showPayNowSheet() async {
+    if (_activeRequestId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Request id missing')),
+      );
+      return;
+    }
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) {
+        return Container(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Choose payment method',
+                style: GoogleFonts.poppins(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: _payOptionTile(
+                      icon: Icons.payments_rounded,
+                      title: 'Cash',
+                      subtitle: 'Pay directly to mechanic',
+                      onTap: () async {
+                        Navigator.pop(context);
+                        await _startCashPayment();
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _payOptionTile(
+                      icon: Icons.language_rounded,
+                      title: 'Online',
+                      subtitle: 'Coming soon',
+                      onTap: () {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Online payment coming soon')),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _payOptionTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.grey.shade200),
+          color: Colors.grey.shade50,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: _primary.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: _primary),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              title,
+              style: GoogleFonts.poppins(
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              style: GoogleFonts.poppins(
+                fontSize: 11,
+                color: Colors.grey.shade600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _startCashPayment() async {
+    if (_activeRequestId == null) return;
+    setState(() => _isPaying = true);
+
+    try {
+      final response = await http.post(
+        Uri.parse(
+          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/paynow/$_activeRequestId',
+        ),
+        headers: {
+          'Content-Type': 'application/json',
+          ...UserSession().getAuthHeader(),
+        },
+        body: jsonEncode({'paymentype': 'CASH'}),
+      );
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        setState(() {
+          _applyPaymentPendingPayload({
+            'status': 'PAYMENT_PENDING',
+            'type': 'PAYMENT_PENDING',
+            'requestId': _activeRequestId,
+            'finalPrice': _finalPrice,
+            'arrivalPrice': _arrivalPrice,
+          });
+        });
+        _saveActiveTracking();
+        await _showCashHandoverSheet();
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Pay now failed: ${response.body}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Pay now error: $e'), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => _isPaying = false);
+    }
+  }
+
+  Future<void> _showCashHandoverSheet() async {
+    final amount = _totalPayableAmount();
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) {
+        return Container(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Cash payment',
+                style: GoogleFonts.poppins(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Inspection: Rs. ${(_finalPrice ?? 0).toStringAsFixed(0)}',
+                      style: GoogleFonts.poppins(fontSize: 12),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Visiting: Rs. ${(_arrivalPrice ?? 0).toStringAsFixed(0)}',
+                      style: GoogleFonts.poppins(fontSize: 12),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Total: Rs. ${amount.toStringAsFixed(0)}',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: _primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Please handover cash to mechanic.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  color: Colors.grey.shade700,
+                ),
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _cashHandoverMarked = true;
+                    });
+                    _saveActiveTracking();
+                    Navigator.pop(context);
+                  },
+                  icon: const Icon(Icons.check_circle_rounded, color: Colors.white),
+                  label: Text(
+                    'Payment Done',
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _primary,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _approvePaymentRequest() async {
+    if (_activeRequestId == null || _finalPrice == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Request or price missing')),
+      );
+      return;
+    }
+
+    setState(() => _isApprovingPayment = true);
+
+    try {
+      final requestId = int.tryParse(_activeRequestId!) ?? _activeRequestId;
+      final response = await http.post(
+        Uri.parse(
+          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/approve-payment-request',
+        ),
+        headers: {
+          'Content-Type': 'application/json',
+          ...UserSession().getAuthHeader(),
+        },
+        body: jsonEncode({
+          'requestId': requestId,
+          'finalPrice': _finalPrice,
+        }),
+      );
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        Map<String, dynamic> payload = {
+          'finalPrice': _finalPrice,
+          'arrivalPrice': _defaultArrivalPrice(),
+          'type': 'USER_APPROVED',
+          'status': 'APPROVED_PAYMENT_REQUEST',
+        };
+        try {
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map) {
+            payload = {...payload, ...Map<String, dynamic>.from(decoded)};
+          }
+        } catch (_) {}
+
+        setState(() => _applyApprovedPaymentPayload(payload));
+        _saveActiveTracking();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Charges approved. Mechanic will start work.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Approval failed: ${response.body}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Approval error: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isApprovingPayment = false);
+      }
+    }
+  }
+
+  Widget _buildPriceApprovalCard() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black26,
+            blurRadius: 20,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: _primary.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.receipt_long_rounded, color: _primary, size: 26),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'Inspection Charges',
+            style: GoogleFonts.poppins(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey.shade600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Rs. ${_finalPrice?.toStringAsFixed(0) ?? '0'}',
+            style: GoogleFonts.poppins(
+              fontSize: 38,
+              fontWeight: FontWeight.w800,
+              color: Colors.black87,
+              letterSpacing: 1.5,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Please review and confirm the charges',
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              color: Colors.grey.shade500,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 50,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _isPriceReceived = false;
+                        _finalPrice = null;
+                      });
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Charges declined'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.close_rounded, color: Colors.red, size: 20),
+                    label: Text(
+                      'Cancel',
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                        color: Colors.red,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Colors.red, width: 1.5),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: SizedBox(
+                  height: 50,
+                  child: ElevatedButton.icon(
+                    onPressed: _isApprovingPayment ? null : _approvePaymentRequest,
+                    icon: _isApprovingPayment
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.check_rounded, color: Colors.white, size: 20),
+                    label: Text(
+                      _isApprovingPayment ? 'Wait...' : 'Approve',
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                        color: Colors.white,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green.shade600,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildAcceptedMechanicCard() {
     final mechanic = _acceptedMechanic ?? {};
     final name = (mechanic['mechanicName'] ?? 'Mechanic').toString();
@@ -1421,6 +2245,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
         mainAxisSize: MainAxisSize.min,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               CircleAvatar(
                 radius: 28,
@@ -1465,36 +2290,64 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
                         color: Colors.grey.shade500,
                       ),
                     ),
-                  ],
-                ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.star_rounded,
-                          color: Colors.amber, size: 16),
-                      const SizedBox(width: 2),
+                    if (_workCompleted) ...[
+                      const SizedBox(height: 4),
                       Text(
-                        rating == null ? '--' : rating.toStringAsFixed(1),
+                        'Work completed',
                         style: GoogleFonts.poppins(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.blue.shade700,
+                        ),
+                      ),
+                    ] else if (_paymentApproved) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Charges confirmed • work starting',
+                        style: GoogleFonts.poppins(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.green.shade700,
                         ),
                       ),
                     ],
-                  ),
-                  Text(
-                    '$reviews reviews',
-                    style: GoogleFonts.poppins(
-                      fontSize: 10,
-                      color: Colors.grey.shade500,
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+              if (_paymentApproved || _workCompleted)
+                ServiceChargesPriceBadge(
+                  inspectionPrice: _finalPrice,
+                  visitingPrice: _arrivalPrice,
+                  primaryColor: _primary,
+                )
+              else
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.star_rounded,
+                            color: Colors.amber, size: 16),
+                        const SizedBox(width: 2),
+                        Text(
+                          rating == null ? '--' : rating.toStringAsFixed(1),
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Text(
+                      '$reviews reviews',
+                      style: GoogleFonts.poppins(
+                        fontSize: 10,
+                        color: Colors.grey.shade500,
+                      ),
+                    ),
+                  ],
+                ),
             ],
           ),
           const SizedBox(height: 14),
@@ -1533,6 +2386,93 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
               ],
             ],
           ),
+          if (_workCompleted) ...[
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.blue.shade50,
+                    Colors.indigo.shade50,
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.blue.shade100),
+              ),
+              child: Column(
+                children: [
+                  Icon(
+                    _paymentPending
+                        ? Icons.hourglass_bottom_rounded
+                        : Icons.check_circle_rounded,
+                    color: Colors.blue.shade700,
+                    size: 36,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _paymentPending
+                        ? 'Waiting for mechanic confirmation'
+                        : 'Service Completed',
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      color: Colors.blue.shade900,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _paymentPending
+                        ? (_cashHandoverMarked
+                            ? 'Payment marked done. Mechanic will confirm.'
+                            : 'Choose payment method to proceed.')
+                        : 'Pay Rs. ${_totalPayableAmount().toStringAsFixed(0)} to finish',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      color: Colors.blue.shade700,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+            if (!_paymentPending) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton.icon(
+                  onPressed: _isPaying ? null : _showPayNowSheet,
+                  icon: _isPaying
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.payments_rounded, color: Colors.white),
+                  label: Text(
+                    _isPaying ? 'Please wait...' : 'Pay Now',
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      color: Colors.white,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _primary,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
           const SizedBox(height: 14),
           SizedBox(
             width: double.infinity,

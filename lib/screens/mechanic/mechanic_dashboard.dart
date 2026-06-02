@@ -21,6 +21,7 @@ import '../role_selection_screen.dart';
 import '../../services/websocket_service.dart'; // Re-adding websocket
 import '../../services/mechanic_notification_controller.dart'; // Add Global Controller
 import '../../services/mechanic_live_location_service.dart';
+import 'package:stomp_dart_client/stomp_dart_client.dart';
 import '../../utils/time_utils.dart'; // Added for relative time formatting
 
 class MechanicDashboardScreen extends StatefulWidget {
@@ -50,6 +51,9 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
   final List<Map<String, dynamic>> _roadRequests = [];
   final List<Map<String, dynamic>> _appointmentRequests = [];
 
+  StompClient? _activeRequestClient;
+  String? _subscribedRequestId;
+
   int get _dailyUnreadCount => _roadRequests.where((e) => e['isRead'] == false).length;
   int get _appointmentUnreadCount =>
       _appointmentRequests.where((e) => e['isRead'] == false).length;
@@ -58,9 +62,14 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
   @override
   void initState() {
     super.initState();
+    ActiveServiceRequestTracking.current.addListener(_onActiveTrackingChanged);
     _fetchDashboardData();
     _fetchAppointmentNotifications();
     _initWebSocket();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncActiveTrackingWithServer();
+      _subscribeActiveRequestTopic();
+    });
   }
 
   void _initWebSocket() {
@@ -72,6 +81,20 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
   }
 
   void _onGlobalNotificationReceived(Map<String, dynamic> request, String type) {
+    final backendType =
+        (request['type'] ?? request['backendType'])?.toString() ?? '';
+
+    if (backendType == 'ROAD_REQUEST_EXPIRED' ||
+        backendType == 'ROAD_REQUEST_CANCELLED') {
+      final eventId =
+          request['requestId']?.toString() ?? request['requestid']?.toString();
+      ActiveServiceRequestTracking.clearIfMatches(eventId);
+      if (backendType == 'ROAD_REQUEST_CANCELLED') {
+        return;
+      }
+      return;
+    }
+
     if (mounted) {
       setState(() {
         if (type == 'appointment' || type == 'cancel') {
@@ -83,9 +106,140 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
     }
   }
 
+  void _onActiveTrackingChanged() {
+    _subscribeActiveRequestTopic();
+    _syncActiveTrackingWithServer();
+  }
+
+  Future<void> _syncActiveTrackingWithServer() async {
+    final active = ActiveServiceRequestTracking.current.value;
+    if (active == null) return;
+
+    final requestId =
+        active['requestId']?.toString() ?? active['requestid']?.toString();
+    if (requestId == null || requestId.isEmpty) {
+      ActiveServiceRequestTracking.clear();
+      if (mounted) setState(() {});
+      return;
+    }
+
+    try {
+      final response = await http.get(
+        Uri.parse(
+          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/tracking/$requestId',
+        ),
+        headers: UserSession().getAuthHeader(),
+      );
+
+      if (response.statusCode == 404) {
+        ActiveServiceRequestTracking.clear();
+        if (mounted) setState(() {});
+        return;
+      }
+
+      if (response.statusCode != 200 || response.body.isEmpty) return;
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) return;
+
+      final status = (decoded['requestStatus'] ?? decoded['status'] ?? '')
+          .toString()
+          .toUpperCase();
+
+      if (status == 'CANCELLED' ||
+          status == 'REJECTED' ||
+          status == 'EXPIRED' ||
+          status == 'COMPLETED') {
+        ActiveServiceRequestTracking.clear();
+        _teardownActiveRequestSubscription();
+        if (mounted) setState(() {});
+      }
+    } catch (e) {
+      debugPrint('Mechanic dashboard tracking sync failed: $e');
+    }
+  }
+
+  void _teardownActiveRequestSubscription() {
+    _activeRequestClient?.deactivate();
+    _activeRequestClient = null;
+    _subscribedRequestId = null;
+  }
+
+  void _subscribeActiveRequestTopic() {
+    final active = ActiveServiceRequestTracking.current.value;
+    if (!ActiveServiceRequestTracking.isActive(active)) {
+      _teardownActiveRequestSubscription();
+      return;
+    }
+
+    final requestId =
+        active!['requestId']?.toString() ?? active['requestid']?.toString();
+    if (requestId == null || requestId.isEmpty) {
+      _teardownActiveRequestSubscription();
+      return;
+    }
+
+    if (_subscribedRequestId == requestId && _activeRequestClient != null) {
+      return;
+    }
+
+    _teardownActiveRequestSubscription();
+    _subscribedRequestId = requestId;
+
+    _activeRequestClient = StompClient(
+      config: StompConfig(
+        url:
+            'wss://mechanicapp-service-621632382478.asia-south1.run.app/ws-notifications/websocket',
+        stompConnectHeaders: UserSession().getAuthHeader(),
+        webSocketConnectHeaders: UserSession().getAuthHeader(),
+        onConnect: (_) {
+          _activeRequestClient?.subscribe(
+            destination: '/topic/request/$requestId',
+            callback: (frame) {
+              if (frame.body == null || frame.body!.isEmpty) return;
+              try {
+                final decoded = jsonDecode(frame.body!);
+                if (decoded is! Map) return;
+                final data = Map<String, dynamic>.from(decoded);
+                final backendType =
+                    (data['type'] ?? data['backendType'])?.toString() ?? '';
+                final status = (data['status'] ?? data['requestStatus'])
+                        ?.toString()
+                        .toUpperCase() ??
+                    '';
+
+                if (backendType == 'ROAD_REQUEST_CANCELLED' ||
+                    status == 'CANCELLED') {
+                  ActiveServiceRequestTracking.clearIfMatches(requestId);
+                  _teardownActiveRequestSubscription();
+                  if (mounted) {
+                    setState(() {});
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Customer cancelled the request'),
+                        backgroundColor: Colors.orange,
+                      ),
+                    );
+                  }
+                }
+              } catch (e) {
+                debugPrint('Dashboard request topic parse error: $e');
+              }
+            },
+          );
+        },
+        onWebSocketError: (error) =>
+            debugPrint('Dashboard request WS error: $error'),
+      ),
+    );
+    _activeRequestClient?.activate();
+  }
+
   @override
   void dispose() {
+    ActiveServiceRequestTracking.current.removeListener(_onActiveTrackingChanged);
     MechanicNotificationController().removeListener(_onGlobalNotificationReceived);
+    _teardownActiveRequestSubscription();
     super.dispose();
   }
 
@@ -152,12 +306,20 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
         if (isOnline) {
           MechanicLiveLocationService.instance.start();
         }
+        await _syncActiveTrackingWithServer();
+        _subscribeActiveRequestTopic();
       } else {
         setState(() => _isLoading = false);
       }
     } catch (e) {
       setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _refreshDashboard() async {
+    await _fetchDashboardData();
+    await _syncActiveTrackingWithServer();
+    _subscribeActiveRequestTopic();
   }
 
   Future<void> _toggleOnlineStatus(bool value) async {
@@ -308,7 +470,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
       body: _isLoading
           ? _SkeletonMechanicDashboard()
           : RefreshIndicator(
-              onRefresh: _fetchDashboardData,
+              onRefresh: _refreshDashboard,
               color: primaryColor,
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
@@ -325,12 +487,20 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
                           return const SizedBox.shrink();
                         }
                         final request = activeRequest!;
+                        final requestStatus =
+                            (request['requestStatus'] ?? request['status'] ?? '')
+                                .toString()
+                                .toUpperCase();
                         final isPendingRoadRequest =
-                            (request['requestStatus'] ?? '')
-                                    .toString()
-                                    .toUpperCase() ==
-                                'PENDING' &&
+                            requestStatus == 'PENDING' &&
                             request['mechanicId'] == null;
+                        final isPaymentPending =
+                            request['paymentPending'] == true ||
+                            requestStatus == 'PAYMENT_PENDING';
+                        final isWaitingForPayment =
+                            request['workCompleted'] == true ||
+                            requestStatus == 'WAITING_FOR_PAYMENT' ||
+                            requestStatus == 'WORK_COMPLETED';
                         
                         return Container(
                           margin: const EdgeInsets.symmetric(vertical: 10),
@@ -364,7 +534,11 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
                                     Text(
                                       isPendingRoadRequest
                                           ? 'Pending Service Request'
-                                          : 'Active Service in Progress',
+                                          : isPaymentPending
+                                              ? 'Payment Pending'
+                                              : isWaitingForPayment
+                                                  ? 'Waiting for Payment'
+                                              : 'Active Service in Progress',
                                       style: GoogleFonts.poppins(
                                         color: Colors.white,
                                         fontWeight: FontWeight.bold,
@@ -374,7 +548,11 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
                                     Text(
                                       isPendingRoadRequest
                                           ? 'Tap to view request details'
-                                          : 'Tap to resume tracking map',
+                                          : isPaymentPending
+                                              ? 'Tap to confirm cash payment'
+                                              : isWaitingForPayment
+                                                  ? 'Customer payment pending'
+                                              : 'Tap to resume tracking map',
                                       style: GoogleFonts.poppins(
                                         color: Colors.white70,
                                         fontSize: 12,
@@ -384,8 +562,8 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
                                 ),
                               ),
                               ElevatedButton(
-                                onPressed: () {
-                                  Navigator.push(
+                                onPressed: () async {
+                                  await Navigator.push(
                                     context,
                                     MaterialPageRoute(
                                       builder: (context) => isPendingRoadRequest
@@ -393,6 +571,9 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
                                           : MechanicUserMap(requestData: request),
                                     ),
                                   );
+                                  if (!mounted) return;
+                                  await _syncActiveTrackingWithServer();
+                                  _subscribeActiveRequestTopic();
                                 },
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.white,

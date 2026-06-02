@@ -87,13 +87,28 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
   }
 
   void _onNotification(Map<String, dynamic> data, String type) {
-    if (data['type'] == 'ROAD_REQUEST_CANCELLED' || data['backendType'] == 'ROAD_REQUEST_CANCELLED') {
-      final incomingReqId = data['requestId']?.toString() ?? data['requestid']?.toString();
-      final myReqId = widget.requestData['requestId']?.toString() ?? widget.requestData['requestid']?.toString();
-      
-      if (incomingReqId != null && myReqId != null && incomingReqId == myReqId) {
-         _goToDashboardAfterCancellation();
-      }
+    final incomingReqId =
+        data['requestId']?.toString() ?? data['requestid']?.toString();
+    final myReqId = widget.requestData['requestId']?.toString() ??
+        widget.requestData['requestid']?.toString();
+
+    if (incomingReqId == null ||
+        myReqId == null ||
+        incomingReqId != myReqId) {
+      return;
+    }
+
+    if (data['type'] == 'ROAD_REQUEST_CANCELLED' ||
+        data['backendType'] == 'ROAD_REQUEST_CANCELLED') {
+      _goToDashboardAfterCancellation();
+      return;
+    }
+
+    if (data['type'] == 'ROAD_REQUEST_EXPIRED' ||
+        data['backendType'] == 'ROAD_REQUEST_EXPIRED') {
+      _closeAfterRequestTakenByAnother(
+        data['message']?.toString(),
+      );
     }
   }
 
@@ -114,6 +129,33 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
       MaterialPageRoute(builder: (_) => const MechanicDashboardScreen()),
       (route) => false,
     );
+  }
+
+  void _closeAfterRequestTakenByAnother(String? message) {
+    if (_isClosingForCancellation) return;
+    _isClosingForCancellation = true;
+    _timer?.cancel();
+    ActiveServiceRequestTracking.clear();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          message?.isNotEmpty == true
+              ? message!
+              : 'This request was accepted by another mechanic',
+        ),
+        backgroundColor: Colors.orange.shade800,
+      ),
+    );
+    if (Navigator.canPop(context)) {
+      Navigator.of(context).pop();
+    } else {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const MechanicDashboardScreen()),
+        (route) => false,
+      );
+    }
   }
 
   void _startTimer() {
@@ -193,7 +235,7 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
           'requestStatus': 'ACCEPTED',
         };
         
-        await MechanicLiveLocationService.instance.start();
+        ActiveServiceRequestTracking.save(mergedData);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -201,12 +243,12 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
             backgroundColor: Colors.green,
           ),
         );
-        ActiveServiceRequestTracking.save(mergedData);
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (context) => MechanicUserMap(requestData: mergedData),
           ),
         );
+        MechanicLiveLocationService.instance.start();
       } else {
         String message = response.body;
         try {

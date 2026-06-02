@@ -7,12 +7,34 @@ class ServiceRequestNotesScreen extends StatefulWidget {
   const ServiceRequestNotesScreen({super.key, required this.serviceType});
 
   @override
-  State<ServiceRequestNotesScreen> createState() => _ServiceRequestNotesScreenState();
+  State<ServiceRequestNotesScreen> createState() =>
+      _ServiceRequestNotesScreenState();
 }
 
 class _ServiceRequestNotesScreenState extends State<ServiceRequestNotesScreen> {
   final TextEditingController _notesController = TextEditingController();
   final Color primaryColor = const Color(0xFFFB3300);
+  bool _fixedChargeAccepted = false;
+
+  int get _fixedChargeAmount {
+    final type = widget.serviceType.toLowerCase();
+    if (type.contains('bike')) return 300;
+    if (type.contains('car')) return 500;
+    if (type.contains('puncher')) return 100;
+    return 300;
+  }
+
+  String get _fixedChargeCheckboxLabel =>
+      'Accept Rs.$_fixedChargeAmount fee if you cancel';
+
+  bool get _canProceed =>
+      _notesController.text.trim().isNotEmpty && _fixedChargeAccepted;
+
+  @override
+  void initState() {
+    super.initState();
+    _notesController.addListener(() => setState(() {}));
+  }
 
   @override
   void dispose() {
@@ -27,12 +49,22 @@ class _ServiceRequestNotesScreenState extends State<ServiceRequestNotesScreen> {
       );
       return;
     }
+    if (!_fixedChargeAccepted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please accept the fixed inspection charges.'),
+        ),
+      );
+      return;
+    }
+
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => ServiceRequestMapScreen(
           serviceType: widget.serviceType,
           userNotes: _notesController.text.trim(),
+          isFixedChargeAccepted: true,
         ),
       ),
     );
@@ -47,7 +79,7 @@ class _ServiceRequestNotesScreenState extends State<ServiceRequestNotesScreen> {
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(
-          "Service Request",
+          'Service Request',
           style: TextStyle(
             fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
             fontWeight: FontWeight.w700,
@@ -59,14 +91,15 @@ class _ServiceRequestNotesScreenState extends State<ServiceRequestNotesScreen> {
       ),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(20.0),
+          padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 'Requesting ${widget.serviceType}',
                 style: TextStyle(
-                  fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                  fontFamily:
+                      GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
                   color: primaryColor,
@@ -74,11 +107,11 @@ class _ServiceRequestNotesScreenState extends State<ServiceRequestNotesScreen> {
               ),
               const SizedBox(height: 12),
               Text(
-                'Please describe the issue you are facing so the mechanic can better assist you.',
+                'Describe your problem so the mechanic can help you.',
                 style: TextStyle(
-                  fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                  fontFamily:
+                      GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
                   fontSize: 14,
-                  fontWeight: FontWeight.w400,
                   color: isDark ? Colors.white70 : Colors.black87,
                 ),
               ),
@@ -87,9 +120,11 @@ class _ServiceRequestNotesScreenState extends State<ServiceRequestNotesScreen> {
                 controller: _notesController,
                 maxLines: 5,
                 decoration: InputDecoration(
-                  hintText: 'e.g. My car is not starting, battery might be dead...',
+                  hintText:
+                      'e.g. My car is not starting, battery might be dead...',
                   hintStyle: TextStyle(
-                    fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                    fontFamily:
+                        GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
                     color: Colors.grey,
                   ),
                   filled: true,
@@ -104,17 +139,65 @@ class _ServiceRequestNotesScreenState extends State<ServiceRequestNotesScreen> {
                   ),
                 ),
                 style: TextStyle(
-                  fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                  fontFamily:
+                      GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
                   color: isDark ? Colors.white : Colors.black,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Material(
+                color: isDark ? Colors.grey[850] : Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(14),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: () {
+                    setState(() {
+                      _fixedChargeAccepted = !_fixedChargeAccepted;
+                    });
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Checkbox(
+                          value: _fixedChargeAccepted,
+                          activeColor: primaryColor,
+                          onChanged: (value) {
+                            setState(() {
+                              _fixedChargeAccepted = value ?? false;
+                            });
+                          },
+                        ),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: Text(
+                              _fixedChargeCheckboxLabel,
+                              style: GoogleFonts.poppins(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? Colors.white : Colors.black87,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
               const Spacer(),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _onNext,
+                  onPressed: _canProceed ? _onNext : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: primaryColor,
+                    disabledBackgroundColor: Colors.grey.shade400,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),

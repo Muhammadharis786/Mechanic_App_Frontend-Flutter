@@ -6,6 +6,7 @@ import 'package:stomp_dart_client/stomp_dart_client.dart';
 import '../main.dart'; // To access navigatorKey
 import '../screens/authentication/user_session.dart';
 import '../utils/time_utils.dart';
+import 'active_service_request_tracking.dart';
 import 'websocket_service.dart';
 import '../screens/mechanic/mechanic_request_alert_screen.dart'; // Added Import
 
@@ -49,6 +50,22 @@ class MechanicNotificationController {
 
         if (backendType == 'ROAD_REQUEST_CANCELLED') {
           _removeOverlay();
+          final requestId = mapData['requestId']?.toString() ??
+              mapData['requestid']?.toString();
+          if (requestId != null && requestId.isNotEmpty) {
+            ActiveServiceRequestTracking.clearIfMatches(requestId);
+          } else if (ActiveServiceRequestTracking.current.value != null) {
+            ActiveServiceRequestTracking.clear();
+          }
+          for (var listener in _listeners) {
+            listener(mapData, type);
+          }
+          return;
+        }
+
+        if (backendType == 'ROAD_REQUEST_EXPIRED') {
+          _removeOverlay();
+          _showExpiredSnackBar(mapData['message']?.toString());
           for (var listener in _listeners) {
             listener(mapData, type);
           }
@@ -105,6 +122,21 @@ class MechanicNotificationController {
   void _removeOverlay() {
     _overlayEntry?.remove();
     _overlayEntry = null;
+  }
+
+  void _showExpiredSnackBar(String? message) {
+    final context = navigatorKey.currentContext;
+    if (context == null) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          message?.isNotEmpty == true
+              ? message!
+              : 'This request was accepted by another mechanic',
+        ),
+        backgroundColor: Colors.orange.shade800,
+      ),
+    );
   }
 
   StompUnsubscribe? subscribeToTopic({
