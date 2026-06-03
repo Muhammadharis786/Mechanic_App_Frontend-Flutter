@@ -15,6 +15,7 @@ import '../../services/active_service_request_tracking.dart';
 import '../authentication/user_session.dart';
 import '../../widgets/service_charges_price_badge.dart';
 import 'payment_webview_screen.dart';
+import 'service_review_screen.dart';
 
 const String _mapStyle = '''
 [
@@ -521,10 +522,10 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
         status == 'COMPLETED' ||
         _normalizeTrackingStatus(data) == 'COMPLETED') {
       if (!mounted) return;
-      _exitToUserHome(
+      _navigateToServiceReview(
+        requestId: data['requestId']?.toString() ?? requestId,
         snackMessage:
             data['message']?.toString() ?? 'Payment received successfully',
-        snackColor: Colors.green,
       );
       return;
     }
@@ -552,6 +553,46 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     _requestClient?.deactivate();
     _trackingClient?.deactivate();
     _liveLocationSubscribed = false;
+  }
+
+  /// Review API uses ServiceType.EMERGENCY (not bike/car puncher category).
+  String _reviewServiceType() => 'EMERGENCY';
+
+  void _navigateToServiceReview({
+    required String requestId,
+    String? snackMessage,
+  }) {
+    if (_cancelExitHandled) return;
+    _cancelExitHandled = true;
+
+    final serviceId = requestId.isNotEmpty
+        ? requestId
+        : (_activeRequestId ?? '');
+    final serviceType = _reviewServiceType();
+
+    _teardownRequestConnections();
+    ActiveServiceRequestTracking.clear();
+
+    if (!mounted) return;
+
+    if (snackMessage != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(snackMessage),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => ServiceReviewScreen(
+          serviceId: serviceId,
+          serviceType: serviceType,
+        ),
+      ),
+      (route) => false,
+    );
   }
 
   void _exitToUserHome({String? snackMessage, Color? snackColor}) {

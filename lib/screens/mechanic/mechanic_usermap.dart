@@ -100,7 +100,9 @@ class _MechanicUserMapState extends State<MechanicUserMap>
     _fetchRoute(force: true);
     if (!_hasArrived) {
       _startLiveTracking();
-      MechanicLiveLocationService.instance.start();
+      final requestId = widget.requestData['requestId']?.toString() ??
+          widget.requestData['requestid']?.toString();
+      MechanicLiveLocationService.instance.start(requestId: requestId);
     }
     _subscribeToBackendUpdates();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -860,12 +862,33 @@ class _MechanicUserMapState extends State<MechanicUserMap>
     setState(() => _isCheckingArrival = true);
 
     try {
-      final response = await http.get(
-        Uri.parse(
-          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/isarrived/$requestId',
-        ),
-        headers: UserSession().getAuthHeader(),
+      final coords =
+          await MechanicLiveLocationService.instance.currentCoordinates();
+
+      final arrivalUri = Uri.parse(
+        'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/isarrived/$requestId',
+      ).replace(
+        queryParameters: coords != null
+            ? {
+                'lat': coords.lat.toString(),
+                'lng': coords.lng.toString(),
+              }
+            : null,
       );
+
+      // Best-effort websocket update; arrival API uses lat/lng query params.
+      if (coords != null) {
+        MechanicLiveLocationService.instance.publishLocationNow(
+          requestId: requestId,
+        );
+      }
+
+      final response = await http
+          .get(
+            arrivalUri,
+            headers: UserSession().getAuthHeader(),
+          )
+          .timeout(const Duration(seconds: 20));
 
       if (!mounted) return;
 
@@ -910,6 +933,14 @@ class _MechanicUserMapState extends State<MechanicUserMap>
         SnackBar(
           content: Text(message),
           backgroundColor: Colors.red.shade700,
+        ),
+      );
+    } on TimeoutException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Arrival check timed out. Check internet and try again.'),
+          backgroundColor: Colors.orange,
         ),
       );
     } catch (e) {

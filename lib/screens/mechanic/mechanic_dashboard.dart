@@ -304,7 +304,12 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
           _isLoading = false;
         });
         if (isOnline) {
-          MechanicLiveLocationService.instance.start();
+          final active = ActiveServiceRequestTracking.current.value;
+          final activeRequestId = active?['requestId']?.toString() ??
+              active?['requestid']?.toString();
+          MechanicLiveLocationService.instance.start(
+            requestId: activeRequestId,
+          );
         }
         await _syncActiveTrackingWithServer();
         _subscribeActiveRequestTopic();
@@ -343,7 +348,12 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
           isOnline = value;
         });
         if (value) {
-          MechanicLiveLocationService.instance.start();
+          final active = ActiveServiceRequestTracking.current.value;
+          final activeRequestId = active?['requestId']?.toString() ??
+              active?['requestid']?.toString();
+          MechanicLiveLocationService.instance.start(
+            requestId: activeRequestId,
+          );
         } else {
           MechanicLiveLocationService.instance.stop();
         }

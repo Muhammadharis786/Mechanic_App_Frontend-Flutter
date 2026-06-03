@@ -8,6 +8,8 @@ import 'package:mech_app/screens/user/book_appointments_menubar.dart';
 import 'package:mech_app/screens/user/appointment_tracking_map.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
+import 'package:mech_app/services/user_notification_controller.dart';
+import 'package:mech_app/screens/user/service_review_screen.dart';
 
 class RequestHistoryScreen extends StatefulWidget {
   const RequestHistoryScreen({super.key});
@@ -28,7 +30,15 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
   @override
   void initState() {
     super.initState();
+    UserNotificationController().init();
     _fetchAppointments();
+    UserNotificationController().addListener(_fetchAppointments);
+  }
+
+  @override
+  void dispose() {
+    UserNotificationController().removeListener(_fetchAppointments);
+    super.dispose();
   }
 
   Future<void> _fetchAppointments() async {
@@ -61,7 +71,15 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
     if (_selectedCategory == "Upcoming") {
       list = _allAppointments.where((a) {
         final status = a['status']?.toString().toUpperCase() ?? '';
-        return status == 'PENDING' || status == 'ACCEPTED' || status == 'ON_THE_WAY';
+        return [
+          'PENDING',
+          'ACCEPTED',
+          'ON_THE_WAY',
+          'ARRIVED',
+          'IN_PROGRESS',
+          'WORK_COMPLETED',
+          'PAYMENT_PROCESS'
+        ].contains(status);
       }).toList();
 
       // Sort: ON_THE_WAY first, then ACCEPTED, then PENDING
@@ -296,17 +314,102 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
     );
   }
 
+  Future<void> _payCash(String appointmentId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/api/mechanic/appointment/paynow/$appointmentId'),
+        headers: UserSession().getAuthHeader(),
+      );
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        await _fetchAppointments();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Payment successful'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ServiceReviewScreen(
+              serviceId: appointmentId,
+              serviceType: 'APPOINTMENT',
+            ),
+          ),
+        );
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Payment failed: ${response.body}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  void _showPayNowSheet(String appointmentId) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+        decoration: BoxDecoration(
+          color: Theme.of(ctx).cardColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Choose payment method',
+              style: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 14),
+            ListTile(
+              leading: const Icon(Icons.payments_rounded, color: Colors.green),
+              title: const Text('Cash'),
+              subtitle: const Text('Pay directly to mechanic'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _payCash(appointmentId);
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.language_rounded, color: Colors.grey.shade500),
+              title: const Text('Online'),
+              subtitle: const Text('Coming soon'),
+              onTap: () {
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Online payment coming soon')),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _cancelAppointment(
       String appointmentId, String reason) async {
     try {
-      final response = await http.post(
+      final response = await http.get(
         Uri.parse(
             '$_baseUrl/api/user/appointment/cancelappointment/$appointmentId'),
-        headers: {
-          ...UserSession().getAuthHeader(),
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({'reason': reason}),
+        headers: UserSession().getAuthHeader(),
       );
       if (response.statusCode == 200) {
         if (mounted) {
@@ -408,6 +511,7 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
                               primaryColor: primaryColor,
                               isDark: isDark,
                               onCancel: (id) => _showCancelDialog(id),
+                              onPay: _showPayNowSheet,
                               onRefresh: _fetchAppointments,
                             );
                           },
@@ -494,6 +598,7 @@ class AppointmentCard extends StatelessWidget {
   final Color primaryColor;
   final bool isDark;
   final Function(String)? onCancel;
+  final Function(String)? onPay;
   final VoidCallback? onRefresh;
 
   const AppointmentCard({
@@ -502,6 +607,7 @@ class AppointmentCard extends StatelessWidget {
     required this.primaryColor,
     required this.isDark,
     this.onCancel,
+    this.onPay,
     this.onRefresh,
   });
 
@@ -513,6 +619,10 @@ class AppointmentCard extends StatelessWidget {
     final isCompleted = status == 'COMPLETED';
     final isPending = status == 'PENDING';
     final isOnTheWay = status == 'ON_THE_WAY';
+    final isArrived = status == 'ARRIVED';
+    final isInProgress = status == 'IN_PROGRESS';
+    final isWorkCompleted = status == 'WORK_COMPLETED';
+    final isPaymentProcess = status == 'PAYMENT_PROCESS';
     final isCancelled = status == 'CANCELLED' || status == 'REJECTED' || status == 'EXPIRED';
     final canCancel = isPending || isAccepted;
 
@@ -547,6 +657,25 @@ class AppointmentCard extends StatelessWidget {
         opacity: isCancelled ? 0.7 : 1.0,
         child: Column(
           children: [
+            if (isArrived)
+              _statusBanner(
+                'Mechanic has arrived at your location',
+                Icons.place_rounded,
+                Colors.indigo,
+              ),
+            if (isInProgress)
+              _statusBanner(
+                'Mechanic has started work',
+                Icons.build_circle_outlined,
+                Colors.purple,
+              ),
+            if (isWorkCompleted)
+              _statusBanner(
+                'Work completed — awaiting bill from mechanic',
+                Icons.check_circle_outline,
+                Colors.blue,
+              ),
+
             // ON THE WAY banner
             if (isOnTheWay)
               Container(
@@ -671,15 +800,47 @@ class AppointmentCard extends StatelessWidget {
                             formattedDateTime, isDark),
                         const SizedBox(height: 12),
                         _infoItem(Icons.build_outlined, problem, isDark),
-                        if ((isAccepted || isOnTheWay) &&
-                            data['mechanicshopaddress'] != null) ...[
-                          const SizedBox(height: 12),
-                          _infoItem(
-                              Icons.location_on_outlined, address, isDark),
-                        ],
+                        _infoItem(
+                            Icons.location_on_outlined, address, isDark),
                       ],
                     ),
                   ),
+
+                  // Billing only after mechanic sends charges (PAYMENT_PROCESS+)
+                  if (isPaymentProcess &&
+                      _repairAmount(data) > 0) ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withOpacity(isDark ? 0.1 : 0.05),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.green.withOpacity(0.2)),
+                      ),
+                      child: Column(
+                        children: [
+                          _priceRow(
+                            'Visiting Charges',
+                            'Rs. ${data['visitingCharge'] ?? data['visitingcharges'] ?? 0}',
+                            isDark,
+                          ),
+                          const SizedBox(height: 8),
+                          _priceRow(
+                            'Repair Amount',
+                            'Rs. ${_repairAmount(data)}',
+                            isDark,
+                          ),
+                          const Divider(height: 24),
+                          _priceRow(
+                            'Total Amount',
+                            'Rs. ${data['amount'] ?? (_visitingCharge(data) + _repairAmount(data))}',
+                            isDark,
+                            isTotal: true,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
 
                   // Reason Box (only where reason is not null)
                   if (reason != null && reason.isNotEmpty) ...[
@@ -756,6 +917,9 @@ class AppointmentCard extends StatelessWidget {
               if (isPending) _buildPendingActions(context),
               if (isAccepted) _buildAcceptedActions(context),
               if (isOnTheWay) _buildOnTheWayActions(context),
+              if (isArrived || isInProgress || isWorkCompleted)
+                _buildProgressActions(context, status),
+              if (isPaymentProcess) _buildPaymentProcessActions(context),
               if (isCompleted) _buildCompletedActions(context),
               const SizedBox(height: 12),
             ],
@@ -789,6 +953,26 @@ class AppointmentCard extends StatelessWidget {
         color = Colors.teal;
         bgColor = Colors.teal.withOpacity(0.1);
         label = 'ON THE WAY';
+        break;
+      case 'ARRIVED':
+        color = Colors.indigo;
+        bgColor = Colors.indigo.withOpacity(0.1);
+        label = 'ARRIVED';
+        break;
+      case 'IN_PROGRESS':
+        color = Colors.purple;
+        bgColor = Colors.purple.withOpacity(0.1);
+        label = 'IN PROGRESS';
+        break;
+      case 'WORK_COMPLETED':
+        color = Colors.blue;
+        bgColor = Colors.blue.withOpacity(0.1);
+        label = 'WORK COMPLETED';
+        break;
+      case 'PAYMENT_PROCESS':
+        color = Colors.green;
+        bgColor = Colors.green.withOpacity(0.1);
+        label = 'PAY NOW';
         break;
       default:
         color = Colors.red;
@@ -1062,7 +1246,18 @@ class AppointmentCard extends StatelessWidget {
       child: SizedBox(
         width: double.infinity,
         child: ElevatedButton(
-          onPressed: () {}, // TODO: Rating
+          onPressed: () {
+            final id = data['appointmentid']?.toString() ?? '';
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ServiceReviewScreen(
+                  serviceId: id,
+                  serviceType: "APPOINTMENT",
+                ),
+              ),
+            );
+          },
           style: ElevatedButton.styleFrom(
             backgroundColor:
                 isDark ? (Colors.grey[850] ?? Colors.grey) : Colors.white,
@@ -1091,6 +1286,116 @@ class AppointmentCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildProgressActions(BuildContext context, String status) {
+    String msg = "Mechanic is working...";
+    if (status == 'ARRIVED') msg = "Mechanic has arrived!";
+    if (status == 'WORK_COMPLETED') msg = "Service done! Awaiting bill...";
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: primaryColor.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Center(
+          child: Text(
+            msg,
+            style: GoogleFonts.getFont('Bricolage Grotesque',
+                color: primaryColor, fontWeight: FontWeight.bold),
+          ),
+        ),
+      ),
+    );
+  }
+
+  static num _repairAmount(Map<String, dynamic> data) {
+    final v = data['repairAmount'] ?? data['repairamount'];
+    if (v is num) return v;
+    return num.tryParse(v?.toString() ?? '') ?? 0;
+  }
+
+  static num _visitingCharge(Map<String, dynamic> data) {
+    final v = data['visitingCharge'] ?? data['visitingcharges'];
+    if (v is num) return v;
+    return num.tryParse(v?.toString() ?? '') ?? 0;
+  }
+
+  Widget _statusBanner(String text, IconData icon, Color color) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              text,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.getFont(
+                'Bricolage Grotesque',
+                color: color,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentProcessActions(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: () {
+            final id = data['appointmentid']?.toString() ?? '';
+            if (id.isNotEmpty) onPay?.call(id);
+          },
+          icon: const Icon(Icons.payment_rounded, color: Colors.white),
+          label: Text("PAY NOW",
+              style: GoogleFonts.getFont('Bricolage Grotesque',
+                  fontWeight: FontWeight.bold, color: Colors.white)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _priceRow(String label, String value, bool isDark,
+      {bool isTotal = false}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label,
+            style: GoogleFonts.getFont('Bricolage Grotesque',
+                color: isDark ? Colors.white70 : Colors.black54,
+                fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
+                fontSize: isTotal ? 16 : 14)),
+        Text(value,
+            style: GoogleFonts.getFont('Bricolage Grotesque',
+                color: isTotal ? primaryColor : (isDark ? Colors.white : Colors.black),
+                fontWeight: FontWeight.bold,
+                fontSize: isTotal ? 18 : 14)),
+      ],
     );
   }
 }

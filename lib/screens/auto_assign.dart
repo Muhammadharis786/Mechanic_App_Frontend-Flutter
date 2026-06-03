@@ -1,29 +1,23 @@
 import 'package:flutter/material.dart';
-import 'map_screen.dart';
-import 'homescreen.dart';
+import 'package:google_fonts/google_fonts.dart';
 
+import 'user/service_request_notes_screen.dart';
+
+/// Shows bike / car / puncher picker then same flow as emergency service request.
 class AutoAssignScreen extends StatelessWidget {
   const AutoAssignScreen({super.key});
 
+  static const Color _primary = Color(0xFFFB3300);
+
   @override
   Widget build(BuildContext context) {
-    // 🔥 Bottom sheet screen load hote hi
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _showAutoAssignOptions(context);
     });
 
-    return WillPopScope(
-      onWillPop: () async {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => HomeScreen()),
-        );
-        return false;
-      },
-      child: Scaffold(
-        backgroundColor: const Color.fromARGB(255, 253, 250, 250).withOpacity(0.4), // dark overlay
-        body: const SizedBox.shrink(),
-      ),
+    return const Scaffold(
+      backgroundColor: Colors.transparent,
+      body: SizedBox.shrink(),
     );
   }
 
@@ -31,89 +25,63 @@ class AutoAssignScreen extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      isDismissible: false,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (_) {
+      builder: (ctx) {
         return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: SizedBox(
-            height: MediaQuery.of(context).size.height * 0.55,
-            child: Column(
-              children: [
-                const SizedBox(height: 12),
-
-                
-                Container(
-                  height: 4,
-                  width: 40,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
+          padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                height: 4,
+                width: 40,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(10),
                 ),
-
-                const SizedBox(height: 20),
-
-                /// 🔥 Title
-                const Text(
-                  "Choose Service",
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                  ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Choose Service',
+                style: GoogleFonts.poppins(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
                 ),
-
-                const SizedBox(height: 6),
-
-                const Text(
-                  "Select a service to auto assign nearby mechanic",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.black54,
-                  ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Select a category — same flow as emergency request',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  color: Colors.black54,
                 ),
-
-                const SizedBox(height: 30),
-
-                _serviceCard(
-                  context,
-                  title: "Bike Mechanic",
-                  icon: Icons.motorcycle,
-                  service: "Bike",
-                ),
-                const SizedBox(height: 16),
-
-                _serviceCard(
-                  context,
-                  title: "Car Mechanic",
-                  icon: Icons.directions_car,
-                  service: "Car",
-                ),
-                const SizedBox(height: 16),
-
-                _serviceCard(
-                  context,
-                  title: "Puncture Service",
-                  icon: Icons.build_circle,
-                  service: "Puncher",
-                ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 24),
+              _serviceCard(ctx, title: 'Bike Mechanic', icon: Icons.motorcycle, serviceType: 'Bike Mechanic'),
+              const SizedBox(height: 12),
+              _serviceCard(ctx, title: 'Car Mechanic', icon: Icons.directions_car, serviceType: 'Car Mechanic'),
+              const SizedBox(height: 12),
+              _serviceCard(ctx, title: 'Puncher', icon: Icons.build_circle, serviceType: 'Puncher'),
+            ],
           ),
         );
       },
-    );
+    ).whenComplete(() {
+      if (Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+    });
   }
 
   Widget _serviceCard(
     BuildContext context, {
     required String title,
     required IconData icon,
-    required String service,
+    required String serviceType,
   }) {
     return InkWell(
       borderRadius: BorderRadius.circular(16),
@@ -122,12 +90,12 @@ class AutoAssignScreen extends StatelessWidget {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => MapScreen(serviceType: service),
+            builder: (_) => ServiceRequestNotesScreen(serviceType: serviceType),
           ),
         );
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: Colors.grey.shade300),
@@ -136,8 +104,8 @@ class AutoAssignScreen extends StatelessWidget {
           children: [
             CircleAvatar(
               radius: 24,
-              backgroundColor: const Color(0xFFFB3300).withOpacity(0.1),
-              child: Icon(icon, color: const Color(0xFFFB3300)),
+              backgroundColor: _primary.withOpacity(0.1),
+              child: Icon(icon, color: _primary),
             ),
             const SizedBox(width: 16),
             Expanded(

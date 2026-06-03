@@ -248,7 +248,7 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
             builder: (context) => MechanicUserMap(requestData: mergedData),
           ),
         );
-        MechanicLiveLocationService.instance.start();
+        MechanicLiveLocationService.instance.start(requestId: requestId);
       } else {
         String message = response.body;
         try {

@@ -32,12 +32,13 @@ class UserWebSocketService {
   }
 
   void _subscribe(int userId) {
-    // Mechanic accepted appointment → user gets notified
     _subscribeToTopic('/topic/appointment/acceptappointment/$userId', 'accepted');
-    // All mechanics rejected → final rejection notification
     _subscribeToTopic('/topic/appointment/final-reject/$userId', 'rejected');
-    // Mechanic started appointment (on the way)
     _subscribeToTopic('/topic/appointment/on-the-way/$userId', 'on_the_way');
+    _subscribeToTopic('/topic/appointment/arrived/$userId', 'arrived');
+    _subscribeToTopic('/topic/appointment/in-progress/$userId', 'in_progress');
+    _subscribeToTopic('/topic/appointment/completework/$userId', 'work_completed');
+    _subscribeToTopic('/topic/appointment/sendcharges/$userId', 'send_charges');
   }
 
   void _subscribeToTopic(String destination, String type) {

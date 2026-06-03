@@ -27,7 +27,6 @@ import './authentication/user_session.dart';
 import '../services/active_service_request_tracking.dart';
 import '../../services/user_websocket_service.dart';
 import '../../services/user_notification_controller.dart';
-import 'auto_assign.dart';
 import 'mechanic_list_screen.dart';
 import 'role_selection_screen.dart';
 
@@ -48,6 +47,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLoading = true;
   List<Map<String, dynamic>> nearbyMechanics = [];
   String? _mechanicsMessage;
+  bool _showAutoAssignServices = false;
 
   // Notification state
   int _unreadNotifCount = 0;
@@ -400,11 +400,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                             borderRadius: BorderRadius.circular(12)),
                                       ),
                                       onPressed: () {
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                              builder: (_) => const AutoAssignScreen()),
-                                        );
+                                        setState(() {
+                                          _showAutoAssignServices =
+                                              !_showAutoAssignServices;
+                                        });
                                       },
                                       child: Text("Auto Assign",
                                           style: TextStyle(
@@ -459,6 +458,40 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ],
                     ),
+
+                    if (_showAutoAssignServices) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        'Select service type',
+                        style: TextStyle(
+                          fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? Colors.white70 : Colors.black54,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      _autoAssignServiceTile(
+                        context,
+                        title: 'Bike Mechanic',
+                        icon: Icons.two_wheeler_rounded,
+                        isDark: isDark,
+                      ),
+                      const SizedBox(height: 10),
+                      _autoAssignServiceTile(
+                        context,
+                        title: 'Car Mechanic',
+                        icon: Icons.directions_car_rounded,
+                        isDark: isDark,
+                      ),
+                      const SizedBox(height: 10),
+                      _autoAssignServiceTile(
+                        context,
+                        title: 'Puncher',
+                        icon: Icons.tire_repair_rounded,
+                        isDark: isDark,
+                      ),
+                    ],
 
                     const SizedBox(height: 26),
 
@@ -766,6 +799,66 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _autoAssignServiceTile(
+    BuildContext context, {
+    required String title,
+    required IconData icon,
+    required bool isDark,
+  }) {
+    return Material(
+      color: isDark ? Colors.grey[900] : Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () {
+          setState(() => _showAutoAssignServices = false);
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ServiceRequestNotesScreen(serviceType: title),
+            ),
+          );
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: isDark ? Colors.white12 : Colors.grey.shade300,
+            ),
+          ),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: primaryColor.withOpacity(0.12),
+                child: Icon(icon, color: primaryColor),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontFamily:
+                        GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                ),
+              ),
+              Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 16,
+                color: isDark ? Colors.white54 : Colors.black45,
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -70,11 +70,16 @@ class UserNotificationController {
     final context = navigatorKey.currentContext;
     if (context == null) return;
 
-    final String title = type == 'accepted'
-        ? '✅ Appointment Accepted!'
-        : type == 'on_the_way'
-            ? '🚗 Mechanic On The Way!'
-            : '❌ Appointment Rejected';
+    final String title = switch (type) {
+      'accepted' => '✅ Appointment Accepted!',
+      'on_the_way' => '🚗 Mechanic On The Way!',
+      'arrived' => '📍 Mechanic Arrived!',
+      'in_progress' => '🔧 Work Started!',
+      'work_completed' => '✅ Work Completed!',
+      'send_charges' => '💰 Bill Ready',
+      'rejected' => '❌ Appointment Rejected',
+      _ => '🔔 Appointment Update',
+    };
     final String message = data['message']?.toString() ?? '';
     final String image = data['image']?.toString() ?? '';
     final Color primaryColor = const Color(0xFFFB3300);

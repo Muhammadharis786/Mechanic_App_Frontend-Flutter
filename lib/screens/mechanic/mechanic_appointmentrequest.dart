@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../authentication/user_session.dart';
 import '../user/appointment_tracking_map.dart';
+import '../../services/mechanic_notification_controller.dart';
 
 class MechanicAppointmentRequestScreen extends StatefulWidget {
   final List<dynamic> requests;
@@ -37,10 +38,36 @@ class _MechanicAppointmentRequestScreenState
   // Per-item loading state for buttons
   final Map<String, bool> _processingIds = {};
 
+  void Function(Map<String, dynamic> data, String type)? _wsListener;
+
   @override
   void initState() {
     super.initState();
     _fetchAppointments();
+    MechanicNotificationController().init();
+    _wsListener = (data, type) {
+      if (type == 'appointment_done') {
+        _fetchAppointments();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              data['message']?.toString() ?? 'Payment received',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    };
+    MechanicNotificationController().addListener(_wsListener!);
+  }
+
+  @override
+  void dispose() {
+    if (_wsListener != null) {
+      MechanicNotificationController().removeListener(_wsListener!);
+    }
+    super.dispose();
   }
 
   Future<void> _fetchAppointments() async {
@@ -81,15 +108,29 @@ class _MechanicAppointmentRequestScreenState
     } else if (_selectedCategory == "Upcoming") {
       list = _allAppointments.where((a) {
         final status = a['status']?.toString().toUpperCase() ?? '';
-        return status == 'ACCEPTED' || status == 'ON_THE_WAY';
+        return [
+          'ACCEPTED',
+          'ON_THE_WAY',
+          'ARRIVED',
+          'IN_PROGRESS',
+          'WORK_COMPLETED',
+          'PAYMENT_PROCESS'
+        ].contains(status);
       }).toList();
-      // Sort: ON_THE_WAY first then ACCEPTED
+      // Sort: Active ones first
       list.sort((a, b) {
-        final _order = {'ON_THE_WAY': 0, 'ACCEPTED': 1};
+        final _order = {
+          'PAYMENT_PROCESS': 0,
+          'WORK_COMPLETED': 1,
+          'IN_PROGRESS': 2,
+          'ARRIVED': 3,
+          'ON_THE_WAY': 4,
+          'ACCEPTED': 5
+        };
         final aOrd =
-            _order[a['status']?.toString().toUpperCase() ?? ''] ?? 2;
+            _order[a['status']?.toString().toUpperCase() ?? ''] ?? 6;
         final bOrd =
-            _order[b['status']?.toString().toUpperCase() ?? ''] ?? 2;
+            _order[b['status']?.toString().toUpperCase() ?? ''] ?? 6;
         return aOrd.compareTo(bOrd);
       });
       return list;
@@ -195,6 +236,247 @@ class _MechanicAppointmentRequestScreenState
         setState(() => _processingIds[appointmentId] = false);
       }
     }
+  }
+
+  Future<void> _arrived(String id) async {
+    setState(() => _processingIds[id] = true);
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/api/mechanic/appointment/arrived/$id'),
+        headers: UserSession().getAuthHeader(),
+      );
+      if (response.statusCode == 200) {
+        _fetchAppointments();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Arrived Successfully"), backgroundColor: Colors.green),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error: ${response.body}"), backgroundColor: Colors.red),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
+      );
+    } finally {
+      setState(() => _processingIds[id] = false);
+    }
+  }
+
+  Future<void> _startWork(String id) async {
+    setState(() => _processingIds[id] = true);
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/api/mechanic/appointment/startwork/$id'),
+        headers: UserSession().getAuthHeader(),
+      );
+      if (response.statusCode == 200) {
+        _fetchAppointments();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Work Started Successfully"), backgroundColor: Colors.green),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error: ${response.body}"), backgroundColor: Colors.red),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
+      );
+    } finally {
+      setState(() => _processingIds[id] = false);
+    }
+  }
+
+  Future<void> _completeWork(String id) async {
+    setState(() => _processingIds[id] = true);
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/api/mechanic/appointment/completework/$id'),
+        headers: UserSession().getAuthHeader(),
+      );
+      if (response.statusCode == 200) {
+        _fetchAppointments();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Work completed. Tap SEND CHARGES to bill the customer.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error: ${response.body}"), backgroundColor: Colors.red),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
+      );
+    } finally {
+      setState(() => _processingIds[id] = false);
+    }
+  }
+
+  void _showSendChargesDialog(String appointmentId) {
+    final TextEditingController priceController = TextEditingController();
+    bool isSaving = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          child: Container(
+            margin: const EdgeInsets.all(16),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+            decoration: BoxDecoration(
+              color: Theme.of(context).cardColor,
+              borderRadius: BorderRadius.circular(30),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 50,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                const SizedBox(height: 25),
+                Container(
+                  padding: const EdgeInsets.all(15),
+                  decoration: BoxDecoration(
+                    color: primaryColor.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.receipt_long_rounded, color: primaryColor, size: 32),
+                ),
+                const SizedBox(height: 15),
+                Text(
+                  "Set Repair Charges",
+                  style: GoogleFonts.getFont('Bricolage Grotesque',
+                      fontSize: 22, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  "Enter the final repair amount for this service",
+                  style: GoogleFonts.getFont('Bricolage Grotesque',
+                      color: Colors.grey, fontSize: 14),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 25),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.grey.withOpacity(0.2)),
+                  ),
+                  child: Row(
+                    children: [
+                      Text("Rs.",
+                          style: GoogleFonts.getFont('Bricolage Grotesque',
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: primaryColor)),
+                      const SizedBox(width: 15),
+                      Expanded(
+                        child: TextField(
+                          controller: priceController,
+                          keyboardType: TextInputType.number,
+                          autofocus: true,
+                          style: GoogleFonts.getFont('Bricolage Grotesque',
+                              fontSize: 28, fontWeight: FontWeight.bold),
+                          decoration: const InputDecoration(
+                            border: InputBorder.none,
+                            hintText: "0.00",
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 30),
+                SizedBox(
+                  width: double.infinity,
+                  height: 55,
+                  child: ElevatedButton(
+                    onPressed: isSaving ? null : () async {
+                      final price = double.tryParse(priceController.text.trim());
+                      if (price == null || price <= 0) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("Please enter a valid price")),
+                        );
+                        return;
+                      }
+
+                      setModalState(() => isSaving = true);
+
+                      try {
+                        final response = await http.post(
+                          Uri.parse('$_baseUrl/api/mechanic/appointment/sencharges/$appointmentId'),
+                          headers: {
+                            'Content-Type': 'application/json',
+                            ...UserSession().getAuthHeader(),
+                          },
+                          body: jsonEncode({
+                            'appid': appointmentId,
+                            'finalPrice': price,
+                          }),
+                        );
+
+                        if (response.statusCode == 200) {
+                          Navigator.pop(ctx);
+                          _fetchAppointments();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("Charges sent successfully"), backgroundColor: Colors.green),
+                          );
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text("Error: ${response.body}")),
+                          );
+                        }
+                      } catch (e) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text("Error: $e")),
+                        );
+                      } finally {
+                        setModalState(() => isSaving = false);
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                      elevation: 0,
+                    ),
+                    child: isSaving
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : Text("Send Repair Charges",
+                            style: GoogleFonts.getFont('Bricolage Grotesque',
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   // ─── Reject with Reason Dialog ────────────────────────────────────────────
@@ -474,6 +756,10 @@ class _MechanicAppointmentRequestScreenState
                               onAccept: _acceptAppointment,
                               onReject: _showRejectDialog,
                               onStart: _startAppointment,
+                              onArrived: _arrived,
+                              onStartWork: _startWork,
+                              onCompleteWork: _completeWork,
+                              onSendCharges: _showSendChargesDialog,
                             );
                           },
                         ),
@@ -558,6 +844,10 @@ class _MechanicAppointmentCard extends StatelessWidget {
   final Function(String) onAccept;
   final Function(String) onReject;
   final Function(String) onStart;
+  final Function(String) onArrived;
+  final Function(String) onStartWork;
+  final Function(String) onCompleteWork;
+  final Function(String) onSendCharges;
   final bool isProcessing;
 
   const _MechanicAppointmentCard({
@@ -567,6 +857,10 @@ class _MechanicAppointmentCard extends StatelessWidget {
     required this.onAccept,
     required this.onReject,
     required this.onStart,
+    required this.onArrived,
+    required this.onStartWork,
+    required this.onCompleteWork,
+    required this.onSendCharges,
     this.isProcessing = false,
   });
 
@@ -576,6 +870,11 @@ class _MechanicAppointmentCard extends StatelessWidget {
     final isAccepted = status == 'ACCEPTED';
     final isPending = status == 'PENDING';
     final isOnTheWay = status == 'ON_THE_WAY';
+    final isArrived = status == 'ARRIVED';
+    final isInProgress = status == 'IN_PROGRESS';
+    final isWorkCompleted = status == 'WORK_COMPLETED';
+    final isPaymentProcess = status == 'PAYMENT_PROCESS';
+    final isCompleted = status == 'COMPLETED';
     final isCancelled =
         status == 'CANCELLED' || status == 'REJECTED' || status == 'EXPIRED';
 
@@ -756,7 +1055,12 @@ class _MechanicAppointmentCard extends StatelessWidget {
             // Action Buttons
             if (isPending) _buildPendingActions(context, appointmentId),
             if (isAccepted) _buildAcceptedActions(context, userPhone, appointmentId),
-            if (isOnTheWay) _buildOnTheWayActions(context, userPhone),
+            if (isOnTheWay) _buildOnTheWayActions(context, userPhone, appointmentId),
+            if (isArrived) _buildArrivedActions(context, appointmentId),
+            if (isInProgress) _buildInProgressActions(context, appointmentId),
+            if (isWorkCompleted) _buildWorkCompletedActions(context, appointmentId),
+            if (isPaymentProcess) _buildPaymentProcessIndicator(context),
+            if (isCompleted) _buildPaymentDoneIndicator(context),
             const SizedBox(height: 8),
           ],
         ),
@@ -905,62 +1209,171 @@ class _MechanicAppointmentCard extends StatelessWidget {
     );
   }
 
-  Widget _buildOnTheWayActions(BuildContext context, String phone) {
+  Widget _buildOnTheWayActions(BuildContext context, String phone, String appointmentId) {
     return Padding(
       padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
-      child: Row(
+      child: Column(
         children: [
-          Expanded(
-            child: ElevatedButton.icon(
-              onPressed: () {
-                final lat =
-                    double.tryParse(data['latitude']?.toString() ?? "");
-                final lng =
-                    double.tryParse(data['longitude']?.toString() ?? "");
-                final mechLat = double.tryParse(
-                    data['mechshoplat']?.toString() ?? "");
-                final mechLng = double.tryParse(
-                    data['mechshoplong']?.toString() ?? "");
-                if (lat != null && lng != null) {
-                  Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => AppointmentTrackingMap(
-                                userLat: lat,
-                                userLng: lng,
-                                mechLat: mechLat,
-                                mechLng: mechLng,
-                              )));
-                }
-              },
-              icon: const Icon(Icons.my_location_rounded, size: 18),
-              label: Text("User Location",
-                  style: GoogleFonts.getFont('Bricolage Grotesque',
-                      fontWeight: FontWeight.bold)),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: isProcessing ? null : () => onArrived(appointmentId),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.teal,
+                backgroundColor: Colors.indigo,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
+              child: isProcessing
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : Text("I HAVE ARRIVED", style: GoogleFonts.getFont('Bricolage Grotesque', fontWeight: FontWeight.bold)),
             ),
           ),
-          if (phone.isNotEmpty) ...[
-            const SizedBox(width: 12),
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.teal.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    final lat = double.tryParse(data['latitude']?.toString() ?? "");
+                    final lng = double.tryParse(data['longitude']?.toString() ?? "");
+                    final mechLat = double.tryParse(data['mechshoplat']?.toString() ?? "");
+                    final mechLng = double.tryParse(data['mechshoplong']?.toString() ?? "");
+                    if (lat != null && lng != null) {
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => AppointmentTrackingMap(userLat: lat, userLng: lng, mechLat: mechLat, mechLng: mechLng)));
+                    }
+                  },
+                  icon: const Icon(Icons.my_location_rounded, size: 18),
+                  label: Text("User Location", style: GoogleFonts.getFont('Bricolage Grotesque', fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                ),
               ),
-              child: IconButton(
-                icon:
-                    const Icon(Icons.phone_rounded, color: Colors.teal),
-                onPressed: () => launchUrl(Uri.parse("tel:$phone")),
+              if (phone.isNotEmpty) ...[
+                const SizedBox(width: 12),
+                Container(
+                  decoration: BoxDecoration(color: Colors.teal.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                  child: IconButton(icon: const Icon(Icons.phone_rounded, color: Colors.teal), onPressed: () => launchUrl(Uri.parse("tel:$phone"))),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildArrivedActions(BuildContext context, String appointmentId) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          onPressed: isProcessing ? null : () => onStartWork(appointmentId),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.purple,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          child: isProcessing
+              ? const CircularProgressIndicator(color: Colors.white)
+              : Text("START WORK", style: GoogleFonts.getFont('Bricolage Grotesque', fontWeight: FontWeight.bold)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInProgressActions(BuildContext context, String appointmentId) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          onPressed: isProcessing ? null : () => onCompleteWork(appointmentId),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blue,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          child: isProcessing
+              ? const CircularProgressIndicator(color: Colors.white)
+              : Text("WORK COMPLETED", style: GoogleFonts.getFont('Bricolage Grotesque', fontWeight: FontWeight.bold)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWorkCompletedActions(BuildContext context, String appointmentId) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          onPressed: isProcessing ? null : () => onSendCharges(appointmentId),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blue.shade800,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          child: isProcessing
+              ? const CircularProgressIndicator(color: Colors.white)
+              : Text("SEND CHARGES", style: GoogleFonts.getFont('Bricolage Grotesque', fontWeight: FontWeight.bold)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPaymentProcessIndicator(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: Colors.green.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.green.withOpacity(0.3)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.timer_outlined, color: Colors.green, size: 20),
+            const SizedBox(width: 8),
+            Text("WAITING FOR PAYMENT", style: GoogleFonts.getFont('Bricolage Grotesque', color: Colors.green, fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPaymentDoneIndicator(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: Colors.blue.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.blue.withOpacity(0.3)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.check_circle_rounded, color: Colors.blue, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              'PAYMENT DONE',
+              style: GoogleFonts.getFont(
+                'Bricolage Grotesque',
+                color: Colors.blue,
+                fontWeight: FontWeight.bold,
               ),
             ),
           ],
-        ],
+        ),
       ),
     );
   }
@@ -984,6 +1397,22 @@ class _MechanicAppointmentCard extends StatelessWidget {
       case 'ON_THE_WAY':
         color = Colors.teal;
         label = 'ON THE WAY';
+        break;
+      case 'ARRIVED':
+        color = Colors.indigo;
+        label = 'ARRIVED';
+        break;
+      case 'IN_PROGRESS':
+        color = Colors.purple;
+        label = 'IN PROGRESS';
+        break;
+      case 'WORK_COMPLETED':
+        color = Colors.blue;
+        label = 'WORK COMPLETED';
+        break;
+      case 'PAYMENT_PROCESS':
+        color = Colors.green;
+        label = 'WAITING PAYMENT';
         break;
       case 'CANCELLED':
       case 'REJECTED':
