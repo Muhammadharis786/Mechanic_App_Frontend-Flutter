@@ -7,21 +7,12 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'package:http/http.dart' as http;
-import 'dart:convert';
 import 'package:http_parser/http_parser.dart';
+import 'dart:convert';
 import '../authentication/user_session.dart';
-import 'mechanic_dashboard.dart';
 
 import 'mechanic_login.dart'; // Import MechanicLoginScreen
-import 'package:geolocator/geolocator.dart'; // Added geolocator import
-import 'mechanic_map_selection_screen.dart'; // Added map selection screen import
-
-import 'package:mech_app/services/phone_auth_service.dart';
-
-
-
-
-
+import 'mechanic_map_selection_screen.dart';
 
 class MechanicRegistrationScreen extends StatefulWidget {
   final String phoneNumber;
@@ -77,63 +68,6 @@ class _MechanicRegistrationScreenState
   // ================= LOCATION =================
   bool isGettingLocation = false;
   String? locationMessage;
-
-  Future<void> _getCurrentLocation() async {
-    setState(() {
-      isGettingLocation = true;
-      locationMessage = null;
-    });
-
-    bool serviceEnabled;
-    LocationPermission permission;
-
-    // Test if location services are enabled.
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      setState(() {
-        isGettingLocation = false;
-        locationMessage = 'Location services are disabled.';
-      });
-      return;
-    }
-
-    permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        setState(() {
-          isGettingLocation = false;
-          locationMessage = 'Location permissions are denied';
-        });
-        return;
-      }
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      setState(() {
-        isGettingLocation = false;
-        locationMessage = 'Location permissions are permanently denied.';
-      });
-      return;
-    }
-
-    // When we reach here, permissions are granted and we can
-    // continue accessing the position of the device.
-    try {
-      Position position = await Geolocator.getCurrentPosition();
-      setState(() {
-        latitude = position.latitude;
-        longitude = position.longitude;
-        locationMessage = "Location Acquired: ${latitude!.toStringAsFixed(4)}, ${longitude!.toStringAsFixed(4)}";
-        isGettingLocation = false;
-      });
-    } catch (e) {
-      setState(() {
-        isGettingLocation = false;
-        locationMessage = 'Error getting location: $e';
-      });
-    }
-  }
 
    // ================= SUBMIT =================
   bool isSubmitting = false;
@@ -479,9 +413,14 @@ class _MechanicRegistrationScreenState
                 children: [
                   if (currentStep > 0)
                     IconButton(
+                      splashRadius: 20,
                       onPressed: previousPage,
-                      icon: Icon(Icons.arrow_back_ios,
-                          color: primary, size: 22),
+                      icon: const Icon(
+                        Icons.arrow_back_ios_new_rounded,
+                        color: Color(0xFFFB3300),
+                        size: 18,
+                      ),
+                      padding: const EdgeInsets.all(4),
                     ),
                   Expanded(
                     child: Text(
@@ -658,16 +597,17 @@ class _MechanicRegistrationScreenState
                       ),
                     );
                     if (result != null && result is Map<String, dynamic>) {
+                      final String selectedAddress =
+                          (result['address']?.toString().trim() ?? '');
+
                       setState(() {
-                        latitude = result['latitude'];
-                        longitude = result['longitude'];
-                        if (result['address'] != null && 
-                            result['address'].toString().isNotEmpty && 
-                            result['address'].toString() != "Move map to select location") {
-                          shopAddress = result['address'];
-                          addressController.text = shopAddress;
-                        }
-                        locationMessage = "Location Selected from Map";
+                        latitude = result['latitude'] as double?;
+                        longitude = result['longitude'] as double?;
+                        shopAddress = selectedAddress.isNotEmpty
+                            ? selectedAddress
+                            : 'Selected location';
+                        addressController.text = shopAddress;
+                        locationMessage = 'Location Selected from Map';
                       });
                     }
                   },

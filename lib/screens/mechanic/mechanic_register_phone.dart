@@ -121,6 +121,15 @@ class _MechanicRegisterPhoneScreenState
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
+        leading: IconButton(
+          onPressed: () => Navigator.pop(context),
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: Color(0xFFFB3300),
+            size: 18,
+          ),
+          splashRadius: 20,
+        ),
         title: Text(
           "Mechanic Registration",
           style: GoogleFonts.poppins(color: theme.textTheme.titleLarge?.color),
@@ -302,3 +311,4 @@ class _MechanicRegisterPhoneScreenState
     );
   }
 }
+ 
