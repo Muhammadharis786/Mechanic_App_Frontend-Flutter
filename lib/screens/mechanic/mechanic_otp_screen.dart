@@ -139,7 +139,7 @@ class _MechanicOtpScreenState extends State<MechanicOtpScreen> {
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         _showSnack('OTP Resent to ${widget.phoneNumber}', isError: false);
-        _startTimer(); // Restart timer
+        _startTimer();
       } else {
         _handleApiError(responseBody, 'Failed to resend OTP');
       }
@@ -162,9 +162,7 @@ class _MechanicOtpScreenState extends State<MechanicOtpScreen> {
         errorMessage = responseBody;
       }
     } catch (_) {
-      errorMessage = responseBody.isNotEmpty
-          ? responseBody
-          : defaultMsg;
+      errorMessage = responseBody.isNotEmpty ? responseBody : defaultMsg;
     }
     _showSnack(errorMessage, isError: true);
   }
@@ -202,12 +200,25 @@ class _MechanicOtpScreenState extends State<MechanicOtpScreen> {
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
+        // ── CHANGE 1: Title "Account Verification" ──────────────────
         title: Text(
-          "Verification",
-          style: GoogleFonts.poppins(color: theme.textTheme.titleLarge?.color),
+          "Account Verification",
+          style: GoogleFonts.poppins(
+            color: theme.textTheme.titleLarge?.color,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         backgroundColor: theme.appBarTheme.backgroundColor ?? theme.scaffoldBackgroundColor,
         elevation: 0,
+        // ── CHANGE 2: Deep orange V-shape arrow ─────────────────────
+        leading: IconButton(
+          icon: const Icon(
+            Icons.arrow_back_ios_new,
+            color: Color(0xFFFB3300),
+            size: 20,
+          ),
+          onPressed: () => Navigator.pop(context),
+        ),
         iconTheme: IconThemeData(color: isDark ? Colors.white : Colors.black),
       ),
       body: SafeArea(
