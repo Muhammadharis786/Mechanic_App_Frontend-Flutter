@@ -1,25 +1,22 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
+import 'package:uuid/uuid.dart';
+
 import 'package:mech_app/screens/authentication/user_session.dart';
 
-// ────────────────────────────────────────────────────────────────
-//  Simple greyscale map style – no rivers, trees, or POI colors
-// ────────────────────────────────────────────────────────────────
 const String _mapStyle = '''
 [
   {"featureType":"all","elementType":"labels.text.fill","stylers":[{"color":"#444444"}]},
   {"featureType":"landscape","elementType":"all","stylers":[{"color":"#f2f2f2"}]},
   {"featureType":"poi","elementType":"all","stylers":[{"visibility":"off"}]},
   {"featureType":"road","elementType":"all","stylers":[{"saturation":-100},{"lightness":45}]},
-  {"featureType":"road.highway","elementType":"all","stylers":[{"visibility":"simplified"}]},
-  {"featureType":"road.arterial","elementType":"labels.icon","stylers":[{"visibility":"off"}]},
-  {"featureType":"transit","elementType":"all","stylers":[{"visibility":"off"}]},
-  {"featureType":"water","elementType":"all","stylers":[{"color":"#c9d9e8"},{"visibility":"on"}]}
+  {"featureType":"water","elementType":"all","stylers":[{"color":"#c9d9e8"}]}
 ]
 ''';
 
@@ -34,60 +31,49 @@ class LocationPickerScreen extends StatefulWidget {
 
 class _LocationPickerScreenState extends State<LocationPickerScreen>
     with TickerProviderStateMixin {
-  // ── Colors ──────────────────────────────────────────────────────
   static const Color _primary = Color(0xFFFB3300);
 
-  // ── Map ─────────────────────────────────────────────────────────
   GoogleMapController? _mapController;
-  // Karachi center default fallback
-  LatLng _markerPos = const LatLng(24.8607, 67.0011); 
-  bool _isDragging = false;
+
+  LatLng _markerPos = const LatLng(24.8607, 67.0011);
   String? _locationLabel;
 
-  // ── Spinner animation ────────────────────────────────────────────
-  late AnimationController _spinController;
-
-  // ── Search ───────────────────────────────────────────────────────
   final TextEditingController _searchCtrl = TextEditingController();
   final FocusNode _searchFocus = FocusNode();
-  List<dynamic> _suggestions = [];
-  Timer? _debounce;
-  bool _showSuggestions = false;
 
-  // ── Reverse-geocode debounce ─────────────────────────────────────
-  Timer? _geocodeDebounce;
+  List<dynamic> _suggestions = [];
+  bool _showSuggestions = false;
+  bool _isLoading = false;
+  late String _sessionToken;
+
+  Timer? _debounce;
+  Timer? _geoDebounce;
+
+  bool _isDragging = false;
+
+  late AnimationController _spinController;
 
   @override
   void initState() {
     super.initState();
-    _spinController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 1),
-    )..repeat();
+
+    _spinController =
+        AnimationController(vsync: this, duration: const Duration(seconds: 1))
+          ..repeat();
+
+    _sessionToken = Uuid().v4();
+    _getUserLocation();
+    _fetchSuggestions('');
 
     _searchFocus.addListener(() {
-      if (!_searchFocus.hasFocus) {
-        setState(() => _showSuggestions = false);
+      if (_searchFocus.hasFocus) {
+        _fetchSuggestions(_searchCtrl.text);
+      } else {
+        Future.delayed(const Duration(milliseconds: 200), () {
+          if (mounted) setState(() => _showSuggestions = false);
+        });
       }
     });
-
-    _initializePosition();
-  }
-
-  // ── Initial map focus ──────────────────────────────────────────
-  void _initializePosition() {
-    final savedLat = UserSession().latitude;
-    final savedLng = UserSession().longitude;
-
-    if (savedLat != null && savedLng != null) {
-      _markerPos = LatLng(savedLat, savedLng);
-      debugPrint("📍 Using saved session location: $_markerPos");
-    } else {
-      debugPrint("📍 Using Karachi fallback: $_markerPos");
-    }
-    
-    // Attempt fresh GPS fix but without blocking
-    _getUserLocation();
   }
 
   @override
@@ -96,18 +82,16 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
     _searchCtrl.dispose();
     _searchFocus.dispose();
     _debounce?.cancel();
-    _geocodeDebounce?.cancel();
-    _mapController?.dispose();
+    _geoDebounce?.cancel();
     super.dispose();
   }
 
-  // ── Get user's GPS location ──────────────────────────────────────
+  // ───────────────────────── GPS ─────────────────────────
   Future<void> _getUserLocation() async {
     try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return;
+      if (!await Geolocator.isLocationServiceEnabled()) return;
 
-      LocationPermission perm = await Geolocator.checkPermission();
+      var perm = await Geolocator.checkPermission();
       if (perm == LocationPermission.denied) {
         perm = await Geolocator.requestPermission();
         if (perm == LocationPermission.denied) return;
@@ -115,468 +99,508 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
 
       final pos = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high);
-      final newPos = LatLng(pos.latitude, pos.longitude);
-      if (mounted) {
-        setState(() => _markerPos = newPos);
-        _mapController?.animateCamera(CameraUpdate.newLatLngZoom(newPos, 14)); // Zoom focus 5km (level 14)
-        _reverseGeocode(newPos);
-      }
-    } catch (_) {}
-  }
 
-  // ── Reverse geocode via Places API ──────────────────────────────
-  Future<void> _reverseGeocode(LatLng pos) async {
-    try {
-      final url =
-          'https://maps.googleapis.com/maps/api/geocode/json?latlng=${pos.latitude},${pos.longitude}&key=$_googleApiKey';
-      final res = await http.get(Uri.parse(url));
-      if (res.statusCode == 200) {
-        final data = json.decode(res.body);
-        if (data['results'] != null && data['results'].isNotEmpty) {
-          final name = data['results'][0]['formatted_address'] as String;
-          if (mounted) setState(() => _locationLabel = name);
-        }
-      }
-    } catch (_) {}
-  }
+      final latLng = LatLng(pos.latitude, pos.longitude);
 
-  // ── Places Autocomplete ──────────────────────────────────────────
-  Future<void> _fetchSuggestions(String input) async {
-    if (input.length < 2) {
-      setState(() => _suggestions = []);
-      return;
+      setState(() => _markerPos = latLng);
+
+      _mapController?.animateCamera(
+        CameraUpdate.newLatLngZoom(latLng, 15),
+      );
+    } catch (e) {
+      debugPrint("GPS error: $e");
     }
+  }
+
+  // ───────────────────────── SEARCH ─────────────────────────
+  Future<void> _fetchSuggestions(String input) async {
+    var query = input.trim();
+
+    // Use Karachi as default query to show area suggestions even before typing
+    if (query.isEmpty) {
+      query = 'Karachi';
+    }
+
+    setState(() => _isLoading = true);
+
     try {
+      // Karachi coordinates: 24.8607°N, 67.0011°E
       final url =
-          'https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${Uri.encodeComponent(input)}&key=$_googleApiKey&language=en';
+          'https://maps.googleapis.com/maps/api/place/autocomplete/json'
+          '?input=${Uri.encodeComponent(query)}'
+          '&key=$_googleApiKey'
+          '&components=country:pk'
+          '&language=en'
+          '&locationbias=circle:50000@24.8607,67.0011'
+          '&sessiontoken=$_sessionToken';
+
+      debugPrint('🔍 Searching: $query');
+      debugPrint('API URL: $url');
+
       final res = await http.get(Uri.parse(url));
+
       if (res.statusCode == 200) {
         final data = json.decode(res.body);
+        final status = data['status'];
+        final preds = data['predictions'] ?? [];
+
+        debugPrint('✅ API status: $status');
+        debugPrint('✅ Found ${preds.length} suggestions');
+
         if (mounted) {
           setState(() {
-            _suggestions = data['predictions'] ?? [];
-            _showSuggestions = _suggestions.isNotEmpty;
+            _suggestions = preds;
+            _showSuggestions = preds.isNotEmpty;
+            _isLoading = false;
+          });
+        }
+
+        if (status != 'OK' && status != 'ZERO_RESULTS') {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Google Places Error: $status'),
+                duration: Duration(seconds: 3),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      } else {
+        debugPrint('❌ API Error: ${res.statusCode}');
+        debugPrint('Response: ${res.body}');
+        if (mounted) {
+          setState(() {
+            _suggestions = [];
+            _showSuggestions = false;
+            _isLoading = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Google Autocomplete request failed.'),
+              duration: Duration(seconds: 2),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint("❌ Autocomplete error: $e");
+      if (mounted) {
+        setState(() {
+          _suggestions = [];
+          _showSuggestions = false;
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Google Autocomplete error. Please check your API key.'),
+            duration: Duration(seconds: 3),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // ───────────────────────── SELECT ─────────────────────────
+  Future<void> _selectSuggestion(dynamic p) async {
+    if (!mounted) return;
+
+    final placeId = p['place_id'];
+    final desc = p['description'];
+    final messenger = ScaffoldMessenger.of(context);
+
+    _searchFocus.unfocus();
+    setState(() => _isLoading = true);
+
+    try {
+      final url =
+          'https://maps.googleapis.com/maps/api/place/details/json'
+          '?place_id=$placeId'
+          '&fields=geometry,formatted_address'
+          '&key=$_googleApiKey'
+          '&sessiontoken=$_sessionToken';
+
+      debugPrint('📍 Getting details for: $placeId');
+      
+      final res = await http.get(Uri.parse(url));
+
+      if (res.statusCode == 200) {
+        final data = json.decode(res.body);
+        final status = data['status'];
+
+        debugPrint('📍 Details API status: $status');
+
+        if (status == 'OK') {
+          final loc = data['result']['geometry']['location'];
+          final target = LatLng(loc['lat'], loc['lng']);
+
+          if (mounted) {
+            setState(() {
+              _markerPos = target;
+              _locationLabel = desc;
+              _searchCtrl.text = desc;
+              _suggestions = [];
+              _showSuggestions = false;
+              _isLoading = false;
+            });
+
+            debugPrint('✅ Location updated: ${loc['lat']}, ${loc['lng']}');
+          }
+
+          _mapController?.animateCamera(
+            CameraUpdate.newLatLngZoom(target, 16),
+          );
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('📍 Location selected: $desc'),
+                duration: Duration(seconds: 2),
+                backgroundColor: Color(0xFFFB3300),
+              ),
+            );
+          }
+        } else {
+          debugPrint('❌ Place Details Error: $status');
+          throw Exception(status);
+        }
+      } else {
+        debugPrint('❌ Details API Error: ${res.statusCode}');
+        throw Exception('Failed to get location details');
+      }
+    } catch (e) {
+      debugPrint("❌ Select error: $e");
+      if (mounted) {
+        setState(() => _isLoading = false);
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('❌ Error: Could not load location. Please try again.'),
+            duration: Duration(seconds: 2),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      _sessionToken = Uuid().v4();
+    }
+  }
+
+  Future<void> _reverseGeocode(LatLng position) async {
+    try {
+      final placeMarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+
+      if (placeMarks.isNotEmpty) {
+        final p = placeMarks.first;
+        final label = [
+          p.subLocality,
+          p.locality,
+          p.administrativeArea,
+          p.country,
+        ]
+            .where((item) => item != null && item.isNotEmpty)
+            .join(', ');
+
+        if (mounted) {
+          setState(() {
+            _locationLabel = label.isNotEmpty ? label : 'Selected location';
           });
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Reverse geocode error: $e');
+    }
   }
 
-  Future<void> _selectSuggestion(dynamic prediction) async {
-    final placeId = prediction['place_id'];
-    final description = prediction['description'] as String;
-    try {
-      final url =
-          'https://maps.googleapis.com/maps/api/place/details/json?place_id=$placeId&fields=geometry&key=$_googleApiKey';
-      final res = await http.get(Uri.parse(url));
-      if (res.statusCode == 200) {
-        final data = json.decode(res.body);
-        final loc = data['result']['geometry']['location'];
-        final newPos = LatLng(loc['lat'], loc['lng']);
-        setState(() {
-          _markerPos = newPos;
-          _locationLabel = description;
-          _suggestions = [];
-          _showSuggestions = false;
-          _searchCtrl.text = description;
-        });
-        _mapController?.animateCamera(CameraUpdate.newLatLngZoom(newPos, 15));
-        _searchFocus.unfocus();
-      }
-    } catch (_) {}
-  }
+  // ───────────────────────── CONFIRM ─────────────────────────
+  Future<void> _confirm() async {
+    if (!mounted) return;
 
-  // ── Confirm and pop ──────────────────────────────────────────────
-  void _confirm() {
-    Navigator.pop(context, {
-      'latitude': _markerPos.latitude,
-      'longitude': _markerPos.longitude,
-      'locationName': _locationLabel ?? '',
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+
+    if (_locationLabel == null || _locationLabel!.isEmpty) {
+      await _reverseGeocode(_markerPos);
+    }
+
+    if (_locationLabel == null || _locationLabel!.isEmpty) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('⚠️ Please select a location first'),
+          duration: Duration(seconds: 2),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    UserSession().latitude = _markerPos.latitude;
+    UserSession().longitude = _markerPos.longitude;
+    UserSession().locationName = _locationLabel ?? '';
+
+    debugPrint('✅ Location Saved:');
+    debugPrint('  Name: $_locationLabel');
+    debugPrint('  Latitude: ${_markerPos.latitude}');
+    debugPrint('  Longitude: ${_markerPos.longitude}');
+
+    navigator.pop({
+      "latitude": _markerPos.latitude,
+      "longitude": _markerPos.longitude,
+      "locationName": _locationLabel ?? ''
     });
   }
 
-  // ── Build ────────────────────────────────────────────────────────
+  // ───────────────────────── UI ─────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
       body: Stack(
         children: [
-          // ── Google Map ──────────────────────────────────────────
+          // MAP
           GoogleMap(
+            initialCameraPosition:
+                CameraPosition(target: _markerPos, zoom: 14),
             onMapCreated: (c) {
               _mapController = c;
               c.setMapStyle(_mapStyle);
             },
-            initialCameraPosition: CameraPosition(
-              target: _markerPos,
-              zoom: 14,
-            ),
             myLocationEnabled: true,
             myLocationButtonEnabled: false,
             zoomControlsEnabled: false,
-            compassEnabled: false,
-            mapToolbarEnabled: false,
+            onCameraMove: (pos) => _markerPos = pos.target,
             onCameraMoveStarted: () {
-              setState(() {
-                _isDragging = true;
-                _locationLabel = null;
-              });
+              setState(() => _isDragging = true);
+              _searchFocus.unfocus();
             },
-            onCameraMove: (pos) {
-              setState(() => _markerPos = pos.target);
-            },
-            onCameraIdle: () {
+            onCameraIdle: () async {
               setState(() => _isDragging = false);
-              _geocodeDebounce?.cancel();
-              _geocodeDebounce = Timer(const Duration(milliseconds: 600), () {
-                _reverseGeocode(_markerPos);
-              });
+              await _reverseGeocode(_markerPos);
+            },
+            onTap: (latLng) async {
+              setState(() => _markerPos = latLng);
+              await _mapController?.animateCamera(CameraUpdate.newLatLng(latLng));
+              await _reverseGeocode(latLng);
             },
           ),
 
-          // ── Center lollipop marker ──────────────────────────────
+          // CENTER PIN
           Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildMarkerWidget(),
-                // Lollipop stick
-                Container(
-                  width: 3,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: _primary,
-                    borderRadius: BorderRadius.circular(2),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOut,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: _primary.withValues(alpha: 0.25),
+                          blurRadius: 12,
+                          spreadRadius: 2,
+                        ),
+                      ],
+                    ),
+                    child: Icon(Icons.location_on, size: 42, color: _primary),
                   ),
-                ),
-                // Shadow dot under stick
-                Container(
-                  width: 10,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.black26,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // ── Tooltip above marker ─────────────────────────────────
-          if (_locationLabel != null && !_isDragging)
-            Center(
-              child: Padding(
-                padding: EdgeInsets.only(bottom: 80),
-                child: _buildTooltip(_locationLabel!),
+                ],
               ),
             ),
+          ),
 
-          // ── Top bar: back + search ──────────────────────────────
+          // SEARCH BAR
           SafeArea(
             child: Column(
               children: [
-                _buildSearchBar(),
-                if (_showSuggestions) _buildSuggestionsList(),
+                Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: TextField(
+                    controller: _searchCtrl,
+                    focusNode: _searchFocus,
+                    onChanged: (v) {
+                      _debounce?.cancel();
+                      _debounce = Timer(
+                        const Duration(milliseconds: 400),
+                        () => _fetchSuggestions(v),
+                      );
+                    },
+                    decoration: InputDecoration(
+                      hintText: "Search location in Karachi...",
+                      filled: true,
+                      fillColor: Colors.white,
+                      prefixIcon: const Icon(Icons.search, color: Color(0xFFFB3300)),
+                      suffixIcon: _isLoading 
+                        ? Padding(
+                            padding: const EdgeInsets.all(8),
+                            child: SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFB3300)),
+                              ),
+                            ),
+                          )
+                        : null,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey.shade300),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey.shade300),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Color(0xFFFB3300), width: 2),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // SUGGESTIONS LIST
+                if (_showSuggestions && _suggestions.isNotEmpty)
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 10),
+                    constraints: const BoxConstraints(maxHeight: 320),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.12),
+                          blurRadius: 10,
+                          offset: Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      physics: const BouncingScrollPhysics(),
+                      itemCount: _suggestions.length,
+                      separatorBuilder: (context, i) => const Divider(height: 1),
+                      itemBuilder: (context, i) {
+                        final item = _suggestions[i];
+                        final description = item['description'] ?? 'Unknown Location';
+                        final mainText = item['structured_formatting']?['main_text'] ?? '';
+
+                        return InkWell(
+                          onTap: () {
+                            debugPrint('📍 Selecting: $description');
+                            _selectSuggestion(item);
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.location_on, color: Color(0xFFFB3300), size: 18),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        mainText.isNotEmpty ? mainText : description,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                                      ),
+                                      if (description != mainText)
+                                        Text(
+                                          description,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  )
+                else if (_showSuggestions && _isLoading)
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 10),
+                    padding: const EdgeInsets.all(16),
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFB3300)),
+                    ),
+                  )
               ],
             ),
           ),
 
-          // ── My location FAB ─────────────────────────────────────
+          // SELECTED LOCATION CARD
+          if (_locationLabel != null && _locationLabel!.isNotEmpty)
+            Positioned(
+              left: 16,
+              right: 72,
+              bottom: 108,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.12), blurRadius: 8, offset: const Offset(0, 3)),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.location_on, color: _primary, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _locationLabel!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+          // MY LOCATION
           Positioned(
             right: 16,
             bottom: 120,
-            child: FloatingActionButton.small(
+            child: FloatingActionButton(
               backgroundColor: Colors.white,
-              elevation: 4,
               onPressed: _getUserLocation,
-              child: Icon(Icons.my_location_rounded, color: _primary),
+              child: Icon(Icons.my_location, color: _primary),
             ),
           ),
 
-          // ── Confirm button ───────────────────────────────────────
+          // CONFIRM BUTTON
           Positioned(
             left: 16,
             right: 16,
-            bottom: 32,
+            bottom: 30,
             child: ElevatedButton(
-              onPressed: _confirm,
+              onPressed: _isDragging ? null : _confirm,
               style: ElevatedButton.styleFrom(
                 backgroundColor: _primary,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                elevation: 4,
+                padding: const EdgeInsets.all(16),
               ),
-              child: const Text(
-                'Confirm Location',
-                style: TextStyle(
-                  fontFamily: 'Bricolage Grotesque',
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
+              child: const Text("Confirm Location", style: TextStyle(color: Colors.white)),
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  // ── Lollipop head (with spinner border when dragging) ────────────
-  Widget _buildMarkerWidget() {
-    return SizedBox(
-      width: 56,
-      height: 56,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Spinning dashed border when dragging
-          if (_isDragging)
-            AnimatedBuilder(
-              animation: _spinController,
-              builder: (_, __) => Transform.rotate(
-                angle: _spinController.value * 2 * math.pi,
-                child: CustomPaint(
-                  size: const Size(56, 56),
-                  painter: _DashedCirclePainter(color: _primary),
-                ),
-              ),
-            ),
-          // White circle background
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: _primary.withOpacity(0.3),
-                  blurRadius: 8,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-              border: Border.all(
-                color: _isDragging ? Colors.transparent : _primary,
-                width: 3,
-              ),
-            ),
-            child: Icon(
-              Icons.location_pin,
-              color: _primary,
-              size: 26,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Tooltip chip ─────────────────────────────────────────────────
-  Widget _buildTooltip(String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      constraints: const BoxConstraints(maxWidth: 260),
-      decoration: BoxDecoration(
-        color: Colors.black87,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 2)),
-        ],
-      ),
-      child: Text(
-        text,
-        textAlign: TextAlign.center,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(
-          fontFamily: 'Bricolage Grotesque',
-          color: Colors.white,
-          fontSize: 12,
-          fontWeight: FontWeight.w400,
-        ),
-      ),
-    );
-  }
-
-  // ── Search bar ───────────────────────────────────────────────────
-  Widget _buildSearchBar() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      child: Row(
-        children: [
-          // Back button
-          GestureDetector(
-            onTap: () => Navigator.pop(context),
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                boxShadow: const [
-                  BoxShadow(color: Colors.black12, blurRadius: 6)
-                ],
-              ),
-              child: const Icon(Icons.arrow_back_ios_new,
-                  color: Colors.black87, size: 18),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Container(
-              height: 46,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: const [
-                  BoxShadow(color: Colors.black12, blurRadius: 8)
-                ],
-              ),
-              child: TextField(
-                controller: _searchCtrl,
-                focusNode: _searchFocus,
-                style: const TextStyle(
-                    fontFamily: 'Bricolage Grotesque', fontSize: 14),
-                decoration: InputDecoration(
-                  hintText: 'Search location...',
-                  hintStyle: TextStyle(
-                      fontFamily: 'Bricolage Grotesque',
-                      color: Colors.grey.shade500,
-                      fontSize: 13),
-                  prefixIcon:
-                      Icon(Icons.search_rounded, color: _primary, size: 20),
-                  suffixIcon: _searchCtrl.text.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.close,
-                              size: 16, color: Colors.grey),
-                          onPressed: () {
-                            _searchCtrl.clear();
-                            setState(() {
-                              _suggestions = [];
-                              _showSuggestions = false;
-                            });
-                          },
-                        )
-                      : null,
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                onChanged: (v) {
-                  _debounce?.cancel();
-                  _debounce = Timer(const Duration(milliseconds: 350), () {
-                    _fetchSuggestions(v);
-                  });
-                  setState(() {}); // for suffix icon
-                },
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Suggestions dropdown ─────────────────────────────────────────
-  Widget _buildSuggestionsList() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Material(
-        elevation: 6,
-        borderRadius: BorderRadius.circular(14),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(14),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: _suggestions.take(5).map((p) {
-              final desc = p['description'] as String;
-              final main = p['structured_formatting']?['main_text'] as String?
-                  ?? desc;
-              final secondary =
-                  p['structured_formatting']?['secondary_text'] as String?;
-              return InkWell(
-                onTap: () => _selectSuggestion(p),
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-                  child: Row(
-                    children: [
-                      Icon(Icons.location_on, color: _primary, size: 18),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              main,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontFamily: 'Bricolage Grotesque',
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            if (secondary != null)
-                              Text(
-                                secondary,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontFamily: 'Bricolage Grotesque',
-                                  fontSize: 11,
-                                  color: Colors.grey.shade600,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
       ),
     );
   }
 }
 
-// ── Dashed circle painter for spinner ────────────────────────────
-class _DashedCirclePainter extends CustomPainter {
-  final Color color;
-  _DashedCirclePainter({required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 2.5
-      ..style = PaintingStyle.stroke;
-
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2 - 2;
-    const dashCount = 10;
-    const dashAngle = math.pi * 2 / dashCount;
-    const gapFraction = 0.4;
-
-    for (int i = 0; i < dashCount; i++) {
-      final start = dashAngle * i;
-      final sweep = dashAngle * (1 - gapFraction);
-      canvas.drawArc(
-        Rect.fromCircle(center: center, radius: radius),
-        start,
-        sweep,
-        false,
-        paint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(_DashedCirclePainter old) => old.color != color;
-}

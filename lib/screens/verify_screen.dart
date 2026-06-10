@@ -160,26 +160,32 @@ class _VerifyScreenState extends State<VerifyScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Back button
-              IconButton(
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(
-                  Icons.arrow_back_ios,
-                  color: Colors.black54,
-                  size: 20,
-                ),
-                padding: EdgeInsets.zero,
-                alignment: Alignment.centerLeft,
+              Row(
+                children: [
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(
+                      Icons.arrow_back_ios_new_rounded,
+                      color: Color(0xFFFB3300),
+                      size: 20,
+                    ),
+                    padding: const EdgeInsets.all(4),
+                    splashRadius: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      "Welcome Back 👋",
+                      style: GoogleFonts.poppins(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 10),
-
-              Text(
-                "Welcome Back 👋",
-                style: GoogleFonts.poppins(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 8),
+              
+              const SizedBox(height: 30),
               Text(
                 "Login with your WhatsApp number and password",
                 style: GoogleFonts.poppins(fontSize: 15, color: Colors.black54),
