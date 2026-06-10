@@ -18,11 +18,13 @@ import 'package:http/http.dart' as http;
 import '../authentication/user_session.dart';
 import '../homescreen.dart';
 import '../role_selection_screen.dart';
-import '../../services/websocket_service.dart'; // Re-adding websocket
-import '../../services/mechanic_notification_controller.dart'; // Add Global Controller
+import '../../services/websocket_service.dart';
+import '../../services/mechanic_notification_controller.dart';
 import '../../services/mechanic_live_location_service.dart';
 import 'package:stomp_dart_client/stomp_dart_client.dart';
-import '../../utils/time_utils.dart'; // Added for relative time formatting
+import '../../utils/time_utils.dart';
+import 'mechanic_history.dart';
+import '../../services/fcm_notification_service.dart';
 
 class MechanicDashboardScreen extends StatefulWidget {
   const MechanicDashboardScreen({super.key});
@@ -32,7 +34,8 @@ class MechanicDashboardScreen extends StatefulWidget {
       _MechanicDashboardScreenState();
 }
 
-class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
+class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final Color primaryColor = const Color(0xFFE64A19);
   final Color accentOrange = const Color(0xFFFF6D00);
 
@@ -48,13 +51,20 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
   String mechanicName = "Mechanic";
   String mechanicImageUrl = '';
 
+  // Recent jobs list
+  List<Map<String, dynamic>> _recentJobs = [];
+
   final List<Map<String, dynamic>> _roadRequests = [];
   final List<Map<String, dynamic>> _appointmentRequests = [];
 
   StompClient? _activeRequestClient;
   String? _subscribedRequestId;
 
-  int get _dailyUnreadCount => _roadRequests.where((e) => e['isRead'] == false).length;
+  late AnimationController _fadeController;
+  late Animation<double> _fadeAnimation;
+
+  int get _dailyUnreadCount =>
+      _roadRequests.where((e) => e['isRead'] == false).length;
   int get _appointmentUnreadCount =>
       _appointmentRequests.where((e) => e['isRead'] == false).length;
   int get _notificationCount => _dailyUnreadCount + _appointmentUnreadCount;
@@ -62,25 +72,44 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
   @override
   void initState() {
     super.initState();
+    _fadeController = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _fadeController,
+      curve: Curves.easeOut,
+    );
     ActiveServiceRequestTracking.current.addListener(_onActiveTrackingChanged);
     _fetchDashboardData();
     _fetchAppointmentNotifications();
+    _fetchRecentJobs();
     _initWebSocket();
+    FcmNotificationService.instance.syncTokenWithBackend();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _syncActiveTrackingWithServer();
       _subscribeActiveRequestTopic();
     });
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      if (isOnline) {
+        _toggleOnlineStatus(false);
+      }
+    }
+  }
+
   void _initWebSocket() {
-    // 1. Initialize and connect the global controller
     MechanicNotificationController().init();
-    
-    // 2. Add listener to update dashboard UI when a notification arrives
     MechanicNotificationController().addListener(_onGlobalNotificationReceived);
   }
 
-  void _onGlobalNotificationReceived(Map<String, dynamic> request, String type) {
+  void _onGlobalNotificationReceived(
+      Map<String, dynamic> request, String type) {
     final backendType =
         (request['type'] ?? request['backendType'])?.toString() ?? '';
 
@@ -89,9 +118,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
       final eventId =
           request['requestId']?.toString() ?? request['requestid']?.toString();
       ActiveServiceRequestTracking.clearIfMatches(eventId);
-      if (backendType == 'ROAD_REQUEST_CANCELLED') {
-        return;
-      }
+      if (backendType == 'ROAD_REQUEST_CANCELLED') return;
       return;
     }
 
@@ -142,9 +169,10 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
       final decoded = jsonDecode(response.body);
       if (decoded is! Map) return;
 
-      final status = (decoded['requestStatus'] ?? decoded['status'] ?? '')
-          .toString()
-          .toUpperCase();
+      final status =
+          (decoded['requestStatus'] ?? decoded['status'] ?? '')
+              .toString()
+              .toUpperCase();
 
       if (status == 'CANCELLED' ||
           status == 'REJECTED' ||
@@ -203,10 +231,11 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
                 final data = Map<String, dynamic>.from(decoded);
                 final backendType =
                     (data['type'] ?? data['backendType'])?.toString() ?? '';
-                final status = (data['status'] ?? data['requestStatus'])
-                        ?.toString()
-                        .toUpperCase() ??
-                    '';
+                final status =
+                    (data['status'] ?? data['requestStatus'])
+                            ?.toString()
+                            .toUpperCase() ??
+                        '';
 
                 if (backendType == 'ROAD_REQUEST_CANCELLED' ||
                     status == 'CANCELLED') {
@@ -237,13 +266,15 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
 
   @override
   void dispose() {
-    ActiveServiceRequestTracking.current.removeListener(_onActiveTrackingChanged);
-    MechanicNotificationController().removeListener(_onGlobalNotificationReceived);
+    WidgetsBinding.instance.removeObserver(this);
+    _fadeController.dispose();
+    ActiveServiceRequestTracking.current
+        .removeListener(_onActiveTrackingChanged);
+    MechanicNotificationController()
+        .removeListener(_onGlobalNotificationReceived);
     _teardownActiveRequestSubscription();
     super.dispose();
   }
-
-
 
   void _openNotificationCenter({int initialTabIndex = 0}) {
     Navigator.push(
@@ -261,7 +292,6 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
     });
   }
 
-
   Future<void> _fetchDashboardData() async {
     final url = Uri.parse(
         "https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/dashboard");
@@ -273,7 +303,6 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
       if (response.statusCode == 200) {
         final dynamic data = jsonDecode(response.body);
         if (data is! Map) {
-          debugPrint("⚠️ Mechanic Dashboard data is not a Map: $data");
           setState(() => _isLoading = false);
           return;
         }
@@ -285,24 +314,25 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
           totalEarnings =
               (data['totalearning'] as num?)?.toDouble() ?? totalEarnings;
           todaysEarnings =
-              (data['todaysEarnings'] as num?)?.toDouble() ??
-                  todaysEarnings;
+              (data['todaysEarnings'] as num?)?.toDouble() ?? todaysEarnings;
           totalServices =
               (data['totalServices'] as num?)?.toInt() ?? totalServices;
           mechanicImageUrl = data['mechanicimgurl'] ?? '';
           todaysServices =
-              (data['todaysServices'] as num?)?.toInt() ??
-                  todaysServices;
+              (data['todaysServices'] as num?)?.toInt() ?? todaysServices;
 
           if (data['isonline'] != null) {
             final onlineStatus = data['isonline'];
-            isOnline = onlineStatus is bool 
-                ? onlineStatus 
+            isOnline = onlineStatus is bool
+                ? onlineStatus
                 : onlineStatus.toString().toLowerCase() == 'true';
           }
 
           _isLoading = false;
         });
+
+        _fadeController.forward();
+
         if (isOnline) {
           final active = ActiveServiceRequestTracking.current.value;
           final activeRequestId = active?['requestId']?.toString() ??
@@ -321,18 +351,41 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
     }
   }
 
+  Future<void> _fetchRecentJobs() async {
+    final url = Uri.parse(
+        "https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/recent-activity");
+    try {
+      final response =
+          await http.get(url, headers: UserSession().getAuthHeader());
+      if (response.statusCode == 200) {
+        final dynamic data = jsonDecode(response.body);
+        if (data is List) {
+          setState(() {
+            _recentJobs = data
+                .map((e) => Map<String, dynamic>.from(e as Map))
+                .toList();
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Recent jobs fetch failed: $e');
+    }
+  }
+
   Future<void> _refreshDashboard() async {
+    _fadeController.reset();
     await _fetchDashboardData();
+    await _fetchAppointmentNotifications();
+    await _fetchRecentJobs();
     await _syncActiveTrackingWithServer();
     _subscribeActiveRequestTopic();
   }
 
   Future<void> _toggleOnlineStatus(bool value) async {
-    setState(() {
-      _isToggleLoading = true;
-    });
+    setState(() => _isToggleLoading = true);
 
-    final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/isactive");
+    final url = Uri.parse(
+        "https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/isactive");
     try {
       final response = await http.post(
         url,
@@ -344,23 +397,20 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        setState(() {
-          isOnline = value;
-        });
+        setState(() => isOnline = value);
         if (value) {
           final active = ActiveServiceRequestTracking.current.value;
           final activeRequestId = active?['requestId']?.toString() ??
               active?['requestid']?.toString();
-          MechanicLiveLocationService.instance.start(
-            requestId: activeRequestId,
-          );
+          MechanicLiveLocationService.instance
+              .start(requestId: activeRequestId);
         } else {
           MechanicLiveLocationService.instance.stop();
         }
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(value ? 'You are now online' : 'You are now offline'),
+              content: Text(value ? 'You are now online ✅' : 'You are now offline'),
               backgroundColor: value ? Colors.green : Colors.orange,
             ),
           );
@@ -368,7 +418,8 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Failed to update status. Please try again.')),
+            const SnackBar(
+                content: Text('Failed to update status. Please try again.')),
           );
         }
       }
@@ -379,11 +430,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
         );
       }
     } finally {
-      if (mounted) {
-        setState(() {
-          _isToggleLoading = false;
-        });
-      }
+      if (mounted) setState(() => _isToggleLoading = false);
     }
   }
 
@@ -402,7 +449,8 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
             _appointmentRequests.clear();
             for (var item in decoded) {
               if (item is Map) {
-                _appointmentRequests.add(_mapAppointmentRequest(Map<String, dynamic>.from(item)));
+                _appointmentRequests.add(
+                    _mapAppointmentRequest(Map<String, dynamic>.from(item)));
               }
             }
           });
@@ -416,13 +464,15 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
   Map<String, dynamic> _mapRoadRequest(Map<String, dynamic> data) {
     return {
       'type': 'road',
-      'id': data['userid']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      'id': data['userid']?.toString() ??
+          DateTime.now().millisecondsSinceEpoch.toString(),
       'userName': data['username'] ?? 'Unknown User',
       'location': data['userlocname'] ?? 'Location not provided',
       'time': TimeAgo.format(data['created_at']),
       'issue': 'Emergency Roadside Assistance',
       'price': data['price'] != null ? 'Rs. ${data['price']}' : 'Rs. --',
-      'distance': data['distance'] != null ? '${data['distance']} km away' : '',
+      'distance':
+          data['distance'] != null ? '${data['distance']} km away' : '',
       'userimage': data['userimage'] ?? '',
       'lat': data['lat'],
       'lon': data['lon'],
@@ -432,31 +482,52 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
 
   Map<String, dynamic> _mapAppointmentRequest(Map<String, dynamic> data) {
     final rawUser = data['user'];
-    final Map<String, dynamic> user = (rawUser is Map) ? Map<String, dynamic>.from(rawUser) : {};
-    
-    final String username = data['username'] ?? data['userName'] ?? user['username'] ?? user['phonenumber'] ?? data['userphonenumber'] ?? 'Appointment User';
-    final String userImg = data['userimage'] ?? user['userimgurl'] ?? user['image'] ?? '';
-    
+    final Map<String, dynamic> user =
+        (rawUser is Map) ? Map<String, dynamic>.from(rawUser) : {};
+
+    final String username = data['username'] ??
+        data['userName'] ??
+        user['username'] ??
+        user['phonenumber'] ??
+        data['userphonenumber'] ??
+        'Appointment User';
+    final String userImg =
+        data['userimage'] ?? user['userimgurl'] ?? user['image'] ?? '';
+
     final rawDate = data['appointmentDate']?.toString() ?? '--';
     final rawTime = data['appointmentTime']?.toString() ?? '--';
     final scheduled = '$rawDate | $rawTime';
 
-    final dynamic rawIsRead = data['read'] ?? data['isread'] ?? data['isRead'];
-    final bool isRead = rawIsRead is bool ? rawIsRead : (rawIsRead?.toString().toLowerCase() == 'true');
+    final dynamic rawIsRead =
+        data['read'] ?? data['isread'] ?? data['isRead'];
+    final bool isRead = rawIsRead is bool
+        ? rawIsRead
+        : (rawIsRead?.toString().toLowerCase() == 'true');
 
     return {
       'type': 'appointment',
-      'id': (data['notificationid'] ?? data['notificationId'] ?? data['id'] ?? data['appointmentid'] ?? data['appointmentId'] ?? DateTime.now().millisecondsSinceEpoch.toString()).toString(),
-      'appointmentId': (data['appointmentid'] ?? data['appointmentId'] ?? '').toString(),
+      'id': (data['notificationid'] ??
+              data['notificationId'] ??
+              data['id'] ??
+              data['appointmentid'] ??
+              data['appointmentId'] ??
+              DateTime.now().millisecondsSinceEpoch.toString())
+          .toString(),
+      'appointmentId':
+          (data['appointmentid'] ?? data['appointmentId'] ?? '').toString(),
       'userName': username,
       'userimage': userImg,
-      'location': data['useraddress'] ?? data['address'] ?? 'Address not provided',
+      'location':
+          data['useraddress'] ?? data['address'] ?? 'Address not provided',
       'time': TimeAgo.format(data['created_at']),
-      'issue': data['problemDescription'] ?? data['problem'] ?? 'Service appointment request',
+      'issue': data['problemDescription'] ??
+          data['problem'] ??
+          'Service appointment request',
       'price': 'Rs. --',
       'distance': '',
       'scheduledTime': scheduled,
-      'serviceType': data['serviceType'] ?? data['servicetype'] ?? 'General Service',
+      'serviceType':
+          data['serviceType'] ?? data['servicetype'] ?? 'General Service',
       'status': data['status']?.toString() ?? 'PENDING',
       'isRead': isRead,
     };
@@ -468,349 +539,521 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
     final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
+      backgroundColor:
+          isDark ? const Color(0xFF121212) : const Color(0xFFF5F5F5),
       appBar: AppBar(
-        backgroundColor:
-            theme.appBarTheme.backgroundColor ??
-                theme.scaffoldBackgroundColor,
+        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         elevation: 0,
         iconTheme: IconThemeData(color: theme.iconTheme.color),
+        actions: [
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              IconButton(
+                onPressed: () => _openNotificationCenter(
+                    initialTabIndex: _appointmentUnreadCount > 0 ? 1 : 0),
+                icon: Icon(Icons.notifications_outlined,
+                    color: primaryColor, size: 28),
+              ),
+              if (_notificationCount > 0)
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    constraints:
+                        const BoxConstraints(minWidth: 16, minHeight: 16),
+                    child: Text(
+                      '$_notificationCount',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       drawer: _buildDrawer(isDark, theme),
       body: _isLoading
-          ? _SkeletonMechanicDashboard()
-          : RefreshIndicator(
-              onRefresh: _refreshDashboard,
-              color: primaryColor,
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-                    ValueListenableBuilder<Map<String, dynamic>?>(
-                      valueListenable: ActiveServiceRequestTracking.current,
-                      builder: (context, activeRequest, _) {
-                        if (!ActiveServiceRequestTracking.isActive(activeRequest)) {
-                          return const SizedBox.shrink();
-                        }
-                        final request = activeRequest!;
-                        final requestStatus =
-                            (request['requestStatus'] ?? request['status'] ?? '')
-                                .toString()
-                                .toUpperCase();
-                        final isPendingRoadRequest =
-                            requestStatus == 'PENDING' &&
-                            request['mechanicId'] == null;
-                        final isPaymentPending =
-                            request['paymentPending'] == true ||
-                            requestStatus == 'PAYMENT_PENDING';
-                        final isWaitingForPayment =
-                            request['workCompleted'] == true ||
-                            requestStatus == 'WAITING_FOR_PAYMENT' ||
-                            requestStatus == 'WORK_COMPLETED';
-                        
-                        return Container(
-                          margin: const EdgeInsets.symmetric(vertical: 10),
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [primaryColor, accentOrange],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: primaryColor.withValues(alpha: 0.3),
-                                blurRadius: 10,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            children: [
-                              const CircleAvatar(
-                                backgroundColor: Colors.white24,
-                                child: Icon(Icons.navigation_rounded, color: Colors.white),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      isPendingRoadRequest
-                                          ? 'Pending Service Request'
-                                          : isPaymentPending
-                                              ? 'Payment Pending'
-                                              : isWaitingForPayment
-                                                  ? 'Waiting for Payment'
-                                              : 'Active Service in Progress',
-                                      style: GoogleFonts.poppins(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                    Text(
-                                      isPendingRoadRequest
-                                          ? 'Tap to view request details'
-                                          : isPaymentPending
-                                              ? 'Tap to confirm cash payment'
-                                              : isWaitingForPayment
-                                                  ? 'Customer payment pending'
-                                              : 'Tap to resume tracking map',
-                                      style: GoogleFonts.poppins(
-                                        color: Colors.white70,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              ElevatedButton(
-                                onPressed: () async {
-                                  await Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => isPendingRoadRequest
-                                          ? MechanicRequestAlertScreen(requestData: request)
-                                          : MechanicUserMap(requestData: request),
-                                    ),
-                                  );
-                                  if (!mounted) return;
-                                  await _syncActiveTrackingWithServer();
-                                  _subscribeActiveRequestTopic();
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.white,
-                                  foregroundColor: primaryColor,
-                                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                ),
-                                child: const Text('RESUME'),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 10),
+          ? const _SkeletonMechanicDashboard()
+          : FadeTransition(
+              opacity: _fadeAnimation,
+              child: RefreshIndicator(
+                onRefresh: _refreshDashboard,
+                color: primaryColor,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // ── PROFILE HEADER SECTION ──
+                      _buildProfileHeader(isDark),
 
-                    /// HEADER 
-                    Row(
-                      mainAxisAlignment:
-                          MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Hello, $mechanicName 👋',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold,
-                                  color: theme.textTheme.titleLarge?.color,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              Row(
-                                children: [
-                                  const Icon(Icons.star_rounded,
-                                      color: Colors.amber, size: 20),
-                                  const SizedBox(width: 4),
-                                  Flexible(
-                                    child: Text(
-                                      '$mechanicRating Rating',
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 14,
-                                        color: theme.textTheme.bodyMedium?.color
-                                            ?.withValues(alpha: 0.7),
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        Stack(
-                          alignment: Alignment.center,
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            IconButton(
-                              onPressed: () {
-                                _openNotificationCenter(
-                                  initialTabIndex:
-                                      _appointmentUnreadCount > 0 ? 1 : 0,
+                            const SizedBox(height: 16),
+
+                            // ── ACTIVE REQUEST BANNER ──
+                            ValueListenableBuilder<Map<String, dynamic>?>(
+                              valueListenable:
+                                  ActiveServiceRequestTracking.current,
+                              builder: (context, activeRequest, _) {
+                                if (!ActiveServiceRequestTracking.isActive(
+                                    activeRequest)) {
+                                  return const SizedBox.shrink();
+                                }
+                                final request = activeRequest!;
+                                final requestStatus =
+                                    (request['requestStatus'] ??
+                                            request['status'] ??
+                                            '')
+                                        .toString()
+                                        .toUpperCase();
+                                final isPendingRoadRequest =
+                                    requestStatus == 'PENDING' &&
+                                        request['mechanicId'] == null;
+                                final isPaymentPending =
+                                    request['paymentPending'] == true ||
+                                        requestStatus == 'PAYMENT_PENDING';
+                                final isWaitingForPayment =
+                                    request['workCompleted'] == true ||
+                                        requestStatus ==
+                                            'WAITING_FOR_PAYMENT' ||
+                                        requestStatus == 'WORK_COMPLETED';
+
+                                return Container(
+                                  margin: const EdgeInsets.only(bottom: 16),
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [primaryColor, accentOrange],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    ),
+                                    borderRadius: BorderRadius.circular(16),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color:
+                                            primaryColor.withValues(alpha: 0.3),
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(10),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white24,
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                        child: const Icon(
+                                            Icons.navigation_rounded,
+                                            color: Colors.white,
+                                            size: 22),
+                                      ),
+                                      const SizedBox(width: 14),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              isPendingRoadRequest
+                                                  ? 'Pending Service Request'
+                                                  : isPaymentPending
+                                                      ? 'Payment Pending'
+                                                      : isWaitingForPayment
+                                                          ? 'Waiting for Payment'
+                                                          : 'Active Service in Progress',
+                                              style: GoogleFonts.poppins(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 14,
+                                              ),
+                                            ),
+                                            Text(
+                                              isPendingRoadRequest
+                                                  ? 'Tap to view request details'
+                                                  : isPaymentPending
+                                                      ? 'Tap to confirm cash payment'
+                                                      : isWaitingForPayment
+                                                          ? 'Customer payment pending'
+                                                          : 'Tap to resume tracking map',
+                                              style: GoogleFonts.poppins(
+                                                color: Colors.white70,
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      ElevatedButton(
+                                        onPressed: () async {
+                                          await Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) =>
+                                                  isPendingRoadRequest
+                                                      ? MechanicRequestAlertScreen(
+                                                          requestData: request)
+                                                      : MechanicUserMap(
+                                                          requestData: request),
+                                            ),
+                                          );
+                                          if (!mounted) return;
+                                          await _syncActiveTrackingWithServer();
+                                          _subscribeActiveRequestTopic();
+                                        },
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.white,
+                                          foregroundColor: primaryColor,
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 14, vertical: 10),
+                                          shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(10)),
+                                        ),
+                                        child: Text('RESUME',
+                                            style: GoogleFonts.poppins(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 12)),
+                                      ),
+                                    ],
+                                  ),
                                 );
                               },
-                              icon: Icon(Icons.notifications_outlined, color: primaryColor, size: 28),
                             ),
-                            if (_notificationCount > 0)
-                              Positioned(
-                                right: 8,
-                                top: 8,
-                                child: Container(
-                                  padding: const EdgeInsets.all(2),
-                                  decoration: BoxDecoration(
-                                    color: Colors.red,
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                                  child: Text(
-                                    '$_notificationCount',
-                                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                                    textAlign: TextAlign.center,
+
+                            // ── ONLINE / OFFLINE TOGGLE ──
+                            _buildOnlineToggle(isDark),
+
+                            const SizedBox(height: 24),
+
+                            // ── STATS GRID 2x2 ──
+                            Text(
+                              'Overview',
+                              style: GoogleFonts.poppins(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w700,
+                                color: theme.textTheme.titleLarge?.color,
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            _buildStatsGrid(isDark),
+
+                            const SizedBox(height: 24),
+
+                            // ── QUICK ACTIONS ──
+                            Text(
+                              'Quick Actions',
+                              style: GoogleFonts.poppins(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w700,
+                                color: theme.textTheme.titleLarge?.color,
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            _buildQuickActions(isDark),
+
+                            const SizedBox(height: 24),
+
+                            // ── RECENT ACTIVITY ──
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Recent Activity',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w700,
+                                    color: theme.textTheme.titleLarge?.color,
                                   ),
                                 ),
-                              ),
+                                TextButton(
+                                  onPressed: () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                          builder: (_) =>
+                                              const MechanicHistoryScreen())),
+                                  child: Text(
+                                    'See All',
+                                    style: GoogleFonts.poppins(
+                                        color: primaryColor,
+                                        fontWeight: FontWeight.w600),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            _buildRecentActivity(isDark),
+
+                            const SizedBox(height: 30),
                           ],
                         ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    /// ONLINE / OFFLINE TOGGLE (Centered)
-                    Container(
-                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                      decoration: BoxDecoration(
-                        color: isDark ? Colors.grey[850] : Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: isDark ? Border.all(color: Colors.grey.shade800) : null,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05),
-                            blurRadius: 10,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            isOnline ? Icons.sensors_rounded : Icons.sensors_off_rounded,
-                            color: isOnline ? Colors.green.shade600 : Colors.red.shade400,
-                            size: 24,
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
-                            'Offline',
-                            style: GoogleFonts.poppins(
-                              color: isOnline ? (isDark ? Colors.grey.shade600 : Colors.grey.shade400) : Colors.red.shade400,
-                              fontWeight: isOnline ? FontWeight.w500 : FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          _isToggleLoading
-                              ? const SizedBox(
-                                  width: 48,
-                                  height: 36,
-                                  child: Center(
-                                    child: SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(strokeWidth: 2),
-                                    ),
-                                  ),
-                                )
-                              : Switch(
-                                  value: isOnline,
-                                  activeColor: Colors.green.shade500,
-                                  activeTrackColor: Colors.green.shade200,
-                                  inactiveThumbColor: Colors.red.shade400,
-                                  inactiveTrackColor: Colors.red.shade100,
-                                  onChanged: _toggleOnlineStatus,
-                                ),
-                          const SizedBox(width: 12),
-                          Text(
-                            'Online',
-                            style: GoogleFonts.poppins(
-                              color: isOnline ? Colors.green.shade600 : (isDark ? Colors.grey.shade600 : Colors.grey.shade400),
-                              fontWeight: isOnline ? FontWeight.bold : FontWeight.w500,
-                              fontSize: 16,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 28),
-
-                    /// OVERVIEW
-                    Text(
-                      'Overview',
-                      style: GoogleFonts.poppins(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                        color: theme.textTheme.titleLarge?.color,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-
-                    /// VERTICAL CARDS
-                    Column(
-                      children: [
-                        _statCard(
-                          label: "Today's Services",
-                          value: todaysServices.toString(),
-                          icon: Icons.build_circle_rounded,
-                          accentColor: primaryColor,
-                          isDark: isDark,
-                        ),
-                        const SizedBox(height: 14),
-
-                        _statCard(
-                          label: "Today's Earnings",
-                          value:
-                              'Rs. ${todaysEarnings.toStringAsFixed(0)}',
-                          icon: Icons.trending_up_rounded,
-                          accentColor: const Color(0xFF1E88E5),
-                          isDark: isDark,
-                        ),
-                        const SizedBox(height: 14),
-
-                        _statCard(
-                          label: 'Total Earnings',
-                          value:
-                              'Rs. ${totalEarnings.toStringAsFixed(0)}',
-                          icon:
-                              Icons.account_balance_wallet_rounded,
-                          accentColor: const Color(0xFF43A047),
-                          isDark: isDark,
-                        ),
-                        const SizedBox(height: 14),
-
-                        _statCard(
-                          label: 'Total Services',
-                          value: totalServices.toString(),
-                          icon: Icons.handyman_rounded,
-                          accentColor: const Color(0xFF9C27B0),
-                          isDark: isDark,
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 20),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
     );
   }
 
-  /// STAT CARD
-  Widget _statCard({
+  // ── PROFILE HEADER ──
+  Widget _buildProfileHeader(bool isDark) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          // Profile Photo
+          Stack(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: [primaryColor, accentOrange],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: CircleAvatar(
+                  radius: 36,
+                  backgroundColor: Colors.grey.shade200,
+                  backgroundImage: mechanicImageUrl.isNotEmpty
+                      ? NetworkImage(mechanicImageUrl)
+                      : const AssetImage('assets/images/m1.jpg')
+                          as ImageProvider,
+                ),
+              ),
+              Positioned(
+                bottom: 2,
+                right: 2,
+                child: Container(
+                  width: 14,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: isOnline ? Colors.green : Colors.grey,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 16),
+          // Name & Rating
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Hello, $mechanicName 👋',
+                  style: GoogleFonts.poppins(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    // Stars
+                    Row(
+                      children: List.generate(5, (i) {
+                        return Icon(
+                          i < mechanicRating.floor()
+                              ? Icons.star_rounded
+                              : i < mechanicRating
+                                  ? Icons.star_half_rounded
+                                  : Icons.star_outline_rounded,
+                          color: Colors.amber,
+                          size: 16,
+                        );
+                      }),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '${mechanicRating.toStringAsFixed(1)} Rating',
+                      style: GoogleFonts.poppins(
+                        fontSize: 13,
+                        color: isDark ? Colors.grey.shade400 : Colors.black54,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          // Profile edit button
+          IconButton(
+            onPressed: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const MechanicProfileScreen())),
+            icon: Icon(Icons.edit_outlined, color: primaryColor, size: 22),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── ONLINE TOGGLE ──
+  Widget _buildOnlineToggle(bool isDark) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isOnline
+              ? Colors.green.withValues(alpha: 0.4)
+              : Colors.red.withValues(alpha: 0.3),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: isOnline
+                  ? Colors.green.withValues(alpha: 0.12)
+                  : Colors.red.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              isOnline ? Icons.sensors_rounded : Icons.sensors_off_rounded,
+              color: isOnline ? Colors.green.shade600 : Colors.red.shade400,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Text(
+            'Offline',
+            style: GoogleFonts.poppins(
+              color: isOnline
+                  ? (isDark ? Colors.grey.shade600 : Colors.grey.shade400)
+                  : Colors.red.shade400,
+              fontWeight: isOnline ? FontWeight.w500 : FontWeight.bold,
+              fontSize: 15,
+            ),
+          ),
+          const SizedBox(width: 12),
+          _isToggleLoading
+              ? const SizedBox(
+                  width: 48,
+                  height: 36,
+                  child: Center(
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                )
+              : Switch(
+                  value: isOnline,
+                  activeColor: Colors.green.shade500,
+                  activeTrackColor: Colors.green.shade200,
+                  inactiveThumbColor: Colors.red.shade400,
+                  inactiveTrackColor: Colors.red.shade100,
+                  onChanged: _toggleOnlineStatus,
+                ),
+          const SizedBox(width: 12),
+          Text(
+            'Online',
+            style: GoogleFonts.poppins(
+              color: isOnline
+                  ? Colors.green.shade600
+                  : (isDark ? Colors.grey.shade600 : Colors.grey.shade400),
+              fontWeight: isOnline ? FontWeight.bold : FontWeight.w500,
+              fontSize: 15,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── STATS 2x2 GRID ──
+  Widget _buildStatsGrid(bool isDark) {
+    return GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisSpacing: 12,
+      mainAxisSpacing: 12,
+      childAspectRatio: 1.4,
+      children: [
+        _gridStatCard(
+          label: "Today's Services",
+          value: todaysServices.toString(),
+          icon: Icons.build_circle_rounded,
+          accentColor: primaryColor,
+          isDark: isDark,
+        ),
+        _gridStatCard(
+          label: "Today's Earnings",
+          value: 'Rs. ${todaysEarnings.toStringAsFixed(0)}',
+          icon: Icons.trending_up_rounded,
+          accentColor: const Color(0xFF1E88E5),
+          isDark: isDark,
+        ),
+        _gridStatCard(
+          label: 'Total Earnings',
+          value: 'Rs. ${totalEarnings.toStringAsFixed(0)}',
+          icon: Icons.account_balance_wallet_rounded,
+          accentColor: const Color(0xFF43A047),
+          isDark: isDark,
+        ),
+        _gridStatCard(
+          label: 'Total Services',
+          value: totalServices.toString(),
+          icon: Icons.handyman_rounded,
+          accentColor: const Color(0xFF9C27B0),
+          isDark: isDark,
+        ),
+      ],
+    );
+  }
+
+  Widget _gridStatCard({
     required String label,
     required String value,
     required IconData icon,
@@ -818,70 +1061,343 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
     required bool isDark,
   }) {
     return Container(
-      width: double.infinity,
-      padding:
-          const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? Colors.grey[850] : Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        color: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+        borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(
-                alpha: isDark ? 0.30 : 0.05),
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
         ],
-        border: isDark ? Border.all(color: Colors.grey.shade800, width: 1) : null,
+        border: isDark
+            ? Border.all(color: Colors.grey.shade800, width: 1)
+            : null,
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: accentColor.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(12),
+              color: accentColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, color: accentColor, size: 26),
+            child: Icon(icon, color: accentColor, size: 22),
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-                Text(
-                  value,
-                  style: GoogleFonts.poppins(
-                    color: isDark ? Colors.white : Colors.black87,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                value,
+                style: GoogleFonts.poppins(
+                  color: isDark ? Colors.white : Colors.black87,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
                 ),
-                Text(
-                  label,
-                  style: GoogleFonts.poppins(
-                    color: isDark ? Colors.white70 : Colors.black54,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+                overflow: TextOverflow.ellipsis,
+              ),
+              Text(
+                label,
+                style: GoogleFonts.poppins(
+                  color: isDark ? Colors.grey.shade400 : Colors.black54,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
                 ),
-              ],
-            ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  // ================= DRAWER STYLED =================
-  Widget _drawerItem(IconData icon, String title, BuildContext context, 
-      {bool isLogout = false, required bool isDark, bool isSelected = false, VoidCallback? onTap, int badgeCount = 0}) {
-    
-    final Color itemColor = isLogout ? Colors.red : (isDark ? Colors.white70 : Colors.black87);
-    final Color selectedBgColor = isDark ? primaryColor.withValues(alpha: 0.15) : primaryColor.withValues(alpha: 0.1);
+  // ── QUICK ACTIONS ──
+  Widget _buildQuickActions(bool isDark) {
+    final actions = [
+      {
+        'label': 'Bookings',
+        'icon': Icons.event_note_rounded,
+        'color': const Color(0xFFE64A19),
+        'badge': 0,
+        'onTap': () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const MechanicBookingRequestScreen())),
+      },
+      {
+        'label': 'Appointments',
+        'icon': Icons.calendar_today_rounded,
+        'color': const Color(0xFF1E88E5),
+        'badge': _appointmentUnreadCount,
+        'onTap': () => Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (_) => MechanicAppointmentRequestScreen(
+                      requests: _appointmentRequests,
+                      onReadUpdate: () {
+                        if (mounted) setState(() {});
+                      },
+                    ))).then((_) => _fetchAppointmentNotifications()),
+      },
+      {
+        'label': 'Earnings',
+        'icon': Icons.account_balance_wallet_rounded,
+        'color': const Color(0xFF43A047),
+        'badge': 0,
+        'onTap': () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const MechanicEarningsScreen())),
+      },
+      {
+        'label': 'Services',
+        'icon': Icons.build_rounded,
+        'color': const Color(0xFF9C27B0),
+        'badge': 0,
+        'onTap': () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const MechanicServicesScreen())),
+      },
+    ];
+
+    return Row(
+      children: actions.map((action) {
+        final badge = action['badge'] as int;
+        final color = action['color'] as Color;
+        return Expanded(
+          child: GestureDetector(
+            onTap: action['onTap'] as VoidCallback,
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color:
+                        Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+                border: isDark
+                    ? Border.all(color: Colors.grey.shade800)
+                    : null,
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(action['icon'] as IconData,
+                            color: color, size: 24),
+                      ),
+                      if (badge > 0)
+                        Positioned(
+                          top: -4,
+                          right: -4,
+                          child: Container(
+                            padding: const EdgeInsets.all(3),
+                            decoration: const BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
+                            ),
+                            constraints: const BoxConstraints(
+                                minWidth: 16, minHeight: 16),
+                            child: Text(
+                              '$badge',
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    action['label'] as String,
+                    style: GoogleFonts.poppins(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white70 : Colors.black87,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  // ── RECENT ACTIVITY ──
+  Widget _buildRecentActivity(bool isDark) {
+    if (_recentJobs.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Center(
+          child: Column(
+            children: [
+              Icon(Icons.history_rounded,
+                  size: 40,
+                  color: isDark ? Colors.grey.shade600 : Colors.grey.shade400),
+              const SizedBox(height: 8),
+              Text(
+                'No recent activity',
+                style: GoogleFonts.poppins(
+                  color: isDark ? Colors.grey.shade500 : Colors.grey.shade500,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: _recentJobs.asMap().entries.map((entry) {
+          final i = entry.key;
+          final job = entry.value;
+          final isLast = i == _recentJobs.length - 1;
+
+          // New API fields
+          final String type = job['type']?.toString() ?? 'SERVICE_REQUEST';
+          final bool isAppointment = type == 'APPOINTMENT';
+          final amount = job['amount']?.toString() ?? '--';
+          final username = job['username']?.toString() ?? 'Customer';
+          final serviceType = job['serviceType']?.toString() ?? 'Service';
+          final completedAt = job['completedAt']?.toString() ?? '';
+          final displayDate = completedAt.length >= 10
+              ? completedAt.substring(0, 10)
+              : completedAt;
+
+          // Icon aur color type ke hisaab se
+          final IconData activityIcon = isAppointment
+              ? Icons.calendar_today_rounded
+              : Icons.build_circle_rounded;
+          final Color activityColor = isAppointment
+              ? const Color(0xFF1E88E5)
+              : primaryColor;
+
+          return Column(
+            children: [
+              ListTile(
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: activityColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(activityIcon, color: activityColor, size: 20),
+                ),
+                title: Text(
+                  username,
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                ),
+                subtitle: Text(
+                  serviceType,
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: isDark ? Colors.grey.shade400 : Colors.black54,
+                  ),
+                ),
+                trailing: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      amount == '--' ? 'Rs. --' : 'Rs. $amount',
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: Colors.green.shade600,
+                      ),
+                    ),
+                    if (displayDate.isNotEmpty)
+                      Text(
+                        displayDate,
+                        style: GoogleFonts.poppins(
+                          fontSize: 10,
+                          color: isDark
+                              ? Colors.grey.shade500
+                              : Colors.grey.shade500,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (!isLast)
+                Divider(
+                  height: 1,
+                  indent: 16,
+                  endIndent: 16,
+                  color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
+                ),
+            ],
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // ── DRAWER ──
+  Widget _drawerItem(
+    IconData icon,
+    String title,
+    BuildContext context, {
+    bool isLogout = false,
+    required bool isDark,
+    bool isSelected = false,
+    VoidCallback? onTap,
+    int badgeCount = 0,
+  }) {
+    final Color itemColor =
+        isLogout ? Colors.red : (isDark ? Colors.white70 : Colors.black87);
+    final Color selectedBgColor = isDark
+        ? primaryColor.withValues(alpha: 0.15)
+        : primaryColor.withValues(alpha: 0.1);
     final Color selectedTextColor = primaryColor;
 
     return Container(
@@ -891,18 +1407,17 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
         borderRadius: BorderRadius.circular(12),
       ),
       child: ListTile(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        leading: Icon(
-          icon, 
-          color: isSelected ? selectedTextColor : itemColor, 
-          size: 24
-        ),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        leading: Icon(icon,
+            color: isSelected ? selectedTextColor : itemColor, size: 24),
         title: Text(
           title,
           style: GoogleFonts.poppins(
             color: isSelected ? selectedTextColor : itemColor,
             fontSize: 15,
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+            fontWeight:
+                isSelected ? FontWeight.w600 : FontWeight.w500,
           ),
         ),
         trailing: badgeCount > 0
@@ -924,13 +1439,13 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
               )
             : null,
         onTap: onTap,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
         minLeadingWidth: 20,
       ),
     );
   }
 
-  // Updated elegant drawer
   Drawer _buildDrawer(bool isDark, ThemeData theme) {
     return Drawer(
       backgroundColor: theme.drawerTheme.backgroundColor ??
@@ -948,7 +1463,8 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
               color: isDark ? Colors.grey[900] : Colors.white,
               border: Border(
                 bottom: BorderSide(
-                  color: isDark ? Colors.white10 : Colors.grey.shade100,
+                  color:
+                      isDark ? Colors.white10 : Colors.grey.shade100,
                   width: 1,
                 ),
               ),
@@ -960,14 +1476,17 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
                   decoration: BoxDecoration(
                     color: Colors.white,
                     shape: BoxShape.circle,
-                    border: Border.all(color: primaryColor.withValues(alpha: 0.5), width: 2),
+                    border: Border.all(
+                        color: primaryColor.withValues(alpha: 0.5),
+                        width: 2),
                   ),
                   child: CircleAvatar(
                     radius: 32,
                     backgroundColor: Colors.grey.shade200,
                     backgroundImage: mechanicImageUrl.isNotEmpty
                         ? NetworkImage(mechanicImageUrl)
-                        : const AssetImage('assets/images/m1.jpg') as ImageProvider,
+                        : const AssetImage('assets/images/m1.jpg')
+                            as ImageProvider,
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -986,13 +1505,21 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 2),
-                      Text(
-                        "Mechanic Account",
-                        style: GoogleFonts.poppins(
-                          color: isDark ? Colors.grey.shade400 : Colors.grey.shade600, 
-                          fontSize: 13,
-                          fontWeight: FontWeight.w400,
-                        ),
+                      Row(
+                        children: [
+                          Icon(Icons.star_rounded,
+                              color: Colors.amber, size: 14),
+                          const SizedBox(width: 4),
+                          Text(
+                            '$mechanicRating Rating',
+                            style: GoogleFonts.poppins(
+                              color: isDark
+                                  ? Colors.grey.shade400
+                                  : Colors.grey.shade600,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -1003,12 +1530,19 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
 
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
               children: [
-                _drawerItem(Icons.dashboard_customize_rounded, "Dashboard", context, isDark: isDark, isSelected: true, onTap: () {
-                  Navigator.pop(context);
-                }),
-                _drawerItem(Icons.calendar_today_rounded, "Appointment Requests", context, isDark: isDark, badgeCount: _appointmentUnreadCount, onTap: () {
+                _drawerItem(
+                    Icons.dashboard_customize_rounded, "Dashboard", context,
+                    isDark: isDark,
+                    isSelected: true,
+                    onTap: () => Navigator.pop(context)),
+                _drawerItem(Icons.calendar_today_rounded,
+                    "Appointment Requests", context,
+                    isDark: isDark,
+                    badgeCount: _appointmentUnreadCount,
+                    onTap: () {
                   Navigator.pop(context);
                   Navigator.push(
                     context,
@@ -1020,43 +1554,80 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
                         },
                       ),
                     ),
-                  ).then((_) {
-                    _fetchAppointmentNotifications();
-                  });
+                  ).then((_) => _fetchAppointmentNotifications());
                 }),
-                _drawerItem(Icons.event_note_rounded, "Booking Requests", context, isDark: isDark, onTap: () {
+                _drawerItem(
+                    Icons.event_note_rounded, "Booking Requests", context,
+                    isDark: isDark,
+                    onTap: () {
                   Navigator.pop(context);
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => const MechanicBookingRequestScreen()));
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) =>
+                              const MechanicBookingRequestScreen()));
                 }),
-                _drawerItem(Icons.account_balance_wallet_rounded, "Earnings", context, isDark: isDark, onTap: () {
+                _drawerItem(Icons.account_balance_wallet_rounded, "Earnings",
+                    context,
+                    isDark: isDark, onTap: () {
                   Navigator.pop(context);
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => const MechanicEarningsScreen()));
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const MechanicEarningsScreen()));
                 }),
-                _drawerItem(Icons.build_rounded, "Services", context, isDark: isDark, onTap: () {
+                _drawerItem(Icons.build_rounded, "Services", context,
+                    isDark: isDark, onTap: () {
                   Navigator.pop(context);
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => const MechanicServicesScreen()));
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const MechanicServicesScreen()));
                 }),
-                _drawerItem(Icons.person_outline_rounded, "Profile", context, isDark: isDark, onTap: () {
+                _drawerItem(Icons.history_rounded, "Service History",
+                    context,
+                    isDark: isDark, onTap: () {
                   Navigator.pop(context);
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => const MechanicProfileScreen()));
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const MechanicHistoryScreen()));
                 }),
-                
+                _drawerItem(Icons.person_outline_rounded, "Profile", context,
+                    isDark: isDark, onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const MechanicProfileScreen()));
+                }),
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 10),
-                  child: Divider(color: isDark ? Colors.grey.shade800 : Colors.grey.shade300, thickness: 1),
+                  child: Divider(
+                      color: isDark
+                          ? Colors.grey.shade800
+                          : Colors.grey.shade300,
+                      thickness: 1),
                 ),
-                
-                _drawerItem(Icons.settings_outlined, "Settings", context, isDark: isDark, onTap: () {
+                _drawerItem(Icons.settings_outlined, "Settings", context,
+                    isDark: isDark, onTap: () {
                   Navigator.pop(context);
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => const MechanicSettingsScreen()));
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const MechanicSettingsScreen()));
                 }),
-                _drawerItem(Icons.logout_rounded, "Logout", context, isDark: isDark, isLogout: true, onTap: () async {
+                _drawerItem(Icons.logout_rounded, "Logout", context,
+                    isDark: isDark,
+                    isLogout: true,
+                    onTap: () async {
                   final nav = Navigator.of(context);
-                  MechanicNotificationController().dispose(); // Close WebSocket
+                  MechanicNotificationController().dispose();
                   MechanicLiveLocationService.instance.stop();
                   await UserSession().logout();
                   nav.pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
+                    MaterialPageRoute(
+                        builder: (_) => const RoleSelectionScreen()),
                     (route) => false,
                   );
                 }),
@@ -1065,11 +1636,12 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
           ),
 
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
             child: InkWell(
               onTap: () async {
                 final nav = Navigator.of(context);
-                MechanicNotificationController().dispose(); // Close WebSocket
+                MechanicNotificationController().dispose();
                 MechanicLiveLocationService.instance.stop();
                 bool success = await UserSession().trySwitchTo('USER');
                 if (success) {
@@ -1079,7 +1651,8 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
                   );
                 } else {
                   nav.pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
+                    MaterialPageRoute(
+                        builder: (_) => const RoleSelectionScreen()),
                     (route) => false,
                   );
                 }
@@ -1087,25 +1660,30 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 decoration: BoxDecoration(
-                  color: isDark ? Colors.grey[850] : Colors.white,
-                  border: Border.all(color: primaryColor.withValues(alpha: 0.3), width: 1.5),
+                  color:
+                      isDark ? Colors.grey[850] : Colors.white,
+                  border: Border.all(
+                      color: primaryColor.withValues(alpha: 0.3),
+                      width: 1.5),
                   borderRadius: BorderRadius.circular(14),
                   boxShadow: [
                     BoxShadow(
                       color: primaryColor.withValues(alpha: 0.05),
-                      blurRadius: 10, offset: const Offset(0, 4)
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
                     )
                   ],
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.swap_horiz_rounded, color: primaryColor, size: 22),
+                    Icon(Icons.swap_horiz_rounded,
+                        color: primaryColor, size: 22),
                     const SizedBox(width: 10),
                     Text(
                       'Return to User',
                       style: GoogleFonts.poppins(
-                          color: primaryColor, 
+                          color: primaryColor,
                           fontSize: 14,
                           fontWeight: FontWeight.w600),
                     ),
@@ -1120,28 +1698,89 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen> {
   }
 }
 
+// ── SKELETON LOADER ──
 class _SkeletonMechanicDashboard extends StatelessWidget {
   const _SkeletonMechanicDashboard();
 
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Shimmer.fromColors(
         baseColor: Colors.grey[300]!,
         highlightColor: Colors.grey[100]!,
         child: Column(
-          children: List.generate(
-            4,
-            (_) => Container(
-              margin: const EdgeInsets.only(bottom: 14),
-              height: 80,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
+          children: [
+            // Profile skeleton
+            Container(
+              height: 100,
+              color: Colors.white,
+              margin: const EdgeInsets.only(bottom: 16),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                children: [
+                  // Toggle skeleton
+                  Container(
+                    height: 60,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    margin: const EdgeInsets.only(bottom: 20),
+                  ),
+                  // Grid skeleton
+                  GridView.count(
+                    crossAxisCount: 2,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 1.4,
+                    children: List.generate(
+                      4,
+                      (_) => Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  // Quick actions skeleton
+                  Row(
+                    children: List.generate(
+                      4,
+                      (_) => Expanded(
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          height: 80,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  // Recent activity skeleton
+                  ...List.generate(
+                    3,
+                    (_) => Container(
+                      height: 64,
+                      margin: const EdgeInsets.only(bottom: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
+          ],
         ),
       ),
     );

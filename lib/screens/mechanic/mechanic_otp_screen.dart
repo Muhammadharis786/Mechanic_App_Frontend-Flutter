@@ -10,13 +10,11 @@ import 'mechanic_registration_screen.dart';
 class MechanicOtpScreen extends StatefulWidget {
   final String phoneNumber;
   final String password;
-  final String userId;
 
   const MechanicOtpScreen({
     super.key,
     required this.phoneNumber,
     required this.password,
-    required this.userId,
   });
 
   @override
@@ -132,7 +130,6 @@ class _MechanicOtpScreenState extends State<MechanicOtpScreen> {
         url,
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
-          "userid": widget.userId,
           "phonenumber": widget.phoneNumber,
           "password": widget.password,
         }),

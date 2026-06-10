@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'mechanic_forgot_password.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mech_app/screens/mechanic/mechanic_register_phone.dart';
 import 'package:http/http.dart' as http;
@@ -373,7 +374,13 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
                 alignment: Alignment.centerRight,
                 child: TextButton(
                   onPressed: () {
-                    // forgot password screen later
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            const MechanicForgotPasswordScreen(),
+                      ),
+                    );
                   },
                   child: Text(
                     "Forgot Password?",

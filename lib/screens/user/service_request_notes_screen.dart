@@ -4,7 +4,8 @@ import 'service_request_map_screen.dart';
 
 class ServiceRequestNotesScreen extends StatefulWidget {
   final String serviceType;
-  const ServiceRequestNotesScreen({super.key, required this.serviceType});
+  final String? selectedMechanicId;
+  const ServiceRequestNotesScreen({super.key, required this.serviceType, this.selectedMechanicId});
 
   @override
   State<ServiceRequestNotesScreen> createState() =>
@@ -65,6 +66,7 @@ class _ServiceRequestNotesScreenState extends State<ServiceRequestNotesScreen> {
           serviceType: widget.serviceType,
           userNotes: _notesController.text.trim(),
           isFixedChargeAccepted: true,
+          selectedMechanicId: widget.selectedMechanicId,
         ),
       ),
     );

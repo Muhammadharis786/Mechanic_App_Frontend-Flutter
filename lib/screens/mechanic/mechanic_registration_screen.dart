@@ -135,32 +135,30 @@ class _MechanicRegistrationScreenState
     }
   }
 
-   // ================= SUBMIT =================
+  // ================= SUBMIT =================
   bool isSubmitting = false;
 
-  Future<void> submitRegistration() async {
-    final userId = UserSession().userId;
-    if (userId == null || userId == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('User session expired. Please login again.'), backgroundColor: Colors.red),
-      );
-      return;
-    }
+  String _mechanicTypeForApi(String value) {
+    final type = value.trim().toLowerCase();
+    if (type.contains('bike')) return 'bike';
+    if (type.contains('car')) return 'car';
+    if (type.contains('punch') || type.contains('punct')) return 'puncher';
+    return type;
+  }
 
+  Future<void> submitRegistration() async {
     setState(() => isSubmitting = true);
     
     try {
-      debugPrint('DEBUG - Mechanic Registration UserID: $userId');
       var uri = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/register");
       var request = http.MultipartRequest("POST", uri);
 
       // 1. Create JSON Data
       Map<String, dynamic> mechanicData = {
-        'userid':    userId, 
         'name': name,
         'phonenumber': widget.phoneNumber,
         'shopaddress': shopAddress,
-        'mechanictype': mechanicType,
+        'mechanictype': _mechanicTypeForApi(mechanicType),
         'experienceyears': int.tryParse(experience) ?? 0,
         'workinghours': workingHours,
         'latitude': latitude,
@@ -717,7 +715,7 @@ class _MechanicRegistrationScreenState
             items: const [
               DropdownMenuItem(value: 'Bike Mechanic', child: Text('Bike Mechanic')),
               DropdownMenuItem(value: 'Car Mechanic', child: Text('Car Mechanic')),
-              DropdownMenuItem(value: 'Puncture Specialist', child: Text('Puncture Specialist')),
+              DropdownMenuItem(value: 'Puncher', child: Text('Puncher')),
             ],
             onChanged: (v) => mechanicType = v!,
             decoration: InputDecoration(

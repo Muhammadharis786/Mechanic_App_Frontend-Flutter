@@ -1,9 +1,12 @@
-import 'dart:io';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../authentication/user_session.dart';
 
 class MechanicProfileScreen extends StatefulWidget {
   const MechanicProfileScreen({super.key});
@@ -14,313 +17,407 @@ class MechanicProfileScreen extends StatefulWidget {
 
 class _MechanicProfileScreenState extends State<MechanicProfileScreen> {
   final Color primaryColor = const Color(0xFFFB3300);
-  bool isEditing = false;
-  
-  // FORM KEY: Validation ke liye zaroori hai
-  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final ImagePicker _picker = ImagePicker();
+
+  bool _isLoading = true;
+  bool _isSaving = false;
 
   // Controllers
-  final TextEditingController nameController = TextEditingController(text: "Ali Khan");
-  final TextEditingController phoneController = TextEditingController(text: "923267081272");
-  final TextEditingController emailController = TextEditingController(text: "hamnabasit22@gmail.com");
-  final TextEditingController workshopController = TextEditingController(text: "Ali Auto Care Center");
-  final TextEditingController addressController = TextEditingController(text: "Main Saddar Road, Karachi");
-  final TextEditingController experienceController = TextEditingController(text: "8");
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _addressController = TextEditingController();
+  final TextEditingController _experienceController = TextEditingController();
+
+  // Image state
+  String _imageUrl = '';
+  XFile? _pickedImage;
+  Uint8List? _pickedImageBytes;
 
   @override
   void initState() {
     super.initState();
-    _loadProfileData();
-  }
-
-  Future<void> _loadProfileData() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      nameController.text = prefs.getString('mech_name') ?? "Ali Khan";
-      phoneController.text = prefs.getString('mech_phone') ?? "923267081272";
-      emailController.text = prefs.getString('mech_email') ?? "hamnabasit22@gmail.com";
-      workshopController.text = prefs.getString('mech_workshop') ?? "Ali Auto Care Center";
-      addressController.text = prefs.getString('mech_address') ?? "Main Saddar Road, Karachi";
-      experienceController.text = prefs.getString('mech_experience') ?? "8";
-
-      final savedImagePath = prefs.getString('mech_profile_image');
-      if (savedImagePath != null && savedImagePath.isNotEmpty) {
-        pickedProfileImage = XFile(savedImagePath);
-      }
-    });
+    _loadProfile();
   }
 
   @override
   void dispose() {
-    nameController.dispose();
-    phoneController.dispose();
-    emailController.dispose();
-    workshopController.dispose();
-    addressController.dispose();
-    experienceController.dispose();
+    _nameController.dispose();
+    _phoneController.dispose();
+    _addressController.dispose();
+    _experienceController.dispose();
     super.dispose();
   }
 
-  XFile? pickedProfileImage;
-  final ImagePicker _picker = ImagePicker();
-
-  Future<void> _pickImage() async {
-    if (!isEditing) return;
+  // ===== LOAD PROFILE =====
+  Future<void> _loadProfile() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
     try {
-      final XFile? pickedFile = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
-      if (pickedFile != null) {
-        setState(() {
-          pickedProfileImage = pickedFile;
-        });
+      final url = Uri.parse(
+        'https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/showprofile',
+      );
+      final response = await http.get(url, headers: UserSession().getAuthHeader());
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (mounted) {
+          setState(() {
+            _nameController.text = data['username'] ?? '';
+            _phoneController.text = data['phonenumber'] ?? '';
+            _addressController.text = data['shopaddress'] ?? '';
+            _experienceController.text = (data['experience'] ?? 0).toString();
+            _imageUrl = data['mechanicimage'] ?? '';
+            
+            _pickedImage = null;
+            _pickedImageBytes = null;
+          });
+        }
+      } else {
+        _showSnack('Failed to load profile (${response.statusCode})', isError: true);
       }
     } catch (e) {
-      debugPrint("Error: $e");
+      _showSnack('Error loading profile: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  // ===== SAVE PROFILE (Multipart) =====
+  Future<void> _saveProfile() async {
+    if (!mounted) return;
+    setState(() => _isSaving = true);
+
+    try {
+      final uri = Uri.parse(
+        'https://mechanicapp-service-621632382478.asia-south1.run.app/api/save/mechanic/userimage',
+      );
+
+      var request = http.MultipartRequest('PUT', uri);
+      request.headers.addAll(UserSession().getAuthHeader());
+
+      // 1. mechanicdata JSON part
+      final Map<String, dynamic> mechanicData = {
+        'name': _nameController.text.trim(),
+        'shopaddress': _addressController.text.trim(),
+        'experience': int.tryParse(_experienceController.text.trim()) ?? 0,
+        'mechurl': _imageUrl,
+      };
+
+      request.files.add(http.MultipartFile.fromString(
+        'mechanicdata',
+        jsonEncode(mechanicData),
+        contentType: MediaType('application', 'json'),
+      ));
+
+      // 2. mechanicimage file part
+      if (_pickedImage != null) {
+        if (kIsWeb) {
+          final bytes = await _pickedImage!.readAsBytes();
+          request.files.add(http.MultipartFile.fromBytes(
+            'mechanicimage',
+            bytes,
+            filename: _pickedImage!.name.isNotEmpty ? _pickedImage!.name : 'profile.jpg',
+            contentType: MediaType('image', 'jpeg'),
+          ));
+        } else {
+          request.files.add(await http.MultipartFile.fromPath(
+            'mechanicimage',
+            _pickedImage!.path,
+            contentType: MediaType('image', 'jpeg'),
+          ));
+        }
+      } else if (_imageUrl.isNotEmpty && _imageUrl.startsWith('http')) {
+        try {
+          final response = await http.get(Uri.parse(_imageUrl));
+          if (response.statusCode == 200) {
+            request.files.add(http.MultipartFile.fromBytes(
+              'mechanicimage',
+              response.bodyBytes,
+              filename: 'existing_profile.jpg',
+              contentType: MediaType('image', 'jpeg'),
+            ));
+          }
+        } catch (e) {
+          debugPrint('Failed to fetch existing image: $e');
+          request.files.add(http.MultipartFile.fromBytes(
+            'mechanicimage',
+            [],
+            filename: 'empty.jpg',
+            contentType: MediaType('image', 'jpeg'),
+          ));
+        }
+      } else {
+        request.files.add(http.MultipartFile.fromBytes(
+          'mechanicimage',
+          [],
+          filename: 'empty.jpg',
+          contentType: MediaType('image', 'jpeg'),
+        ));
+      }
+
+      final streamed = await request.send();
+      final response = await http.Response.fromStream(streamed);
+
+      if (response.statusCode == 200) {
+        try {
+          // Handle both JSON and plain text responses
+          if (response.body.isNotEmpty) {
+            if (response.body.trim().startsWith('{')) {
+              final body = jsonDecode(response.body);
+              if (mounted) {
+                if (body['mechanicimage'] != null) {
+                  setState(() => _imageUrl = body['mechanicimage']);
+                }
+              }
+            }
+          }
+          if (mounted) {
+            setState(() {
+              _pickedImage = null;
+              _pickedImageBytes = null;
+            });
+          }
+          _showSnack('Profile updated successfully!', isError: false);
+        } catch (e) {
+          // Fallback if parsing fails but status is 200
+          debugPrint("Parse error but success status: $e");
+          if (mounted) {
+            setState(() {
+              _pickedImage = null;
+              _pickedImageBytes = null;
+            });
+          }
+          _showSnack('Profile updated successfully!', isError: false);
+        }
+      } else {
+        String errorMsg = 'Update failed';
+        try {
+          final body = jsonDecode(response.body);
+          errorMsg = body['message'] ?? body['error'] ?? 'Update failed';
+        } catch (_) {
+          errorMsg = response.body.isNotEmpty ? response.body : 'Update failed';
+        }
+        _showSnack(errorMsg, isError: true);
+      }
+    } catch (e) {
+      _showSnack('Error: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  void _showSnack(String msg, {required bool isError}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg, style: GoogleFonts.poppins(color: Colors.white)),
+        backgroundColor: isError ? Colors.red : Colors.green,
+      ),
+    );
+  }
+
+  // ===== PICK IMAGE =====
+  Future<void> _pickImageAndSave() async {
+    final XFile? img = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+    if (img == null) return;
+    final bytes = await img.readAsBytes();
+    if (!mounted) return;
+    setState(() {
+      _pickedImage = img;
+      _pickedImageBytes = bytes;
+    });
+    _saveProfile();
+  }
+
+  // ===== UPDATE DIALOG =====
+  void _showUpdateDialog(String title, String label, TextEditingController controller, {bool isNumeric = false, int maxLines = 1}) {
+    final TextEditingController tempController = TextEditingController(text: controller.text);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(title, style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 18)),
+        content: TextField(
+          controller: tempController,
+          keyboardType: isNumeric ? TextInputType.number : TextInputType.text,
+          maxLines: maxLines,
+          decoration: InputDecoration(
+            labelText: label,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel', style: GoogleFonts.poppins(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (mounted) {
+                setState(() {
+                  controller.text = tempController.text;
+                });
+              }
+              Navigator.pop(context);
+              _saveProfile();
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
+            child: Text('Update', style: GoogleFonts.poppins(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFF8F9FA),
       appBar: AppBar(
-        backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? Theme.of(context).scaffoldBackgroundColor,
+        title: Text('Mechanic Profile',
+            style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 20)),
+        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         elevation: 0,
+        centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.orange, size: 20),
+          icon: Icon(Icons.arrow_back_ios, color: isDark ? Colors.white : Colors.black, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text("My Profile", style: GoogleFonts.poppins(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold, fontSize: 20)),
-        centerTitle: true,
-        actions: [
-          if (!isEditing)
-            Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: TextButton.icon(
-                onPressed: () {
-                  setState(() {
-                    isEditing = true;
-                  });
-                },
-                icon: const Icon(Icons.edit_outlined, color: Colors.orange, size: 20),
-                label: const Text("Edit", style: TextStyle(color: Colors.orange, fontSize: 15, fontWeight: FontWeight.w600)),
-              ),
-            )
-          else
-            Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: TextButton(
-                onPressed: () {
-                  setState(() {
-                    isEditing = false;
-                  });
-                },
-                child: const Text("Cancel", style: TextStyle(color: Colors.red, fontSize: 15, fontWeight: FontWeight.w600)),
-              ),
-            ),
-        ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 25),
-        child: Form(
-          key: _formKey, 
-          // autovalidateMode ko change kiya taake user jab likhay tabhi check kare
-          autovalidateMode: isEditing ? AutovalidateMode.onUserInteraction : AutovalidateMode.disabled,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 15),
-              
-              Center(
-                child: Stack(
-                  children: [
-                    Container(
-                      width: 110,
-                      height: 110,
-                      decoration: BoxDecoration(
-                        color: isDark ? Colors.grey[800] : Colors.grey[100],
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
-                            blurRadius: 15,
-                            spreadRadius: 2,
-                            offset: const Offset(0, 5),
-                          )
-                        ],
-                      ),
-                      child: ClipOval(
-                        child: pickedProfileImage != null
-                            ? (kIsWeb
-                                ? Image.network(
-                                    pickedProfileImage!.path,
-                                    fit: BoxFit.cover,
-                                    width: 110,
-                                    height: 110,
-                                  )
-                                : Image.file(
-                                    File(pickedProfileImage!.path),
-                                    fit: BoxFit.cover,
-                                    width: 110,
-                                    height: 110,
-                                  ))
-                            : Icon(Icons.person, size: 55, color: isDark ? Colors.grey[600] : Colors.grey[400]),
-                      ),
-                    ),
-                    if (isEditing)
-                      Positioned(
-                        bottom: 5, right: 5,
-                        child: GestureDetector(
-                          onTap: _pickImage,
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: primaryColor,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 2),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Stack(
+              children: [
+                SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    children: [
+                      // Profile Image
+                      Center(
+                        child: Stack(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(color: primaryColor, width: 2),
+                              ),
+                              child: CircleAvatar(
+                                radius: 60,
+                                backgroundColor: Colors.grey.shade200,
+                                backgroundImage: _pickedImageBytes != null
+                                    ? MemoryImage(_pickedImageBytes!)
+                                    : (_imageUrl.isNotEmpty && _imageUrl.startsWith('http')
+                                        ? NetworkImage(_imageUrl)
+                                        : const AssetImage('assets/images/user.jpg')) as ImageProvider,
+                              ),
                             ),
-                            child: const Icon(Icons.camera_alt, size: 16, color: Colors.white),
-                          ),
+                            Positioned(
+                              bottom: 5,
+                              right: 5,
+                              child: GestureDetector(
+                                onTap: _pickImageAndSave,
+                                child: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: primaryColor,
+                                    shape: BoxShape.circle,
+                                    boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                                  ),
+                                  child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                  ],
-                ),
-              ),
+                      const SizedBox(height: 30),
 
-              const SizedBox(height: 25),
-
-              _buildLabel("Full Name", isDark),
-              _buildTextField(nameController, Icons.person_outline, isReadOnly: true, isDark: isDark),
-
-              _buildLabel("Phone Number", isDark),
-              _buildTextField(phoneController, Icons.phone_outlined, isReadOnly: true, isDark: isDark),
-
-              _buildLabel("Email Address", isDark),
-              _buildTextField(
-                emailController, 
-                Icons.email_outlined, 
-                isDark: isDark,
-                validator: (value) {
-                  if (value == null || value.isEmpty) return null;
-                  // Proper Email Regex
-                  final bool emailValid = RegExp(r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+").hasMatch(value);
-                  if (!emailValid) {
-                    return 'Enter a valid email (e.g. name@mail.com)';
-                  }
-                  return null;
-                },
-              ),
-
-              _buildLabel("Workshop Name", isDark),
-              _buildTextField(workshopController, Icons.home_repair_service_outlined, 
-                isDark: isDark, validator: (v) => v!.isEmpty ? "Workshop name required" : null),
-
-              _buildLabel("Workshop Address", isDark),
-              _buildTextField(addressController, Icons.location_on_outlined, 
-                isDark: isDark, validator: (v) => v!.isEmpty ? "Workshop address required" : null),
-
-              _buildLabel("Experience", isDark),
-              _buildTextField(
-                experienceController, 
-                Icons.timer_outlined, 
-                isDark: isDark,
-                isNumber: true,
-                suffix: isEditing ? null : " Years", // Edit ke waqt 'Years' hat jaye ga
-                validator: (value) {
-                  if (value == null || value.isEmpty) return 'Required';
-                  final n = int.tryParse(value);
-                  if (n == null) return 'Enter numbers only';
-                  if (n >= 100) return 'Must be less than 100 years';
-                  return null;
-                },
-              ),
-
-              const SizedBox(height: 25),
-
-              if (isEditing)
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      if (_formKey.currentState!.validate()) {
-                        // Keyboard band karne ke liye
-                        final messenger = ScaffoldMessenger.of(context);
-                        // 💾 Save to local storage
-                        final prefs = await SharedPreferences.getInstance();
-                        await prefs.setString('mech_name', nameController.text);
-                        await prefs.setString('mech_phone', phoneController.text);
-                        await prefs.setString('mech_email', emailController.text);
-                        await prefs.setString('mech_workshop', workshopController.text);
-                        await prefs.setString('mech_address', addressController.text);
-                        await prefs.setString('mech_experience', experienceController.text);
-                        
-                        if (pickedProfileImage != null) {
-                          await prefs.setString('mech_profile_image', pickedProfileImage!.path);
-                        }
-
-                        if (mounted) {
-                          setState(() {
-                            isEditing = false;
-                          });
-                          messenger.showSnackBar(
-                            const SnackBar(backgroundColor: Colors.green, content: Text("Profile Updated Successfully!")),
-                          );
-                        }
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryColor,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: const Text("Save Changes", style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                      // Profile Fields
+                      _buildProfileTile(
+                        icon: Icons.person,
+                        label: 'Full Name',
+                        value: _nameController.text,
+                        onTap: () => _showUpdateDialog('Update Name', 'Enter your name', _nameController),
+                        isDark: isDark,
+                      ),
+                      _buildProfileTile(
+                        icon: Icons.phone,
+                        label: 'Phone Number',
+                        value: _phoneController.text,
+                        onTap: null, 
+                        showChange: false,
+                        isDark: isDark,
+                      ),
+                      _buildProfileTile(
+                        icon: Icons.location_on,
+                        label: 'Workshop Address',
+                        value: _addressController.text.isEmpty ? 'Not set' : _addressController.text,
+                        onTap: () => _showUpdateDialog('Update Address', 'Enter workshop address', _addressController, maxLines: 2),
+                        isDark: isDark,
+                      ),
+                      _buildProfileTile(
+                        icon: Icons.history,
+                        label: 'Experience (Years)',
+                        value: '${_experienceController.text} Years',
+                        onTap: () => _showUpdateDialog('Update Experience', 'Enter years of experience', _experienceController, isNumeric: true),
+                        isDark: isDark,
+                      ),
+                    ],
                   ),
                 ),
-              const SizedBox(height: 30),
-            ],
+                if (_isSaving)
+                  Container(
+                    color: Colors.black26,
+                    child: const Center(child: CircularProgressIndicator()),
+                  ),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildProfileTile({
+    required IconData icon,
+    required String label,
+    required String value,
+    required VoidCallback? onTap,
+    required bool isDark,
+    bool showChange = true,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
-        ),
+        ],
       ),
-    );
-  }
-
-  Widget _buildLabel(String label, bool isDark) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6, left: 2),
-      child: Text(label, style: GoogleFonts.poppins(fontSize: 12, color: isDark ? Colors.grey[400] : Colors.grey[600], fontWeight: FontWeight.w500)),
-    );
-  }
-
-  Widget _buildTextField(TextEditingController controller, IconData icon, 
-      {bool isReadOnly = false, required bool isDark, String? Function(String?)? validator, bool isNumber = false, String? suffix}) {
-    
-    bool canEdit = isEditing && !isReadOnly;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 15),
-      child: TextFormField(
-        controller: controller,
-        readOnly: !canEdit,
-        validator: validator,
-        keyboardType: isNumber ? TextInputType.number : TextInputType.text,
-        style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w500, color: !canEdit ? (isDark ? Colors.grey[400] : Colors.grey[700]) : (isDark ? Colors.white : Colors.black)),
-        decoration: InputDecoration(
-          prefixIcon: Icon(icon, color: canEdit ? primaryColor : (isDark ? Colors.grey[600] : Colors.grey[400]), size: 20),
-          suffixText: suffix,
-          suffixStyle: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold),
-          filled: true,
-          fillColor: canEdit ? (isDark ? Colors.grey[850] : Colors.white) : (isDark ? Colors.grey[900] : Colors.grey[100]),
-          contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
-          
-          errorStyle: const TextStyle(color: Colors.red, fontSize: 11),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: isDark ? Colors.grey.shade800 : Colors.grey.shade200)),
-          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: isDark ? Colors.grey.shade800 : Colors.grey.shade200)),
-          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: primaryColor, width: 1.5)),
-          // Error aane par border red ho jaye gi
-          errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.red)),
-          focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.red, width: 1.5)),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        leading: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: primaryColor.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: primaryColor, size: 22),
         ),
+        title: Text(label, style: GoogleFonts.poppins(fontSize: 13, color: isDark ? Colors.grey[400] : Colors.grey[600])),
+        subtitle: Text(value, style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black)),
+        trailing: showChange
+            ? TextButton(
+                onPressed: onTap,
+                child: Text('Change', style: GoogleFonts.poppins(color: primaryColor, fontWeight: FontWeight.bold)),
+              )
+            : null,
       ),
     );
   }

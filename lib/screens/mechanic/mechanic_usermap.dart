@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -63,6 +65,10 @@ class _MechanicUserMapState extends State<MechanicUserMap>
   String _currentEta = '--';
   DateTime? _lastRouteFetchAt;
   LatLng? _lastRouteOrigin;
+  DateTime? _lastCameraFollowAt;
+  double _mechanicBearing = 0;
+  BitmapDescriptor? _mechanicTrackingIcon;
+  BitmapDescriptor? _userTrackingIcon;
   StompClient? _mapClient;
   bool _isClosingForCancellation = false;
   bool _isCheckingArrival = false;
@@ -108,6 +114,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refreshWorkflowFromServer();
     });
+    _loadTrackingMarkerIcons();
 
     // Add a global fallback listener just in case backend routes the cancellation to the global mechanic topic
     MechanicNotificationController().addListener(_onGlobalFallbackNotification);
@@ -720,13 +727,15 @@ class _MechanicUserMapState extends State<MechanicUserMap>
     final lngDiff = target.longitude - current.longitude;
 
     if (latDiff.abs() > 0.000001 || lngDiff.abs() > 0.000001) {
-      const double speed = 0.05;
+      const double speed = 0.18;
+      _mechanicBearing = _bearingBetween(current, target);
       _mechanicCurrentPos = LatLng(
         current.latitude + (latDiff * speed),
         current.longitude + (lngDiff * speed),
       );
       
       _shortenRoute();
+      _followMechanic(_mechanicCurrentPos!, _mechanicBearing);
       setState(() {});
     } else {
       _animTicker.stop();
@@ -809,6 +818,82 @@ class _MechanicUserMapState extends State<MechanicUserMap>
     final h = math.sin(dLat / 2) * math.sin(dLat / 2) +
         math.cos(lat1) * math.cos(lat2) * math.sin(dLng / 2) * math.sin(dLng / 2);
     return earthRadius * 2 * math.asin(math.sqrt(h));
+  }
+
+  Future<void> _loadTrackingMarkerIcons() async {
+    try {
+      final mechanicIcon = await BitmapDescriptor.fromAssetImage(
+        const ImageConfiguration(size: Size(48, 48)),
+        'assets/images/car_marker.png',
+      );
+      final userIcon = await _createUserRingMarker();
+      
+      if (!mounted) return;
+      setState(() {
+        _mechanicTrackingIcon = mechanicIcon;
+        _userTrackingIcon = userIcon;
+      });
+    } catch (e) {
+      debugPrint('Error loading marker icons: $e');
+      if (mounted) {
+        setState(() {
+          _mechanicTrackingIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue);
+        });
+      }
+    }
+  }
+
+  void _followMechanic(LatLng position, double bearing) {
+    final now = DateTime.now();
+    if (_lastCameraFollowAt != null &&
+        now.difference(_lastCameraFollowAt!).inMilliseconds < 650) {
+      return;
+    }
+    _lastCameraFollowAt = now;
+
+    _mapController?.animateCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(
+          target: position,
+          zoom: 17,
+          tilt: 45,
+          bearing: bearing,
+        ),
+      ),
+    );
+  }
+
+  double _bearingBetween(LatLng from, LatLng to) {
+    final lat1 = from.latitude * math.pi / 180;
+    final lat2 = to.latitude * math.pi / 180;
+    final dLng = (to.longitude - from.longitude) * math.pi / 180;
+    final y = math.sin(dLng) * math.cos(lat2);
+    final x = math.cos(lat1) * math.sin(lat2) -
+        math.sin(lat1) * math.cos(lat2) * math.cos(dLng);
+    return (math.atan2(y, x) * 180 / math.pi + 360) % 360;
+  }
+
+
+  Future<BitmapDescriptor> _createUserRingMarker() async {
+    const size = 54.0;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    final ringPaint = Paint()
+      ..color = const Color(0xFF666666)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 6;
+    final fillPaint = Paint()..color = Colors.white;
+
+    canvas.drawCircle(const Offset(size / 2, size / 2), 10, fillPaint);
+    canvas.drawCircle(const Offset(size / 2, size / 2), 10, ringPaint);
+
+    final image = await recorder.endRecording().toImage(
+          size.toInt(),
+          size.toInt(),
+        );
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    final Uint8List markerBytes = bytes!.buffer.asUint8List();
+    return BitmapDescriptor.fromBytes(markerBytes);
   }
 
   Future<bool> _checkPermission() async {
@@ -1245,7 +1330,8 @@ class _MechanicUserMapState extends State<MechanicUserMap>
   }
 
   void _subscribeToBackendUpdates() {
-    final requestId = widget.requestData['requestId'];
+    final requestId = widget.requestData['requestId'] ??
+        widget.requestData['requestid'];
     if (requestId == null) return;
 
     _mapClient?.deactivate();
@@ -1339,13 +1425,23 @@ class _MechanicUserMapState extends State<MechanicUserMap>
                       Marker(
                         markerId: const MarkerId('mechanic'),
                         position: _mechanicCurrentPos!,
-                        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+                        icon: _mechanicTrackingIcon ??
+                            BitmapDescriptor.defaultMarkerWithHue(
+                              BitmapDescriptor.hueBlue,
+                            ),
+                        anchor: const Offset(0.5, 0.5),
+                        flat: true,
+                        rotation: _mechanicBearing,
                         infoWindow: const InfoWindow(title: 'You'),
                       ),
                     Marker(
                       markerId: const MarkerId('user'),
                       position: _userLocation!,
-                      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+                      icon: _userTrackingIcon ??
+                          BitmapDescriptor.defaultMarkerWithHue(
+                            BitmapDescriptor.hueOrange,
+                          ),
+                      anchor: const Offset(0.5, 0.5),
                       infoWindow: const InfoWindow(title: 'Customer'),
                     ),
                   },

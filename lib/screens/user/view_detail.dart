@@ -8,6 +8,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
+import 'service_request_map_screen.dart';
+import 'service_request_notes_screen.dart';
 
 class Mechanic {
   final String id;
@@ -360,50 +362,30 @@ class _MechanicDetailScreenState extends State<MechanicDetailScreen> {
 
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              flex: 1,
-                              child: OutlinedButton(
-                                onPressed: widget.mechanic.phone.trim().isNotEmpty
-                                    ? () async {
-                                        final Uri launchUri = Uri(scheme: 'tel', path: widget.mechanic.phone);
-                                        if (await canLaunchUrl(launchUri)) {
-                                          await launchUrl(launchUri);
-                                        }
-                                      }
-                                    : null,
-                                style: OutlinedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(vertical: 15),
-                                  side: BorderSide(color: primaryColor, width: 1.5),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                                ),
-                                child: Icon(Icons.call_outlined, color: primaryColor),
-                              ),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: widget.mechanic.phone.trim().isNotEmpty
+                                ? () async {
+                                    final Uri launchUri = Uri(scheme: 'tel', path: widget.mechanic.phone);
+                                    if (await canLaunchUrl(launchUri)) {
+                                      await launchUrl(launchUri);
+                                    }
+                                  }
+                                : null,
+                            icon: const Icon(Icons.call_outlined, color: Colors.white),
+                            label: Text(
+                              'Call Mechanic',
+                              style: TextStyle(fontFamily: 'Bricolage Grotesque', fontWeight: FontWeight.w500, fontSize: 16)
                             ),
-                            const SizedBox(width: 15),
-                            Expanded(
-                              flex: 3,
-                              child: ElevatedButton(
-                                onPressed: () {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Request sent to mechanic'))
-                                  );
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: primaryColor,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(vertical: 15),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                                  elevation: 0,
-                                ),
-                                child: Text(
-                                  'Send Request', 
-                                  style: TextStyle(fontFamily: 'Bricolage Grotesque', fontWeight: FontWeight.w500, fontSize: 16)
-                                ),
-                              ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: primaryColor,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 15),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                              elevation: 0,
                             ),
-                          ],
+                          ),
                         ),
                       ),
                       

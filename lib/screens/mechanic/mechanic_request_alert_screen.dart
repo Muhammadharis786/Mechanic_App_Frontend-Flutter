@@ -203,7 +203,13 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
   Future<void> _acceptRequestFromBackend() async {
     if (_isAccepting) return;
 
-    final requestId = widget.requestData['requestId']?.toString();
+    final requestId = widget.requestData['requestId']?.toString() ??
+        widget.requestData['requestid']?.toString() ??
+        widget.requestData['serviceRequestId']?.toString() ??
+        widget.requestData['servicerequestid']?.toString() ??
+        widget.requestData['roadRequestId']?.toString() ??
+        widget.requestData['roadrequestid']?.toString() ??
+        widget.requestData['request_id']?.toString();
     if (requestId == null || requestId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Request id missing')),

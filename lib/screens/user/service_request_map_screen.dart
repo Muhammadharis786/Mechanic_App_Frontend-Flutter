@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:geolocator/geolocator.dart';
@@ -14,7 +15,6 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../services/active_service_request_tracking.dart';
 import '../authentication/user_session.dart';
 import '../../widgets/service_charges_price_badge.dart';
-import 'payment_webview_screen.dart';
 import 'service_review_screen.dart';
 
 const String _mapStyle = '''
@@ -36,6 +36,7 @@ class ServiceRequestMapScreen extends StatefulWidget {
   final String serviceType;
   final String userNotes;
   final bool isFixedChargeAccepted;
+  final String? selectedMechanicId;
   final Map<String, dynamic>? resumedTracking;
 
   const ServiceRequestMapScreen({
@@ -43,6 +44,7 @@ class ServiceRequestMapScreen extends StatefulWidget {
     required this.serviceType,
     required this.userNotes,
     required this.isFixedChargeAccepted,
+    this.selectedMechanicId,
     this.resumedTracking,
   });
 
@@ -71,8 +73,11 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
   String? _acceptedEta;
   Set<Marker> _mechanicMarkers = {};
   Set<Polyline> _polylines = {};
+  List<LatLng> _acceptedRoutePoints = [];
   StompClient? _trackingClient;
   StompClient? _requestClient;
+  Timer? _acceptedLocationPollTimer;
+  bool _requestSocketConnected = false;
   bool _liveLocationSubscribed = false;
   bool _userInitiatedCancel = false;
   bool _cancelExitHandled = false;
@@ -87,6 +92,10 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
   double? _arrivalPrice;
   DateTime? _lastRouteFetchAt;
   LatLng? _lastRouteOrigin;
+  DateTime? _lastCameraFollowAt;
+  double _acceptedBearing = 0;
+  BitmapDescriptor? _mechanicTrackingIcon;
+  BitmapDescriptor? _userTrackingIcon;
 
   // Animation support
   final Map<String, LatLng> _markerTargetPositions = {};
@@ -136,13 +145,15 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
         }
       });
     }
+
+    _loadTrackingMarkerIcons();
   }
 
   void _onMarkerTick(Duration elapsed) {
     if (_markerTargetPositions.isEmpty) return;
 
     bool needsUpdate = false;
-    const double speed = 0.05; // Adjust for faster/slower gliding
+    const double speed = 0.18;
 
     final newMarkers = Set<Marker>.from(_mechanicMarkers);
     
@@ -154,12 +165,20 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       final lngDiff = target.longitude - current.longitude;
       
       if (latDiff.abs() > 0.000001 || lngDiff.abs() > 0.000001) {
+        final bearing = _bearingBetween(current, target);
         // Linearly interpolate towards the target
         final newLat = current.latitude + (latDiff * speed);
         final newLng = current.longitude + (lngDiff * speed);
         final newPos = LatLng(newLat, newLng);
         
         _markerCurrentPositions[id] = newPos;
+        if (_isAccepted && _acceptedMechanic?['mechanicId']?.toString() == id) {
+          _acceptedMechanicPosition = newPos;
+          _acceptedBearing = bearing;
+          _shortenAcceptedRoute(newPos);
+          _updateAcceptedPolyline(newPos);
+          _followAcceptedMechanic(newPos, bearing);
+        }
         
         // Update the marker in the set
         final markerId = MarkerId('mechanic_$id');
@@ -168,7 +187,11 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
           Marker(
             markerId: markerId,
             position: newPos,
-            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+            icon: _mechanicTrackingIcon ??
+                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+            anchor: const Offset(0.5, 0.5),
+            flat: _isAccepted,
+            rotation: _isAccepted ? bearing : 0,
             infoWindow: InfoWindow(title: _markerTitles[id] ?? 'Mechanic #$id'),
           ),
         );
@@ -228,6 +251,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     _searchFocus.dispose();
     _debounce?.cancel();
     _geocodeDebounce?.cancel();
+    _acceptedLocationPollTimer?.cancel();
     _trackingClient?.deactivate();
     _requestClient?.deactivate();
     _mapController?.dispose();
@@ -348,9 +372,14 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       "locationName": _locationLabel,
     };
 
+    final String baseUrl = "https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request";
+    final String url = (widget.selectedMechanicId != null) 
+        ? "$baseUrl/create-for-mechanic/${widget.selectedMechanicId}"
+        : "$baseUrl/create";
+
     try {
       final response = await http.post(
-        Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/create"),
+        Uri.parse(url),
         headers: {
           'Content-Type': 'application/json',
           ...UserSession().getAuthHeader(),
@@ -428,6 +457,8 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
 
   void _connectRequestStatus(String requestId) {
     _requestClient?.deactivate();
+    _requestSocketConnected = false;
+    _liveLocationSubscribed = false;
     _requestClient = StompClient(
       config: StompConfig(
         url:
@@ -435,6 +466,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
         stompConnectHeaders: UserSession().getAuthHeader(),
         webSocketConnectHeaders: UserSession().getAuthHeader(),
         onConnect: (_) {
+          _requestSocketConnected = true;
           _requestClient?.subscribe(
             destination: '/topic/request/$requestId',
             callback: (frame) {
@@ -451,11 +483,21 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
               }
             },
           );
+          if (_isAccepted) {
+            _subscribeAcceptedLiveLocation(requestId);
+          }
+        },
+        onDisconnect: (_) {
+          _requestSocketConnected = false;
+          _liveLocationSubscribed = false;
         },
         onStompError: (frame) =>
             debugPrint('Request status STOMP error: ${frame.body}'),
-        onWebSocketError: (error) =>
-            debugPrint('Request status socket error: $error'),
+        onWebSocketError: (error) {
+          _requestSocketConnected = false;
+          _liveLocationSubscribed = false;
+          debugPrint('Request status socket error: $error');
+        },
       ),
     );
     _requestClient?.activate();
@@ -550,8 +592,11 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
   }
 
   void _teardownRequestConnections() {
+    _acceptedLocationPollTimer?.cancel();
+    _acceptedLocationPollTimer = null;
     _requestClient?.deactivate();
     _trackingClient?.deactivate();
+    _requestSocketConnected = false;
     _liveLocationSubscribed = false;
   }
 
@@ -746,7 +791,8 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
   }
 
   void _restoreTrackingSync(Map<String, dynamic> tracking) {
-    final requestId = tracking['requestId']?.toString();
+    final requestId =
+        tracking['requestId']?.toString() ?? tracking['requestid']?.toString();
     final userLat = _toDouble(tracking['userLat'] ?? tracking['userLatitude']);
     final userLng = _toDouble(tracking['userLng'] ?? tracking['userLongitude']);
 
@@ -791,7 +837,9 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       final data = Map<String, dynamic>.from(decoded);
       final local = ActiveServiceRequestTracking.current.value;
       final merged = local != null &&
-              local['requestId']?.toString() == requestId
+              (local['requestId']?.toString() ??
+                      local['requestid']?.toString()) ==
+                  requestId
           ? {...local, ...data}
           : data;
       final status = _normalizeTrackingStatus(merged);
@@ -902,7 +950,11 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
         Marker(
           markerId: MarkerId('mechanic_$mechanicId'),
           position: position,
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+          icon: _mechanicTrackingIcon ??
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+          anchor: const Offset(0.5, 0.5),
+          flat: true,
+          rotation: _acceptedBearing,
           infoWindow: InfoWindow(title: name),
         ),
       };
@@ -915,7 +967,8 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     }
 
     _saveActiveTracking();
-    _subscribeAcceptedLiveLocation(requestId);
+    _connectAcceptedLiveLocation(requestId);
+    _startAcceptedLocationPolling(requestId);
     _fetchAcceptedRoute(force: true);
     _fitAcceptedBounds();
     return true;
@@ -923,7 +976,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
 
   void _subscribeAcceptedLiveLocation(String requestId) {
     if (_liveLocationSubscribed || _requestClient == null) return;
-    _liveLocationSubscribed = true;
+    if (!_requestSocketConnected) return;
 
     _requestClient?.subscribe(
       destination: '/topic/request/$requestId/live-location',
@@ -939,32 +992,134 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
         }
       },
     );
+    _liveLocationSubscribed = true;
   }
 
   void _connectAcceptedLiveLocation(String requestId) {
-    _requestClient?.deactivate();
-    _liveLocationSubscribed = false;
-    _requestClient = StompClient(
-      config: StompConfig(
-        url:
-            'wss://mechanicapp-service-621632382478.asia-south1.run.app/ws-notifications/websocket',
-        stompConnectHeaders: UserSession().getAuthHeader(),
-        webSocketConnectHeaders: UserSession().getAuthHeader(),
-        onConnect: (_) => _subscribeAcceptedLiveLocation(requestId),
-        onStompError: (frame) =>
-            debugPrint('Accepted tracking STOMP error: ${frame.body}'),
-        onWebSocketError: (error) =>
-            debugPrint('Accepted tracking socket error: $error'),
-      ),
-    );
-    _requestClient?.activate();
+    if (_requestClient == null || !_requestSocketConnected) {
+      _connectRequestStatus(requestId);
+      return;
+    }
+    _subscribeAcceptedLiveLocation(requestId);
+  }
+
+  void _startAcceptedLocationPolling(String requestId) {
+    _acceptedLocationPollTimer?.cancel();
+    _acceptedLocationPollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      _refreshAcceptedLocation(requestId);
+    });
+    _refreshAcceptedLocation(requestId);
+  }
+
+  Future<void> _refreshAcceptedLocation(String requestId) async {
+    if (!_isAccepted || !mounted) return;
+    try {
+      final response = await http.get(
+        Uri.parse(
+          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/tracking/$requestId',
+        ),
+        headers: UserSession().getAuthHeader(),
+      );
+
+      if (response.statusCode != 200 || response.body.isEmpty || !mounted) {
+        return;
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) return;
+
+      final data = Map<String, dynamic>.from(decoded);
+      final lat = _toDouble(
+        data['mechanicLatitude'] ??
+            data['mechanicLat'] ??
+            data['latitude'] ??
+            data['lat'],
+      );
+      final lng = _toDouble(
+        data['mechanicLongitude'] ??
+            data['mechanicLng'] ??
+            data['longitude'] ??
+            data['lng'],
+      );
+
+      if (lat == null || lng == null) return;
+
+      _handleAcceptedLiveLocation({
+        ...data,
+        'requestId': requestId,
+        'mechanicId': data['mechanicId'] ?? _acceptedMechanic?['mechanicId'],
+        'latitude': lat,
+        'longitude': lng,
+      });
+    } catch (e) {
+      debugPrint('Accepted location fallback refresh failed: $e');
+    }
+  }
+
+  Future<void> _loadTrackingMarkerIcons() async {
+    try {
+      final mechanicIcon = await BitmapDescriptor.fromAssetImage(
+        const ImageConfiguration(size: Size(48, 48)),
+        'assets/images/car_marker.png',
+      );
+      final userIcon = await _createUserRingMarker();
+      
+      if (!mounted) return;
+      setState(() {
+        _mechanicTrackingIcon = mechanicIcon;
+        _userTrackingIcon = userIcon;
+        _rebuildMechanicMarkersWithCurrentIcons();
+      });
+    } catch (e) {
+      debugPrint('Error loading marker icons: $e');
+      // Fallback to default if asset fails
+      if (mounted) {
+        setState(() {
+          _mechanicTrackingIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue);
+          _rebuildMechanicMarkersWithCurrentIcons();
+        });
+      }
+    }
+  }
+
+  void _rebuildMechanicMarkersWithCurrentIcons() {
+    final rebuilt = <Marker>{};
+    for (final entry in _markerCurrentPositions.entries) {
+      final isAcceptedMechanic =
+          _isAccepted && _acceptedMechanic?['mechanicId']?.toString() == entry.key;
+      rebuilt.add(
+        Marker(
+          markerId: MarkerId('mechanic_${entry.key}'),
+          position: entry.value,
+          icon: _mechanicTrackingIcon ??
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+          anchor: const Offset(0.5, 0.5),
+          flat: isAcceptedMechanic,
+          rotation: isAcceptedMechanic ? _acceptedBearing : 0,
+          infoWindow: InfoWindow(
+            title: _markerTitles[entry.key] ?? 'Mechanic #${entry.key}',
+          ),
+        ),
+      );
+    }
+    _mechanicMarkers = rebuilt;
   }
 
   void _handleAcceptedLiveLocation(Map<String, dynamic> data) {
     final mechanicId =
         (data['mechanicId'] ?? _acceptedMechanic?['mechanicId'])?.toString();
-    final lat = _toDouble(data['latitude']);
-    final lng = _toDouble(data['longitude']);
+    final lat = _toDouble(
+      data['latitude'] ??
+          data['mechanicLatitude'] ??
+          data['mechanicLat'] ??
+          data['lat'],
+    );
+    final lng = _toDouble(
+      data['longitude'] ??
+          data['mechanicLongitude'] ??
+          data['mechanicLng'] ??
+          data['lng'],
+    );
     if (mechanicId == null || lat == null || lng == null) return;
 
     final target = LatLng(lat, lng);
@@ -976,9 +1131,11 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     _markerCurrentPositions.putIfAbsent(mechanicId, () => target);
     _markerTargetPositions[mechanicId] = target;
     _markerTitles[mechanicId] = name;
+    final current = _markerCurrentPositions[mechanicId] ?? target;
+    _acceptedBearing = _bearingBetween(current, target);
 
     setState(() {
-      _acceptedMechanicPosition = target;
+      _acceptedMechanicPosition = current;
       _acceptedMechanic = {
         ...?_acceptedMechanic,
         'mechanicLatitude': lat,
@@ -1044,27 +1201,30 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
   }
 
   Future<void> _fetchAcceptedRoute({bool force = false}) async {
-    final mechanicPosition = _acceptedMechanicPosition;
-    if (mechanicPosition == null) return;
+    final mechanicId = _acceptedMechanic?['mechanicId']?.toString();
+    final routeOrigin = mechanicId == null
+        ? _acceptedMechanicPosition
+        : (_markerTargetPositions[mechanicId] ?? _acceptedMechanicPosition);
+    if (routeOrigin == null) return;
 
     final now = DateTime.now();
     final movedEnough = _lastRouteOrigin == null ||
-        _distanceMeters(_lastRouteOrigin!, mechanicPosition) >= 30;
+        _distanceMeters(_lastRouteOrigin!, routeOrigin) >= 25;
     final timeEnough = _lastRouteFetchAt == null ||
-        now.difference(_lastRouteFetchAt!).inSeconds >= 8;
+        now.difference(_lastRouteFetchAt!).inSeconds >= 5;
 
     if (!force && !movedEnough && !timeEnough) return;
 
     _lastRouteFetchAt = now;
-    _lastRouteOrigin = mechanicPosition;
+    _lastRouteOrigin = routeOrigin;
 
     try {
       final polylinePoints = PolylinePoints(apiKey: _googleApiKey);
       final result = await polylinePoints.getRouteBetweenCoordinates(
         request: PolylineRequest(
           origin: PointLatLng(
-            mechanicPosition.latitude,
-            mechanicPosition.longitude,
+            routeOrigin.latitude,
+            routeOrigin.longitude,
           ),
           destination: PointLatLng(_markerPos.latitude, _markerPos.longitude),
           mode: TravelMode.driving,
@@ -1075,22 +1235,64 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
 
       final points =
           result.points.map((p) => LatLng(p.latitude, p.longitude)).toList();
-      setState(() {
-        _polylines = {
-          Polyline(
-            polylineId: const PolylineId('accepted_route'),
-            points: points,
-            color: _primary,
-            width: 6,
-            startCap: Cap.roundCap,
-            endCap: Cap.roundCap,
-            jointType: JointType.round,
-          ),
-        };
-      });
+      _acceptedRoutePoints = points;
+      _updateAcceptedPolyline(_acceptedMechanicPosition ?? routeOrigin);
     } catch (e) {
       debugPrint('Accepted route fetch error: $e');
     }
+  }
+
+  void _shortenAcceptedRoute(LatLng mechanicPosition) {
+    if (_acceptedRoutePoints.isEmpty) return;
+
+    var indexToRemove = -1;
+    for (var i = 0; i < _acceptedRoutePoints.length - 1; i++) {
+      if (_distanceMeters(mechanicPosition, _acceptedRoutePoints[i]) < 18) {
+        indexToRemove = i;
+      }
+    }
+
+    if (indexToRemove != -1) {
+      _acceptedRoutePoints.removeRange(0, indexToRemove + 1);
+    }
+  }
+
+  void _updateAcceptedPolyline(LatLng mechanicPosition) {
+    if (_acceptedRoutePoints.isEmpty || !mounted) return;
+
+    setState(() {
+      _polylines = {
+        Polyline(
+          polylineId: const PolylineId('accepted_route'),
+          points: [mechanicPosition, ..._acceptedRoutePoints],
+          color: _primary,
+          width: 6,
+          startCap: Cap.roundCap,
+          endCap: Cap.roundCap,
+          jointType: JointType.round,
+        ),
+      };
+    });
+  }
+
+  void _followAcceptedMechanic(LatLng position, double bearing) {
+    final now = DateTime.now();
+    if (_lastCameraFollowAt != null &&
+        now.difference(_lastCameraFollowAt!).inMilliseconds < 650) {
+      return;
+    }
+    _lastCameraFollowAt = now;
+
+    _mapController?.animateCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(
+          target: position,
+          zoom: 17,
+          tilt: 45,
+          bearing: bearing,
+        ),
+      ),
+    );
   }
 
   void _fitAcceptedBounds() {
@@ -1268,6 +1470,39 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     return earthRadiusMeters * 2 * math.atan2(math.sqrt(h), math.sqrt(1 - h));
   }
 
+  double _bearingBetween(LatLng from, LatLng to) {
+    final lat1 = from.latitude * math.pi / 180;
+    final lat2 = to.latitude * math.pi / 180;
+    final dLng = (to.longitude - from.longitude) * math.pi / 180;
+    final y = math.sin(dLng) * math.cos(lat2);
+    final x = math.cos(lat1) * math.sin(lat2) -
+        math.sin(lat1) * math.cos(lat2) * math.cos(dLng);
+    return (math.atan2(y, x) * 180 / math.pi + 360) % 360;
+  }
+
+
+  Future<BitmapDescriptor> _createUserRingMarker() async {
+    const size = 54.0;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    final ringPaint = Paint()
+      ..color = const Color(0xFF666666)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 6;
+    final fillPaint = Paint()..color = Colors.white;
+
+    canvas.drawCircle(const Offset(size / 2, size / 2), 10, fillPaint);
+    canvas.drawCircle(const Offset(size / 2, size / 2), 10, ringPaint);
+
+    final image = await recorder.endRecording().toImage(
+          size.toInt(),
+          size.toInt(),
+        );
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    final Uint8List markerBytes = bytes!.buffer.asUint8List();
+    return BitmapDescriptor.fromBytes(markerBytes);
+  }
+
   void _fitMapBounds(Set<Marker> markers) {
     double minLat = _markerPos.latitude;
     double maxLat = _markerPos.latitude;
@@ -1312,7 +1547,11 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
                     Marker(
                       markerId: const MarkerId('user_location'),
                       position: _markerPos,
-                      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+                      icon: _userTrackingIcon ??
+                          BitmapDescriptor.defaultMarkerWithHue(
+                            BitmapDescriptor.hueOrange,
+                          ),
+                      anchor: const Offset(0.5, 0.5),
                       infoWindow: const InfoWindow(title: 'Your Location'),
                     ),
                     ..._mechanicMarkers,

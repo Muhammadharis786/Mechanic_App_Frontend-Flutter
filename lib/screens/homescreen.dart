@@ -29,6 +29,7 @@ import '../../services/user_websocket_service.dart';
 import '../../services/user_notification_controller.dart';
 import 'mechanic_list_screen.dart';
 import 'role_selection_screen.dart';
+import '../services/fcm_notification_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key} );
@@ -68,6 +69,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _fetchDashboardData();
     _fetchUnreadCount();
+    FcmNotificationService.instance.syncTokenWithBackend();
   }
 
   @override
@@ -389,47 +391,27 @@ class _HomeScreenState extends State<HomeScreen> {
                               Text("Nearest mechanic will be auto assigned",
                                   style: TextStyle(fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily, color: Colors.white70, fontWeight: FontWeight.w400)),
                               const SizedBox(height: 14),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.white,
-                                        foregroundColor: primaryColor,
-                                        shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(12)),
-                                      ),
-                                      onPressed: () {
-                                        setState(() {
-                                          _showAutoAssignServices =
-                                              !_showAutoAssignServices;
-                                        });
-                                      },
-                                      child: Text("Auto Assign",
-                                          style: TextStyle(
-                                              fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
-                                              fontWeight: FontWeight.w400,
-                                              color: Color(0xFFFB3300))),
-                                    ),
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.white,
+                                    foregroundColor: primaryColor,
+                                    shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12)),
                                   ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.black,
-                                        foregroundColor: Colors.white,
-                                        shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(12)),
-                                      ),
-                                      onPressed: _handlePayment,
-                                      child: Text("Pay Now",
-                                          style: TextStyle(
-                                              fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
-                                              fontWeight: FontWeight.w400,
-                                              color: Colors.white)),
-                                    ),
-                                  ),
-                                ],
+                                  onPressed: () {
+                                    setState(() {
+                                      _showAutoAssignServices =
+                                          !_showAutoAssignServices;
+                                    });
+                                  },
+                                  child: Text("Auto Assign",
+                                      style: TextStyle(
+                                          fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                                          fontWeight: FontWeight.w400,
+                                          color: const Color(0xFFFB3300))),
+                                ),
                               ),
                             ],
                           ),

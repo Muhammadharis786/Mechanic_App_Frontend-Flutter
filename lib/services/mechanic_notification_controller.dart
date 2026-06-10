@@ -72,8 +72,24 @@ class MechanicNotificationController {
           return;
         }
 
-        // Detect new Service Request format (has userLatitude & requestId)
-        if (mapData.containsKey('userLatitude') && mapData.containsKey('requestId') || mapData.containsKey('userNotes')) {
+        final resolvedRoadRequestId = mapData['requestId'] ??
+            mapData['requestid'] ??
+            mapData['serviceRequestId'] ??
+            mapData['servicerequestid'] ??
+            mapData['roadRequestId'] ??
+            mapData['roadrequestid'] ??
+            mapData['request_id'];
+        final hasRoadRequestId = resolvedRoadRequestId != null;
+        final hasRoadRequestLocation =
+            mapData.containsKey('userLatitude') ||
+                mapData.containsKey('userLat') ||
+                mapData.containsKey('latitude');
+
+        // Detect new Service Request format.
+        if ((hasRoadRequestLocation && hasRoadRequestId) ||
+            mapData.containsKey('userNotes')) {
+          mapData['requestId'] =
+              mapData['requestId'] ?? resolvedRoadRequestId;
           if (navigatorKey.currentState != null) {
             navigatorKey.currentState!.push(
               MaterialPageRoute(

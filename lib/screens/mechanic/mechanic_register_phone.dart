@@ -32,8 +32,6 @@ class _MechanicRegisterPhoneScreenState
 
     final phone = '92${_phoneController.text.trim()}';
     final password = _passwordController.text.trim();
-    // Default to 0 if userId is not in session for some reason, though backend will likely fail it
-    final userId = UserSession().userId ?? 0;
 
     final url = Uri.parse(
         "https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/registerwithotp");
@@ -43,7 +41,6 @@ class _MechanicRegisterPhoneScreenState
         url,
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
-          "userid": userId.toString(), // Sent as string based on your example
           "phonenumber": phone,
           "password": password,
         }),
@@ -66,7 +63,6 @@ class _MechanicRegisterPhoneScreenState
                builder: (context) => MechanicOtpScreen(
                  phoneNumber: phone,
                  password: password,
-                 userId: userId.toString(),
                ),
              ),
            );
