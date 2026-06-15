@@ -7,6 +7,8 @@ import 'package:mech_app/screens/homescreen.dart';
 import 'package:mech_app/screens/role_selection_screen.dart';
 import 'package:mech_app/screens/authentication/user_session.dart';
 import 'package:mech_app/services/user_notification_controller.dart';
+import 'package:mech_app/services/app_state.dart';
+import 'package:mech_app/l10n/app_strings.dart';
 
 class SettingsMenuBar extends StatefulWidget {
   const SettingsMenuBar({super.key});
@@ -19,94 +21,65 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
   final Color primaryColor = const Color(0xFFFB3300);
 
   String phoneNumber = "+92 3** ****45";
-  String language = "English";
-
-  final Map<String, Map<String, String>> text = {
-    "English": {
-      "settings": "Settings",
-      "phone": "Phone Number",
-      "language": "Language",
-      "night": "Night Mode",
-      "logout": "Logout",
-      "delete": "Delete Account",
-      "changeNum": "Change Number?",
-      "changeSub": "Your account and data will be linked to this new number",
-      "next": "Next",
-      "logoutQ": "Do you want to log out?",
-      "deleteQ": "Delete Account?",
-      "deleteSub": "All data associated with your account also mechanic data will be erased",
-    },
-    "Urdu": {
-      "settings": "سیٹنگز",
-      "phone": "فون نمبر",
-      "language": "زبان",
-      "night": "نائٹ موڈ",
-      "logout": "لاگ آؤٹ",
-      "delete": "اکاؤنٹ ڈیلیٹ کریں",
-      "changeNum": "نمبر تبدیل کریں؟",
-      "changeSub": "آپ کا اکاؤنٹ اور ڈیٹا اس نئے نمبر سے منسلک ہوگا",
-      "next": "اگلا",
-      "logoutQ": "کیا آپ لاگ آؤٹ کرنا چاہتے ہیں؟",
-      "deleteQ": "اکاؤنٹ ڈیلیٹ کریں؟",
-      "deleteSub": "آپ کے اکاؤنٹ سے منسلک تمام ڈیٹا ختم ہو جائے گا",
-    }
-  };
-
-  String t(String key) => text[language == "English" ? "English" : "Urdu"]![key]!;
+  String get languageCode => appLanguageController.value.languageCode;
 
   @override
   Widget build(BuildContext context) {
-    final isDark = themeNotifier.value == ThemeMode.dark;
+    return LanguageBuilder(
+      builder: (context) {
+        final isDark = themeNotifier.value == ThemeMode.dark;
 
-    return WillPopScope(
-      onWillPop: () async {
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
-          (_) => false,
+        return WillPopScope(
+          onWillPop: () async {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (_) => const HomeScreen()),
+              (_) => false,
+            );
+            return false;
+          },
+          child: Scaffold(
+            backgroundColor: isDark ? Colors.black : Colors.white,
+            appBar: AppBar(
+              backgroundColor: isDark ? Colors.black : Colors.white,
+              elevation: 0,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_ios, color: Color(0xFFFB3300), size: 22),
+                onPressed: () {
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(builder: (_) => const HomeScreen()),
+                    (_) => false,
+                  );
+                },
+              ),
+              title: Text(
+                AppStrings.t('settings'),
+                style: TextStyle(
+                  fontFamily: 'Bricolage Grotesque',
+                  color: isDark ? Colors.white : Colors.black,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 18,
+                ),
+              ),
+            ),
+            body: Column(
+              children: [
+                _tile(AppStrings.t('phoneNumber'), phoneNumber, _changePhoneBottomSheet),
+                _tile(AppStrings.t('language'), languageCode == 'ur' ? AppStrings.t('urdu') : AppStrings.t('english'), _languageBottomSheet),
+                _tile(
+                  AppStrings.t('night'),
+                  isDark ? AppStrings.t('dark') : AppStrings.t('light'),
+                  _themeBottomSheet,
+                ),
+                const Divider(),
+                _tile(AppStrings.t('logout'), null, _logoutDialog, danger: true),
+                _tile(AppStrings.t('deleteAccount'), null, _deleteAccountSheet, danger: true),
+              ],
+            ),
+          ),
         );
-        return false;
       },
-      child: Scaffold(
-        backgroundColor: isDark ? Colors.black : Colors.white,
-        appBar: AppBar(
-          backgroundColor: isDark ? Colors.black : Colors.white,
-          elevation: 0,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios, color: Color(0xFFFB3300), size: 22),
-            onPressed: () {
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (_) => const HomeScreen()),
-                (_) => false,
-              );
-            },
-          ),
-          title: Text(
-            t("settings"),
-            style: TextStyle(
-              fontFamily: 'Bricolage Grotesque',
-              color: isDark ? Colors.white : Colors.black,
-              fontWeight: FontWeight.w500,
-              fontSize: 18,
-            ),
-          ),
-        ),
-        body: Column(
-          children: [
-            _tile(t("phone"), phoneNumber, _changePhoneBottomSheet),
-            _tile(t("language"), language, _languageBottomSheet),
-            _tile(
-              t("night"),
-              isDark ? "Dark Theme" : "Light Theme",
-              _themeBottomSheet,
-            ),
-            const Divider(),
-            _tile(t("logout"), null, _logoutDialog, danger: true),
-            _tile(t("delete"), null, _deleteAccountSheet, danger: true),
-          ],
-        ),
-      ),
     );
   }
 
@@ -161,12 +134,12 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                t("changeNum"),
+                AppStrings.t('changeNum'),
                 style: const TextStyle(fontFamily: 'Bricolage Grotesque', fontSize: 18, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 8),
               Text(
-                t("changeSub"),
+                AppStrings.t('changeSub'),
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontFamily: 'Bricolage Grotesque', fontSize: 13, fontWeight: FontWeight.w400),
               ),
@@ -200,7 +173,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
                   });
                   Navigator.pop(context);
                 },
-                child: Text(t("next")),
+                child: Text(AppStrings.t('next')),
               ),
             ],
           ),
@@ -218,22 +191,22 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              title: const Text("English"),
-              trailing: language == "English"
+              title: Text(AppStrings.t('english')),
+              trailing: languageCode == 'en'
                   ? Icon(Icons.check_rounded, color: primaryColor)
                   : null,
               onTap: () {
-                setState(() => language = "English");
+                appLanguageController.setEnglish();
                 Navigator.pop(context);
               },
             ),
             ListTile(
-              title: const Text("Urdu (Pakistan)"),
-              trailing: language == "Urdu (Pakistan)"
+              title: Text(AppStrings.t('urdu')),
+              trailing: languageCode == 'ur'
                   ? Icon(Icons.check_rounded, color: primaryColor)
                   : null,
               onTap: () {
-                setState(() => language = "Urdu (Pakistan)");
+                appLanguageController.setUrdu();
                 Navigator.pop(context);
               },
             ),
@@ -252,7 +225,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              title: const Text("Light Theme"),
+              title: Text(AppStrings.t('light')),
               trailing: themeNotifier.value == ThemeMode.light
                   ? Icon(Icons.check_rounded, color: primaryColor)
                   : null,
@@ -262,7 +235,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
               },
             ),
             ListTile(
-              title: const Text("Dark Theme"),
+              title: Text(AppStrings.t('dark')),
               trailing: themeNotifier.value == ThemeMode.dark
                   ? Icon(Icons.check, color: primaryColor)
                   : null,
@@ -285,11 +258,11 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
       builder: (_) => AlertDialog(
         backgroundColor: isDark ? Colors.black : Colors.white,
         title: Text(
-          t("logout"),
+          AppStrings.t('logout'),
           style: TextStyle(color: isDark ? Colors.white : Colors.black),
         ),
         content: Text(
-          t("logoutQ"),
+          AppStrings.t('logoutQ'),
           style: TextStyle(color: isDark ? Colors.white70 : Colors.black87),
         ),
         actions: [
@@ -299,7 +272,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
               foregroundColor: Colors.white,
             ),
             onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel"),
+            child: Text(AppStrings.t('cancel')),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
@@ -317,7 +290,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
                 );
               }
             },
-            child: const Text("Yes"),
+            child: Text(AppStrings.t('yes')),
           ),
         ],
       ),
@@ -338,7 +311,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
             const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
             const SizedBox(width: 10),
             Text(
-              t("deleteQ"),
+              AppStrings.t('deleteQ'),
               style: TextStyle(
                 fontFamily: 'Bricolage Grotesque',
                 fontSize: 18,
@@ -349,7 +322,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
           ],
         ),
         content: Text(
-          t("deleteSub"),
+          AppStrings.t('deleteSub'),
           style: TextStyle(
             fontFamily: 'Bricolage Grotesque',
             fontSize: 13,
@@ -361,7 +334,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: Text(
-              "Cancel",
+              AppStrings.t('cancel'),
               style: TextStyle(
                 fontFamily: 'Bricolage Grotesque',
                 color: isDark ? Colors.white70 : Colors.black54,
@@ -377,7 +350,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
             ),
             onPressed: () => _performDeleteAccount(),
             child: Text(
-              "Delete",
+              AppStrings.t('deleteBtn'),
               style: const TextStyle(fontFamily: 'Bricolage Grotesque', fontWeight: FontWeight.w500),
             ),
           ),
@@ -390,7 +363,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
     final userId = UserSession().userId;
     if (userId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("User ID not found. Please re-login.")),
+        SnackBar(content: Text(AppStrings.t('userIdNotFound'))),
       );
       return;
     }
@@ -480,7 +453,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("Error: $e"),
+            content: Text(AppStrings.t('errorGeneric', {'msg': e.toString()})),
             backgroundColor: Colors.red,
           ),
         );

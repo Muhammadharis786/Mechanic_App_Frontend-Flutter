@@ -106,19 +106,12 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
     super.didChangeAppLifecycleState(state);
 
     if (state == AppLifecycleState.resumed) {
-      if (_restoreOnlineOnResume) {
-        _restoreOnlineOnResume = false;
-        unawaited(_toggleOnlineStatus(true, showSnack: false));
-      }
       return;
     }
 
-    final shouldGoOffline = state == AppLifecycleState.hidden ||
-        state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached;
+    final shouldGoOffline = state == AppLifecycleState.detached;
 
     if (shouldGoOffline && isOnline && !_lifecycleOfflineUpdateInProgress) {
-      _restoreOnlineOnResume = true;
       _lifecycleOfflineUpdateInProgress = true;
       unawaited(_toggleOnlineStatus(false, showSnack: false));
     }

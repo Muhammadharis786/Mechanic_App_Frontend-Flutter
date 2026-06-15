@@ -151,8 +151,15 @@ class _VerifyScreenState extends State<VerifyScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.white70 : Colors.black54;
+    final fieldFillColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    final fieldBorderColor = isDark ? Colors.grey.shade700 : kButtonColor;
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: scaffoldBg,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 30),
@@ -179,6 +186,7 @@ class _VerifyScreenState extends State<VerifyScreen> {
                       style: GoogleFonts.poppins(
                         fontSize: 28,
                         fontWeight: FontWeight.w700,
+                        color: textColor,
                       ),
                     ),
                   ),
@@ -188,7 +196,7 @@ class _VerifyScreenState extends State<VerifyScreen> {
               const SizedBox(height: 30),
               Text(
                 "Login with your WhatsApp number and password",
-                style: GoogleFonts.poppins(fontSize: 15, color: Colors.black54),
+                style: GoogleFonts.poppins(fontSize: 15, color: subTextColor),
               ),
               const SizedBox(height: 30),
 
@@ -198,6 +206,7 @@ class _VerifyScreenState extends State<VerifyScreen> {
                 style: GoogleFonts.poppins(
                   fontSize: 15,
                   fontWeight: FontWeight.w500,
+                  color: textColor,
                 ),
               ),
               const SizedBox(height: 6),
@@ -208,13 +217,16 @@ class _VerifyScreenState extends State<VerifyScreen> {
                   FilteringTextInputFormatter.digitsOnly,
                   LengthLimitingTextInputFormatter(10),
                 ],
-                style: GoogleFonts.poppins(),
-                decoration: _inputDecoration("3XXXXXXXXX").copyWith(
+                style: GoogleFonts.poppins(color: textColor),
+                decoration: _inputDecoration("3XXXXXXXXX", isDark, fieldFillColor, fieldBorderColor).copyWith(
                   prefixIcon: Padding(
                     padding: const EdgeInsets.all(14),
                     child: Text(
                       "+92",
-                      style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.w600,
+                        color: textColor,
+                      ),
                     ),
                   ),
                 ),
@@ -228,14 +240,15 @@ class _VerifyScreenState extends State<VerifyScreen> {
                 style: GoogleFonts.poppins(
                   fontSize: 15,
                   fontWeight: FontWeight.w500,
+                  color: textColor,
                 ),
               ),
               const SizedBox(height: 6),
               TextField(
                 controller: _passwordController,
                 obscureText: _obscurePassword,
-                style: GoogleFonts.poppins(),
-                decoration: _inputDecoration("Min 6 characters").copyWith(
+                style: GoogleFonts.poppins(color: textColor),
+                decoration: _inputDecoration("Min 6 characters", isDark, fieldFillColor, fieldBorderColor).copyWith(
                   suffixIcon: IconButton(
                     icon: Icon(
                       _obscurePassword
@@ -319,7 +332,7 @@ class _VerifyScreenState extends State<VerifyScreen> {
                 children: [
                   Text(
                     "Don't have an account? ",
-                    style: GoogleFonts.poppins(fontSize: 14),
+                    style: GoogleFonts.poppins(fontSize: 14, color: subTextColor),
                   ),
                   GestureDetector(
                     onTap: () => Navigator.push(
@@ -344,16 +357,16 @@ class _VerifyScreenState extends State<VerifyScreen> {
     );
   }
 
-  InputDecoration _inputDecoration(String hint) {
+  InputDecoration _inputDecoration(String hint, bool isDark, Color fillColor, Color borderColor) {
     return InputDecoration(
       hintText: hint,
-      hintStyle: GoogleFonts.poppins(color: Colors.black45),
+      hintStyle: GoogleFonts.poppins(color: isDark ? Colors.white38 : Colors.black45),
       filled: true,
-      fillColor: Colors.white,
+      fillColor: fillColor,
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: kButtonColor, width: 1.3),
+        borderSide: BorderSide(color: borderColor, width: 1.3),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),

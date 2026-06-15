@@ -5,6 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '/main.dart';
 import '../authentication/user_session.dart';
 import '../role_selection_screen.dart';
+import '../../services/app_state.dart';
+import '../../l10n/app_strings.dart';
 
 class MechanicSettingsScreen extends StatefulWidget {
   const MechanicSettingsScreen({super.key});
@@ -15,7 +17,7 @@ class MechanicSettingsScreen extends StatefulWidget {
 
 class _MechanicSettingsScreenState extends State<MechanicSettingsScreen> {
   final Color primaryColor = const Color(0xFFFB3300);
-  String language = "English";
+  String get languageCode => appLanguageController.value.languageCode;
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
@@ -31,7 +33,7 @@ class _MechanicSettingsScreenState extends State<MechanicSettingsScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
-                title: const Text("Light Mode"),
+                title: Text(AppStrings.t('light')),
                 trailing: !isDarkMode ? const Icon(Icons.check, color: Colors.green) : null,
                 onTap: () {
                   themeNotifier.setLight();
@@ -40,7 +42,7 @@ class _MechanicSettingsScreenState extends State<MechanicSettingsScreen> {
                 },
               ),
               ListTile(
-                title: const Text("Dark Mode"),
+                title: Text(AppStrings.t('dark')),
                 trailing: isDarkMode ? const Icon(Icons.check, color: Colors.green) : null,
                 onTap: () {
                   themeNotifier.setDark();
@@ -66,18 +68,18 @@ class _MechanicSettingsScreenState extends State<MechanicSettingsScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
-                title: const Text("English"),
-                trailing: language == "English" ? const Icon(Icons.check, color: Colors.green) : null,
+                title: Text(AppStrings.t('english')),
+                trailing: languageCode == 'en' ? const Icon(Icons.check, color: Colors.green) : null,
                 onTap: () {
-                  setState(() => language = "English");
+                  appLanguageController.setEnglish();
                   Navigator.pop(context);
                 },
               ),
               ListTile(
-                title: const Text("Urdu"),
-                trailing: language == "Urdu" ? const Icon(Icons.check, color: Colors.green) : null,
+                title: Text(AppStrings.t('urdu')),
+                trailing: languageCode == 'ur' ? const Icon(Icons.check, color: Colors.green) : null,
                 onTap: () {
-                  setState(() => language = "Urdu");
+                  appLanguageController.setUrdu();
                   Navigator.pop(context);
                 },
               ),
@@ -94,14 +96,16 @@ class _MechanicSettingsScreenState extends State<MechanicSettingsScreen> {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text("Logout"),
-        content: const Text("Are you sure you want to logout?"),
+        title: Text(AppStrings.t('logout')),
+        content: Text(AppStrings.t('logoutConfirm')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(AppStrings.t('cancel'))),
           TextButton(
             onPressed: () async {
               final nav = Navigator.of(context);
               Navigator.pop(context); // close dialog
+              final currentThemeMode = themeNotifier.value == ThemeMode.dark ? 'dark' : 'light';
+              final currentLanguageCode = appLanguageController.value.languageCode;
               
               // ✅ Firebase logout
               await _auth.signOut();
@@ -110,6 +114,8 @@ class _MechanicSettingsScreenState extends State<MechanicSettingsScreen> {
               await UserSession().logout();
               final prefs = await SharedPreferences.getInstance();
               await prefs.clear();
+              await prefs.setString('app_theme_mode', currentThemeMode);
+              await prefs.setString('app_language_code', currentLanguageCode);
 
               // ✅ Navigate to role selection / login
               nav.pushAndRemoveUntil(
@@ -117,7 +123,7 @@ class _MechanicSettingsScreenState extends State<MechanicSettingsScreen> {
                 (route) => false,
               );
             },
-            child: const Text("Logout", style: TextStyle(color: Colors.red)),
+            child: Text(AppStrings.t('logout'), style: const TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -129,10 +135,10 @@ class _MechanicSettingsScreenState extends State<MechanicSettingsScreen> {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text("Delete Account"),
-        content: const Text("This action cannot be undone!"),
+        title: Text(AppStrings.t('deleteAccount')),
+        content: Text(AppStrings.t('deleteConfirm')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(AppStrings.t('cancel'))),
           TextButton(
             onPressed: () async {
               final nav = Navigator.of(context);
@@ -142,7 +148,7 @@ class _MechanicSettingsScreenState extends State<MechanicSettingsScreen> {
               nav.pushAndRemoveUntil(
                   MaterialPageRoute(builder: (_) => const RoleSelectionScreen()), (route) => false);
             },
-            child: const Text("Delete", style: TextStyle(color: Colors.red)),
+            child: Text(AppStrings.t('deleteBtn'), style: const TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -163,34 +169,38 @@ class _MechanicSettingsScreenState extends State<MechanicSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    return LanguageBuilder(
+      builder: (context) {
+        bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text("Settings", style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w600)),
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        elevation: 0,
-        iconTheme: IconThemeData(color: isDarkMode ? Colors.white : Colors.black),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          _buildTile("Language", language, _showLanguageOptions, isDarkMode),
-          _buildTile("Night Mode", isDarkMode ? "Dark Theme" : "Light Theme", _showThemeOptions, isDarkMode),
-          const SizedBox(height: 20),
-          const Divider(),
-          ListTile(
-            title: Text("Logout", style: GoogleFonts.poppins(color: Colors.red, fontWeight: FontWeight.w500)),
-            trailing: Icon(Icons.arrow_forward_ios, size: 16, color: primaryColor),
-            onTap: _confirmLogout,
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(AppStrings.t('settings'), style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w600)),
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+            elevation: 0,
+            iconTheme: IconThemeData(color: isDarkMode ? Colors.white : Colors.black),
           ),
-          ListTile(
-            title: Text("Delete Account", style: GoogleFonts.poppins(color: Colors.red, fontWeight: FontWeight.w500)),
-            trailing: Icon(Icons.arrow_forward_ios, size: 16, color: primaryColor),
-            onTap: _confirmDelete,
+          body: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              _buildTile(AppStrings.t('language'), languageCode == 'ur' ? AppStrings.t('urdu') : AppStrings.t('english'), _showLanguageOptions, isDarkMode),
+              _buildTile(AppStrings.t('night'), isDarkMode ? AppStrings.t('dark') : AppStrings.t('light'), _showThemeOptions, isDarkMode),
+              const SizedBox(height: 20),
+              const Divider(),
+              ListTile(
+                title: Text(AppStrings.t('logout'), style: GoogleFonts.poppins(color: Colors.red, fontWeight: FontWeight.w500)),
+                trailing: Icon(Icons.arrow_forward_ios, size: 16, color: primaryColor),
+                onTap: _confirmLogout,
+              ),
+              ListTile(
+                title: Text(AppStrings.t('deleteAccount'), style: GoogleFonts.poppins(color: Colors.red, fontWeight: FontWeight.w500)),
+                trailing: Icon(Icons.arrow_forward_ios, size: 16, color: primaryColor),
+                onTap: _confirmDelete,
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
