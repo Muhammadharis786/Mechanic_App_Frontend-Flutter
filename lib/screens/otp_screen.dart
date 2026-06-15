@@ -8,6 +8,7 @@ import 'package:mech_app/screens/verify_screen.dart';
 import 'package:pinput/pinput.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+// ignore: unused_import
 import 'role_selection_screen.dart';
 
 class OtpScreen extends StatefulWidget {
@@ -70,8 +71,6 @@ Future<void> _verifyOtp() async {
         );
       }
     } catch (e) {
-      // ignore: duplicate_ignore
-      // ignore: use_build_context_synchronously
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("Server Error! Please try again."),
@@ -108,7 +107,7 @@ Future<void> _resendOtp() async {
     if (response.statusCode == 200) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(body),  // backend ka message
+          content: Text(body),
           backgroundColor: Colors.green,
         ),
       );
@@ -134,13 +133,6 @@ Future<void> _resendOtp() async {
 
   @override
   Widget build(BuildContext context) {
-    // ... (rest of the build method is unchanged)
-    // ... (Pinput, Buttons, etc. ka code jaisa hai waisa hi rahega)
-    
-    // Yahan aapke build method ka poora code aayega jaisa aapne pehle diya tha.
-    // Ensure the onPressed property of ElevatedButton uses the updated _verifyOtp:
-    // onPressed: _isOtpComplete ? _verifyOtp : null, 
-    
     final defaultPinTheme = PinTheme(
       width: 50,
       height: 55,
@@ -168,10 +160,16 @@ Future<void> _resendOtp() async {
             fontWeight: FontWeight.w600,
           ),
         ),
+        // ── SIRF YEH CHANGE HUA ─────────────────────────────────────
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.black, size: 20),
+          icon: const Icon(
+            Icons.arrow_back_ios_new,   // V-shape back arrow
+            color: Color(0xFFFB3300),   // Deep orange
+            size: 20,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
+        // ─────────────────────────────────────────────────────────────
         iconTheme: const IconThemeData(color: Colors.black),
       ),
       body: Padding(
@@ -211,14 +209,13 @@ Future<void> _resendOtp() async {
                 ),
                 pinAnimationType: PinAnimationType.scale,
                 keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 validator: (s) {
                   if (s == null || s.length < 6) {
                     return 'Enter the complete 6-digit code';
                   }
                   return null;
                 },
-                
                 onCompleted: (pin) {
                   setState(() {
                     _isOtpComplete = true;
