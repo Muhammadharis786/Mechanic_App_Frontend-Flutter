@@ -14,7 +14,10 @@ import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../services/active_service_request_tracking.dart';
 import '../authentication/user_session.dart';
+import '../../utils/map_marker_icon.dart';
+import '../../utils/smooth_route_tracker.dart';
 import '../../widgets/service_charges_price_badge.dart';
+import '../homescreen.dart';
 import 'service_review_screen.dart';
 
 const String _mapStyle = '''
@@ -94,6 +97,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
   LatLng? _lastRouteOrigin;
   DateTime? _lastCameraFollowAt;
   double _acceptedBearing = 0;
+  final SmoothRouteTracker _acceptedRouteTracker = SmoothRouteTracker();
   BitmapDescriptor? _mechanicTrackingIcon;
   BitmapDescriptor? _userTrackingIcon;
 
@@ -150,6 +154,11 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
   }
 
   void _onMarkerTick(Duration elapsed) {
+    if (_isAccepted) {
+      _tickAcceptedMechanic(elapsed);
+      return;
+    }
+
     if (_markerTargetPositions.isEmpty) return;
 
     bool needsUpdate = false;
@@ -207,6 +216,55 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       // If all caught up, stop ticker to save battery
       _markerTicker.stop();
     }
+  }
+
+  void _tickAcceptedMechanic(Duration elapsed) {
+    final mechanicId = _acceptedMechanic?['mechanicId']?.toString();
+    if (mechanicId == null) return;
+
+    final frame = _acceptedRouteTracker.tick(elapsed);
+    if (frame == null) return;
+
+    final newPos = frame.position;
+    _acceptedMechanicPosition = newPos;
+    _acceptedBearing = frame.bearing;
+    _markerCurrentPositions[mechanicId] = newPos;
+
+    if (frame.polylinePoints.length >= 2) {
+      _polylines = {
+        Polyline(
+          polylineId: const PolylineId('accepted_route'),
+          points: frame.polylinePoints,
+          color: _primary,
+          width: 6,
+          startCap: Cap.roundCap,
+          endCap: Cap.roundCap,
+          jointType: JointType.round,
+        ),
+      };
+    }
+
+    _followAcceptedMechanic(newPos, _acceptedBearing);
+
+    final markerId = MarkerId('mechanic_$mechanicId');
+    _mechanicMarkers = {
+      Marker(
+        markerId: markerId,
+        position: newPos,
+        icon: _mechanicTrackingIcon ??
+            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+        anchor: const Offset(0.5, 0.5),
+        flat: true,
+        rotation: _acceptedBearing,
+        infoWindow: InfoWindow(
+          title: _markerTitles[mechanicId] ??
+              _acceptedMechanic?['mechanicName']?.toString() ??
+              'Mechanic',
+        ),
+      ),
+    };
+
+    setState(() {});
   }
 
   void _initializePosition() {
@@ -640,6 +698,24 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     );
   }
 
+  void _goToUserDashboard({String? snackMessage, Color? snackColor}) {
+    if (!mounted) return;
+
+    if (snackMessage != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(snackMessage),
+          backgroundColor: snackColor ?? Colors.orange,
+        ),
+      );
+    }
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const HomeScreen()),
+      (route) => false,
+    );
+  }
+
   void _exitToUserHome({String? snackMessage, Color? snackColor}) {
     if (_cancelExitHandled) return;
     _cancelExitHandled = true;
@@ -665,16 +741,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       _isLoading = false;
     });
 
-    if (snackMessage != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(snackMessage),
-          backgroundColor: snackColor ?? Colors.orange,
-        ),
-      );
-    }
-
-    Navigator.of(context).popUntil((route) => route.isFirst);
+    _goToUserDashboard(snackMessage: snackMessage, snackColor: snackColor);
   }
 
   void _handleRequestCancelledBySocket(Map<String, dynamic> data) {
@@ -845,7 +912,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       final status = _normalizeTrackingStatus(merged);
       if (status == 'CANCELLED' || status == 'REJECTED' || status == 'EXPIRED') {
         ActiveServiceRequestTracking.clear();
-        Navigator.popUntil(context, (route) => route.isFirst);
+        _goToUserDashboard();
         return;
       }
 
@@ -942,6 +1009,8 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       _isAccepted = true;
       _acceptedMechanic = acceptedData;
       _acceptedMechanicPosition = position;
+      _acceptedRouteTracker.reset(position);
+      _acceptedBearing = 0;
       _acceptedDistanceText = distance == null
           ? data['distance']?.toString()
           : '${distance.toStringAsFixed(1)} km';
@@ -1058,9 +1127,9 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
 
   Future<void> _loadTrackingMarkerIcons() async {
     try {
-      final mechanicIcon = await BitmapDescriptor.fromAssetImage(
-        const ImageConfiguration(size: Size(48, 48)),
-        'assets/images/car_marker.png',
+      final mechanicIcon = await mapMarkerFromAsset(
+        'assets/images/car.png',
+        size: 40,
       );
       final userIcon = await _createUserRingMarker();
       
@@ -1131,11 +1200,13 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     _markerCurrentPositions.putIfAbsent(mechanicId, () => target);
     _markerTargetPositions[mechanicId] = target;
     _markerTitles[mechanicId] = name;
-    final current = _markerCurrentPositions[mechanicId] ?? target;
-    _acceptedBearing = _bearingBetween(current, target);
+    _acceptedRouteTracker.pushGps(target);
+    if (_acceptedMechanicPosition == null) {
+      _acceptedMechanicPosition = target;
+      _acceptedRouteTracker.reset(target);
+    }
 
     setState(() {
-      _acceptedMechanicPosition = current;
       _acceptedMechanic = {
         ...?_acceptedMechanic,
         'mechanicLatitude': lat,
@@ -1236,7 +1307,26 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       final points =
           result.points.map((p) => LatLng(p.latitude, p.longitude)).toList();
       _acceptedRoutePoints = points;
-      _updateAcceptedPolyline(_acceptedMechanicPosition ?? routeOrigin);
+      _acceptedRouteTracker.setRoute(
+        points,
+        anchor: _acceptedRouteTracker.displayPosition ?? _acceptedMechanicPosition,
+      );
+      final frame = _acceptedRouteTracker.tick(Duration.zero);
+      if (frame != null && mounted) {
+        setState(() {
+          _polylines = {
+            Polyline(
+              polylineId: const PolylineId('accepted_route'),
+              points: frame.polylinePoints,
+              color: _primary,
+              width: 6,
+              startCap: Cap.roundCap,
+              endCap: Cap.roundCap,
+              jointType: JointType.round,
+            ),
+          };
+        });
+      }
     } catch (e) {
       debugPrint('Accepted route fetch error: $e');
     }
@@ -1278,7 +1368,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
   void _followAcceptedMechanic(LatLng position, double bearing) {
     final now = DateTime.now();
     if (_lastCameraFollowAt != null &&
-        now.difference(_lastCameraFollowAt!).inMilliseconds < 650) {
+        now.difference(_lastCameraFollowAt!).inMilliseconds < 280) {
       return;
     }
     _lastCameraFollowAt = now;
@@ -1358,7 +1448,8 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
             Marker(
               markerId: MarkerId('mechanic_$id'),
               position: pos,
-              icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+              icon: _mechanicTrackingIcon ??
+                  BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
               infoWindow: InfoWindow(title: 'Mechanic #$id'),
             ),
           );
@@ -1693,7 +1784,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
                 child: GestureDetector(
                   onTap: () {
                     _saveActiveTracking();
-                    Navigator.popUntil(context, (route) => route.isFirst);
+                    _goToUserDashboard();
                   },
                   child: Container(
                     width: 40,

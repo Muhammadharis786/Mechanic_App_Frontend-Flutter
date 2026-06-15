@@ -6,6 +6,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import '../../services/mechanic_live_location_service.dart';
 import '../../services/active_service_request_tracking.dart';
+import '../../services/emergency_alert_service.dart';
 import '../../services/mechanic_notification_controller.dart';
 import 'mechanic_usermap.dart';
 import 'mechanic_dashboard.dart';
@@ -47,6 +48,7 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
   int _secondsLeft = 60;
   final int _totalSeconds = 60;
   bool _isAccepting = false;
+  bool _isRejecting = false;
   bool _isClosingForCancellation = false;
   
   final Color primaryColor = const Color(0xFFFB3300);
@@ -180,6 +182,7 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
   @override
   void dispose() {
     MechanicNotificationController().removeListener(_onNotification);
+    EmergencyAlertService.instance.stopEffects();
     _timer?.cancel();
     _mapController?.dispose();
     super.dispose();
@@ -195,6 +198,24 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
       const SnackBar(
         content: Text('Request Accepted!'),
         backgroundColor: Colors.green,
+      ),
+    );
+    Navigator.of(context).pop();
+  }
+
+  Future<void> _rejectRequest() async {
+    if (_isRejecting || _isAccepting) return;
+    setState(() => _isRejecting = true);
+
+    await EmergencyAlertService.instance.stopEffects();
+    _timer?.cancel();
+    ActiveServiceRequestTracking.clear();
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Request declined'),
+        backgroundColor: Colors.red,
       ),
     );
     Navigator.of(context).pop();
@@ -231,6 +252,7 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
+        await EmergencyAlertService.instance.stopEffects();
         final acceptedData = jsonDecode(response.body);
         
         // Merge original request data with acceptance response
@@ -483,40 +505,74 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
                   ),
                   
                   const SizedBox(height: 20),
-                  
-                  // Accept Button
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _isAccepting ? null : _acceptRequestFromBackend,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: primaryColor,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        elevation: 4,
-                      ),
-                      child: _isAccepting
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Text(
-                              "ACCEPT REQUEST",
-                              style: TextStyle(
-                                fontFamily: 'Bricolage Grotesque',
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.white,
-                                letterSpacing: 0.5,
-                              ),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: (_isAccepting || _isRejecting)
+                              ? null
+                              : _rejectRequest,
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            side: const BorderSide(color: Colors.red, width: 1.5),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
                             ),
-                    ),
+                          ),
+                          child: _isRejecting
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : Text(
+                                  'REJECT',
+                                  style: GoogleFonts.poppins(
+                                    color: Colors.red,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton(
+                          onPressed: (_isAccepting || _isRejecting)
+                              ? null
+                              : _acceptRequestFromBackend,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: primaryColor,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            elevation: 4,
+                          ),
+                          child: _isAccepting
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text(
+                                  'ACCEPT',
+                                  style: TextStyle(
+                                    fontFamily: 'Bricolage Grotesque',
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),

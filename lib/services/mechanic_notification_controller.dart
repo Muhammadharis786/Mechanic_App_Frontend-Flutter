@@ -8,7 +8,7 @@ import '../screens/authentication/user_session.dart';
 import '../utils/time_utils.dart';
 import 'active_service_request_tracking.dart';
 import 'websocket_service.dart';
-import '../screens/mechanic/mechanic_request_alert_screen.dart'; // Added Import
+import 'emergency_alert_service.dart';
 
 class MechanicNotificationController {
   // Singleton
@@ -87,16 +87,11 @@ class MechanicNotificationController {
 
         // Detect new Service Request format.
         if ((hasRoadRequestLocation && hasRoadRequestId) ||
-            mapData.containsKey('userNotes')) {
+            mapData.containsKey('userNotes') ||
+            mapData.containsKey('notes')) {
           mapData['requestId'] =
               mapData['requestId'] ?? resolvedRoadRequestId;
-          if (navigatorKey.currentState != null) {
-            navigatorKey.currentState!.push(
-              MaterialPageRoute(
-                builder: (_) => MechanicRequestAlertScreen(requestData: mapData),
-              ),
-            );
-          }
+          EmergencyAlertService.instance.openRoadRequestAlert(mapData);
           
           // Optionally still notify listeners so dashboard updates its list
           // But do NOT show the standard overlay

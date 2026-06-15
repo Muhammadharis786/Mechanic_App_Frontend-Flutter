@@ -8,6 +8,7 @@ import 'authentication/user_session.dart';
 import 'homescreen.dart';
 import 'mechanic/mechanic_dashboard.dart';
 import '../services/fcm_notification_service.dart';
+import '../services/active_service_request_tracking.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -55,6 +56,8 @@ class _SplashScreenState extends State<SplashScreen>
     if (!mounted) return;
 
     if (isLoggedIn) {
+      await ActiveServiceRequestTracking.load();
+      await ActiveServiceRequestTracking.syncWithServer();
       await FcmNotificationService.instance.syncTokenWithBackend();
       if (!mounted) return;
 

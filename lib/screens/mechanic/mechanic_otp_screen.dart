@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:pinput/pinput.dart';
 
+import 'mechanic_kyc_screen.dart';
 import 'mechanic_registration_screen.dart';
 
 class MechanicOtpScreen extends StatefulWidget {
@@ -93,18 +94,38 @@ class _MechanicOtpScreenState extends State<MechanicOtpScreen> {
       final responseBody = response.body;
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        _showSnack(responseBody.isNotEmpty ? responseBody : 'OTP Verified successfully!', isError: false);
-        
+        bool isKycDone = false;
+        String successMsg = 'OTP Verified successfully!';
+
+        try {
+          final data = jsonDecode(responseBody);
+          if (data is Map) {
+            isKycDone = data['iskyc'] == true;
+            successMsg = data['message'] ?? successMsg;
+          }
+        } catch (e) {
+          if (responseBody.isNotEmpty && !responseBody.startsWith('{')) {
+            successMsg = responseBody;
+          }
+        }
+
+        _showSnack(successMsg, isError: false);
+
         if (mounted) {
-           Navigator.pushReplacement(
-             context,
-             MaterialPageRoute(
-               builder: (context) => MechanicRegistrationScreen(
-                 phoneNumber: widget.phoneNumber,
-                 password: widget.password,
-               ),
-             ),
-           );
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => isKycDone
+                  ? MechanicRegistrationScreen(
+                      phoneNumber: widget.phoneNumber,
+                      password: widget.password,
+                    )
+                  : MechanicKycScreen(
+                      phoneNumber: widget.phoneNumber,
+                      password: widget.password,
+                    ),
+            ),
+          );
         }
       } else {
         _handleApiError(responseBody, 'OTP verification failed');

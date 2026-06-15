@@ -42,6 +42,8 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
   bool _isLoading = true;
   bool _isToggleLoading = false;
   bool isOnline = false;
+  bool _restoreOnlineOnResume = false;
+  bool _lifecycleOfflineUpdateInProgress = false;
 
   double totalEarnings = 0;
   double todaysEarnings = 0;
@@ -81,6 +83,12 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
       curve: Curves.easeOut,
     );
     ActiveServiceRequestTracking.current.addListener(_onActiveTrackingChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await ActiveServiceRequestTracking.load();
+      await ActiveServiceRequestTracking.syncWithServer();
+      if (mounted) setState(() {});
+      _subscribeActiveRequestTopic();
+    });
     _fetchDashboardData();
     _fetchAppointmentNotifications();
     _fetchRecentJobs();
@@ -96,10 +104,23 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
-      if (isOnline) {
-        _toggleOnlineStatus(false);
+
+    if (state == AppLifecycleState.resumed) {
+      if (_restoreOnlineOnResume) {
+        _restoreOnlineOnResume = false;
+        unawaited(_toggleOnlineStatus(true, showSnack: false));
       }
+      return;
+    }
+
+    final shouldGoOffline = state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached;
+
+    if (shouldGoOffline && isOnline && !_lifecycleOfflineUpdateInProgress) {
+      _restoreOnlineOnResume = true;
+      _lifecycleOfflineUpdateInProgress = true;
+      unawaited(_toggleOnlineStatus(false, showSnack: false));
     }
   }
 
@@ -118,7 +139,8 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
       final eventId =
           request['requestId']?.toString() ?? request['requestid']?.toString();
       ActiveServiceRequestTracking.clearIfMatches(eventId);
-      if (backendType == 'ROAD_REQUEST_CANCELLED') return;
+      _teardownActiveRequestSubscription();
+      if (mounted) setState(() {});
       return;
     }
 
@@ -139,51 +161,13 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
   }
 
   Future<void> _syncActiveTrackingWithServer() async {
-    final active = ActiveServiceRequestTracking.current.value;
-    if (active == null) return;
-
-    final requestId =
-        active['requestId']?.toString() ?? active['requestid']?.toString();
-    if (requestId == null || requestId.isEmpty) {
-      ActiveServiceRequestTracking.clear();
-      if (mounted) setState(() {});
-      return;
-    }
-
-    try {
-      final response = await http.get(
-        Uri.parse(
-          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/tracking/$requestId',
-        ),
-        headers: UserSession().getAuthHeader(),
-      );
-
-      if (response.statusCode == 404) {
-        ActiveServiceRequestTracking.clear();
-        if (mounted) setState(() {});
-        return;
-      }
-
-      if (response.statusCode != 200 || response.body.isEmpty) return;
-
-      final decoded = jsonDecode(response.body);
-      if (decoded is! Map) return;
-
-      final status =
-          (decoded['requestStatus'] ?? decoded['status'] ?? '')
-              .toString()
-              .toUpperCase();
-
-      if (status == 'CANCELLED' ||
-          status == 'REJECTED' ||
-          status == 'EXPIRED' ||
-          status == 'COMPLETED') {
-        ActiveServiceRequestTracking.clear();
-        _teardownActiveRequestSubscription();
-        if (mounted) setState(() {});
-      }
-    } catch (e) {
-      debugPrint('Mechanic dashboard tracking sync failed: $e');
+    await ActiveServiceRequestTracking.syncWithServer();
+    if (!mounted) return;
+    if (!ActiveServiceRequestTracking.isActive(
+      ActiveServiceRequestTracking.current.value,
+    )) {
+      _teardownActiveRequestSubscription();
+      setState(() {});
     }
   }
 
@@ -381,8 +365,13 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
     _subscribeActiveRequestTopic();
   }
 
-  Future<void> _toggleOnlineStatus(bool value) async {
-    setState(() => _isToggleLoading = true);
+  Future<void> _toggleOnlineStatus(
+    bool value, {
+    bool showSnack = true,
+  }) async {
+    if (showSnack && mounted) {
+      setState(() => _isToggleLoading = true);
+    }
 
     final url = Uri.parse(
         "https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/isactive");
@@ -397,8 +386,14 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        setState(() => isOnline = value);
+        if (mounted) {
+          setState(() => isOnline = value);
+        } else {
+          isOnline = value;
+        }
+
         if (value) {
+          _lifecycleOfflineUpdateInProgress = false;
           final active = ActiveServiceRequestTracking.current.value;
           final activeRequestId = active?['requestId']?.toString() ??
               active?['requestid']?.toString();
@@ -407,16 +402,17 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
         } else {
           MechanicLiveLocationService.instance.stop();
         }
-        if (mounted) {
+        if (showSnack && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(value ? 'You are now online ✅' : 'You are now offline'),
+              content:
+                  Text(value ? 'You are now online' : 'You are now offline'),
               backgroundColor: value ? Colors.green : Colors.orange,
             ),
           );
         }
       } else {
-        if (mounted) {
+        if (showSnack && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
                 content: Text('Failed to update status. Please try again.')),
@@ -424,13 +420,18 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
         }
       }
     } catch (e) {
-      if (mounted) {
+      if (showSnack && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error updating status: $e')),
         );
       }
     } finally {
-      if (mounted) setState(() => _isToggleLoading = false);
+      if (!value) {
+        _lifecycleOfflineUpdateInProgress = false;
+      }
+      if (showSnack && mounted) {
+        setState(() => _isToggleLoading = false);
+      }
     }
   }
 

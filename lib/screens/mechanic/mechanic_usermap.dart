@@ -15,6 +15,8 @@ import '../../services/active_service_request_tracking.dart';
 import '../../services/mechanic_live_location_service.dart';
 import '../../services/mechanic_notification_controller.dart';
 import '../../utils/distance_formatter.dart';
+import '../../utils/map_marker_icon.dart';
+import '../../utils/smooth_route_tracker.dart';
 import '../../widgets/service_charges_price_badge.dart';
 import 'package:stomp_dart_client/stomp_dart_client.dart';
 import '../authentication/user_session.dart';
@@ -57,6 +59,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
   // Tracking
   StreamSubscription<Position>? _positionSub;
   late final Ticker _animTicker;
+  final SmoothRouteTracker _routeTracker = SmoothRouteTracker();
   
   // Polylines
   Set<Polyline> _polylines = {};
@@ -686,6 +689,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
       
       _mechanicCurrentPos = LatLng(pos.latitude, pos.longitude);
       _mechanicTargetPos = LatLng(pos.latitude, pos.longitude);
+      _routeTracker.reset(_mechanicCurrentPos!);
       
       if (mounted) {
         debugPrint('✅ Initial position found: ${_mechanicCurrentPos!.latitude}, ${_mechanicCurrentPos!.longitude}');
@@ -708,6 +712,10 @@ class _MechanicUserMapState extends State<MechanicUserMap>
       
       final newPos = LatLng(pos.latitude, pos.longitude);
       _mechanicTargetPos = newPos;
+      final heading = pos.heading.isFinite && pos.heading >= 0
+          ? pos.heading
+          : null;
+      _routeTracker.pushGps(newPos, heading: heading);
       
       if (!_animTicker.isTicking) {
         _animTicker.start();
@@ -718,28 +726,28 @@ class _MechanicUserMapState extends State<MechanicUserMap>
   }
 
   void _onTick(Duration elapsed) {
-    if (_mechanicTargetPos == null || _mechanicCurrentPos == null) return;
+    final frame = _routeTracker.tick(elapsed);
+    if (frame == null || _mechanicTargetPos == null) return;
 
-    final target = _mechanicTargetPos!;
-    final current = _mechanicCurrentPos!;
+    _mechanicCurrentPos = frame.position;
+    _mechanicBearing = frame.bearing;
 
-    final latDiff = target.latitude - current.latitude;
-    final lngDiff = target.longitude - current.longitude;
-
-    if (latDiff.abs() > 0.000001 || lngDiff.abs() > 0.000001) {
-      const double speed = 0.18;
-      _mechanicBearing = _bearingBetween(current, target);
-      _mechanicCurrentPos = LatLng(
-        current.latitude + (latDiff * speed),
-        current.longitude + (lngDiff * speed),
-      );
-      
-      _shortenRoute();
-      _followMechanic(_mechanicCurrentPos!, _mechanicBearing);
-      setState(() {});
-    } else {
-      _animTicker.stop();
+    if (frame.polylinePoints.length >= 2) {
+      _polylines = {
+        Polyline(
+          polylineId: const PolylineId('route'),
+          points: frame.polylinePoints,
+          color: _primary,
+          width: 6,
+          startCap: Cap.roundCap,
+          endCap: Cap.roundCap,
+          jointType: JointType.round,
+        ),
+      };
     }
+
+    _followMechanic(_mechanicCurrentPos!, _mechanicBearing);
+    setState(() {});
   }
 
   Future<void> _fetchRoute({bool force = false}) async {
@@ -768,7 +776,26 @@ class _MechanicUserMapState extends State<MechanicUserMap>
 
       if (mounted && result.points.isNotEmpty) {
         _routePoints = result.points.map((p) => LatLng(p.latitude, p.longitude)).toList();
-        _updatePolyline();
+        _routeTracker.setRoute(
+          _routePoints,
+          anchor: _routeTracker.displayPosition ?? _mechanicCurrentPos,
+        );
+        final frame = _routeTracker.tick(Duration.zero);
+        if (frame != null && mounted) {
+          setState(() {
+            _polylines = {
+              Polyline(
+                polylineId: const PolylineId('route'),
+                points: frame.polylinePoints,
+                color: _primary,
+                width: 6,
+                startCap: Cap.roundCap,
+                endCap: Cap.roundCap,
+                jointType: JointType.round,
+              ),
+            };
+          });
+        }
       }
     } catch (e) {
       debugPrint('Route fetch error: $e');
@@ -822,9 +849,9 @@ class _MechanicUserMapState extends State<MechanicUserMap>
 
   Future<void> _loadTrackingMarkerIcons() async {
     try {
-      final mechanicIcon = await BitmapDescriptor.fromAssetImage(
-        const ImageConfiguration(size: Size(48, 48)),
-        'assets/images/car_marker.png',
+      final mechanicIcon = await mapMarkerFromAsset(
+        'assets/images/navigation.png',
+        size: 48,
       );
       final userIcon = await _createUserRingMarker();
       
@@ -837,7 +864,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
       debugPrint('Error loading marker icons: $e');
       if (mounted) {
         setState(() {
-          _mechanicTrackingIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue);
+          _mechanicTrackingIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
         });
       }
     }
@@ -846,7 +873,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
   void _followMechanic(LatLng position, double bearing) {
     final now = DateTime.now();
     if (_lastCameraFollowAt != null &&
-        now.difference(_lastCameraFollowAt!).inMilliseconds < 650) {
+        now.difference(_lastCameraFollowAt!).inMilliseconds < 280) {
       return;
     }
     _lastCameraFollowAt = now;

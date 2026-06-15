@@ -9,7 +9,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'dart:convert';
-import '../authentication/user_session.dart';
 
 import 'mechanic_login.dart'; // Import MechanicLoginScreen
 import 'mechanic_map_selection_screen.dart';
@@ -33,13 +32,11 @@ class _MechanicRegistrationScreenState
   final Color primary = const Color(0xFFFB3300);
 
   int currentStep = 0;
-  final int totalSteps = 4;
+  final int totalSteps = 3;
   bool showPassword = false;
 
   // ==================== IMAGES ====================
   XFile? profileImage;
-  XFile? cnicFrontImage;
-  XFile? cnicBackImage;
 
   String name = '';
   // phone is now retrieved from widget.phoneNumber rather than input on this screen
@@ -54,13 +51,10 @@ class _MechanicRegistrationScreenState
 
   // ================= IMAGE PICK =================
   Future<void> pickImage(String type) async {
-    // type: 'profile', 'cnicFront', 'cnicBack'
     final XFile? img = await _picker.pickImage(source: ImageSource.gallery);
     if (img != null) {
       setState(() {
         if (type == 'profile') profileImage = img;
-        if (type == 'cnicFront') cnicFrontImage = img;
-        if (type == 'cnicBack') cnicBackImage = img;
       });
     }
   }
@@ -105,8 +99,6 @@ class _MechanicRegistrationScreenState
       debugPrint(JsonEncoder.withIndent('  ').convert(mechanicData));
       debugPrint('Images:');
       debugPrint('  - Profile Image: ${profileImage != null ? "✓ Selected" : "✗ Not Selected"}');
-      debugPrint('  - CNIC Front: ${cnicFrontImage != null ? "✓ Selected" : "✗ Not Selected"}');
-      debugPrint('  - CNIC Back: ${cnicBackImage != null ? "✓ Selected" : "✗ Not Selected"}');
       debugPrint('═══════════════════════════════════════════════════');
       
       // 2. Add 'userData' as a JSON Part
@@ -141,8 +133,6 @@ class _MechanicRegistrationScreenState
       }
 
       await addMultipartFile('mechanicprofilePicture', profileImage, 'profile.jpg');
-      await addMultipartFile('cnicfrontimg', cnicFrontImage, 'cnic_front.jpg');
-      await addMultipartFile('cnicbackimg', cnicBackImage, 'cnic_back.jpg');
 
       // Send
       var response = await request.send();
@@ -260,16 +250,6 @@ class _MechanicRegistrationScreenState
       }
       if (workingHours.trim().isEmpty) {
         _showError('Please specify your working hours.');
-        return false;
-      }
-      return true;
-    } else if (currentStep == 3) {
-      if (cnicFrontImage == null) {
-        _showError('Please upload CNIC Front Image.');
-        return false;
-      }
-      if (cnicBackImage == null) {
-        _showError('Please upload CNIC Back Image.');
         return false;
       }
       return true;
@@ -445,7 +425,6 @@ class _MechanicRegistrationScreenState
                   personalInfo(),
                   locationInfo(),
                   professionalInfo(),
-                  documentInfo(),
                 ],
               ),
             ),
@@ -497,7 +476,6 @@ class _MechanicRegistrationScreenState
     'Personal Information',
     'Location Information',
     'Professional Information',
-    'Documents'
   ];
 
   // ================= STEP 1 =================
@@ -686,54 +664,4 @@ class _MechanicRegistrationScreenState
     );
   }
 
-  // ================= STEP 4 =================
-  Widget documentInfo() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // CNIC Front
-          Text('Upload CNIC Front (شناختی کارڈ سامنے wala حصہ)',
-              style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: Theme.of(context).textTheme.titleMedium?.color)),
-          const SizedBox(height: 6),
-          ElevatedButton(
-            onPressed: () => pickImage('cnicFront'),
-            style: ElevatedButton.styleFrom(backgroundColor: primary),
-            child: Text('Select Front Image',
-                style: GoogleFonts.poppins(color: Colors.white)),
-          ),
-          const SizedBox(height: 12),
-          if (cnicFrontImage != null)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: kIsWeb
-                  ? Image.network(cnicFrontImage!.path, height: 150, fit: BoxFit.cover)
-                  : Image.file(File(cnicFrontImage!.path), height: 150, fit: BoxFit.cover),
-            ),
-          const SizedBox(height: 24),
-
-          // CNIC Back
-          Text('Upload CNIC Back (شناختی کارڈ پیچھے wala حصہ)',
-              style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: Theme.of(context).textTheme.titleMedium?.color)),
-          const SizedBox(height: 6),
-          ElevatedButton(
-            onPressed: () => pickImage('cnicBack'),
-            style: ElevatedButton.styleFrom(backgroundColor: primary),
-            child: Text('Select Back Image',
-                style: GoogleFonts.poppins(color: Colors.white)),
-          ),
-          const SizedBox(height: 12),
-          if (cnicBackImage != null)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: kIsWeb
-                  ? Image.network(cnicBackImage!.path, height: 150, fit: BoxFit.cover)
-                  : Image.file(File(cnicBackImage!.path), height: 150, fit: BoxFit.cover),
-            ),
-          const SizedBox(height: 80),
-        ],
-      ),
-    );
-  }
 }

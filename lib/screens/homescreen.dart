@@ -30,6 +30,7 @@ import '../../services/user_notification_controller.dart';
 import 'mechanic_list_screen.dart';
 import 'role_selection_screen.dart';
 import '../services/fcm_notification_service.dart';
+import 'package:stomp_dart_client/stomp_dart_client.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key} );
@@ -52,6 +53,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Notification state
   int _unreadNotifCount = 0;
+  StompClient? _activeRequestClient;
+  String? _subscribedRequestId;
 
   // ---- Filter State ----
   String _selectedFilter = "All";
@@ -67,13 +70,98 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    ActiveServiceRequestTracking.current.addListener(_onActiveTrackingChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await ActiveServiceRequestTracking.load();
+      await ActiveServiceRequestTracking.syncWithServer();
+      if (mounted) setState(() {});
+      _subscribeActiveRequestTopic();
+    });
     _fetchDashboardData();
     _fetchUnreadCount();
     FcmNotificationService.instance.syncTokenWithBackend();
   }
 
+  void _onActiveTrackingChanged() {
+    _subscribeActiveRequestTopic();
+    if (mounted) setState(() {});
+  }
+
+  void _teardownActiveRequestSubscription() {
+    _activeRequestClient?.deactivate();
+    _activeRequestClient = null;
+    _subscribedRequestId = null;
+  }
+
+  void _subscribeActiveRequestTopic() {
+    final active = ActiveServiceRequestTracking.current.value;
+    if (!ActiveServiceRequestTracking.isActive(active)) {
+      _teardownActiveRequestSubscription();
+      return;
+    }
+
+    final requestId =
+        active!['requestId']?.toString() ?? active['requestid']?.toString();
+    if (requestId == null || requestId.isEmpty) {
+      _teardownActiveRequestSubscription();
+      return;
+    }
+
+    if (_subscribedRequestId == requestId && _activeRequestClient != null) {
+      return;
+    }
+
+    _teardownActiveRequestSubscription();
+    _subscribedRequestId = requestId;
+
+    _activeRequestClient = StompClient(
+      config: StompConfig(
+        url:
+            'wss://mechanicapp-service-621632382478.asia-south1.run.app/ws-notifications/websocket',
+        stompConnectHeaders: UserSession().getAuthHeader(),
+        webSocketConnectHeaders: UserSession().getAuthHeader(),
+        onConnect: (_) {
+          _activeRequestClient?.subscribe(
+            destination: '/topic/request/$requestId',
+            callback: (frame) {
+              if (frame.body == null || frame.body!.isEmpty || !mounted) return;
+              try {
+                final decoded = jsonDecode(frame.body!);
+                if (decoded is! Map) return;
+                final data = Map<String, dynamic>.from(decoded);
+                final backendType =
+                    (data['type'] ?? data['backendType'])?.toString().toUpperCase() ??
+                        '';
+                final status = (data['status'] ?? data['requestStatus'])
+                        ?.toString()
+                        .toUpperCase() ??
+                    '';
+
+                if (backendType == 'ROAD_REQUEST_CANCELLED' ||
+                    status == 'CANCELLED' ||
+                    status == 'COMPLETED' ||
+                    status == 'EXPIRED') {
+                  ActiveServiceRequestTracking.clearIfMatches(requestId);
+                  _teardownActiveRequestSubscription();
+                  if (mounted) setState(() {});
+                }
+              } catch (e) {
+                debugPrint('Home request topic parse error: $e');
+              }
+            },
+          );
+        },
+        onWebSocketError: (error) =>
+            debugPrint('Home request WS error: $error'),
+      ),
+    );
+    _activeRequestClient?.activate();
+  }
+
   @override
   void dispose() {
+    ActiveServiceRequestTracking.current.removeListener(_onActiveTrackingChanged);
+    _teardownActiveRequestSubscription();
     UserNotificationController().removeListener(_onGlobalNotificationReceived);
     super.dispose();
   }
