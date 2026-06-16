@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import '../firebase_options.dart';
 import '../screens/authentication/user_session.dart';
 import 'emergency_alert_service.dart';
+import 'active_service_request_tracking.dart';
 
 const String _baseUrl =
     'https://mechanicapp-service-621632382478.asia-south1.run.app';
@@ -102,8 +103,15 @@ class FcmNotificationService {
     required bool fromBackground,
   }) async {
     final data = Map<String, dynamic>.from(message.data);
+
+    // 1. Handle Request Expiry for Users
+    if (data['type'] == 'REQUEST_EXPIRED') {
+      await ActiveServiceRequestTracking.load();
+      ActiveServiceRequestTracking.clear();
+      return;
+    }
+
     if (!EmergencyAlertService.isRoadRequestPayload(data)) return;
-    if (!EmergencyAlertService.isMechanicSession()) return;
 
     final normalized = EmergencyAlertService.normalizeRoadRequest(data);
     final requestId = normalized['requestId']?.toString() ?? 'road_request';
@@ -277,8 +285,13 @@ class FcmNotificationService {
 
   void _handleNotificationOpen(RemoteMessage message) {
     final data = Map<String, dynamic>.from(message.data);
+
+    if (data['type'] == 'REQUEST_EXPIRED') {
+      ActiveServiceRequestTracking.clear();
+      return;
+    }
+
     if (!EmergencyAlertService.isRoadRequestPayload(data)) return;
-    if (!EmergencyAlertService.isMechanicSession()) return;
 
     EmergencyAlertService.instance.openRoadRequestAlert(
       EmergencyAlertService.normalizeRoadRequest(data),

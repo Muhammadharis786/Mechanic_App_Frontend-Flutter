@@ -84,6 +84,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
   bool _isCompletingWork = false;
   bool _isConfirmingCashPayment = false;
   bool _showJobCompletedBanner = false;
+  bool _isCancelling = false;
   double? _approvedFinalPrice;
   double? _approvedArrivalPrice;
   final TextEditingController _priceController = TextEditingController();
@@ -602,6 +603,84 @@ class _MechanicUserMapState extends State<MechanicUserMap>
       if (incomingReqId != null && myReqId != null && incomingReqId == myReqId) {
         _goToDashboardAfterCancellation();
       }
+    }
+  }
+
+  Future<void> _cancelRequestByMechanic() async {
+    final requestId = widget.requestData['requestId']?.toString() ??
+        widget.requestData['requestid']?.toString();
+    if (requestId == null) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Cancel Request',
+            style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
+        content: Text('Are you sure you want to cancel this service request?',
+            style: GoogleFonts.poppins()),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('No', style: GoogleFonts.poppins(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Yes, Cancel',
+                style: GoogleFonts.poppins(
+                    color: Colors.red, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isCancelling = true);
+
+    try {
+      final response = await http.get(
+        Uri.parse(
+          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/cancel/$requestId',
+        ),
+        headers: UserSession().getAuthHeader(),
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        ActiveServiceRequestTracking.clear();
+        if (mounted) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => const MechanicDashboardScreen()),
+            (route) => false,
+          );
+        }
+      } else {
+        String errMsg = 'Failed to cancel: ${response.body}';
+        try {
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map && decoded['message'] != null) {
+            errMsg = decoded['message'].toString();
+          }
+        } catch (_) {}
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errMsg),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isCancelling = false);
     }
   }
 
@@ -1494,15 +1573,67 @@ class _MechanicUserMapState extends State<MechanicUserMap>
                     ),
                   ),
                   const Spacer(),
+                  if (!_workStarted)
+                    GestureDetector(
+                      onTap: _isCancelling ? null : _cancelRequestByMechanic,
+                      child: Container(
+                        margin: const EdgeInsets.only(right: 8),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(15),
+                          border: Border.all(color: Colors.red.shade100),
+                          boxShadow: [
+                            BoxShadow(
+                                color: Colors.black.withOpacity(0.05),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4))
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            _isCancelling
+                                ? const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2, color: Colors.red),
+                                  )
+                                : Icon(Icons.cancel_outlined,
+                                    color: Colors.red.shade600, size: 18),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Cancel',
+                              style: GoogleFonts.poppins(
+                                  color: Colors.red.shade600,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     decoration: BoxDecoration(
-                      color: _primary,
+                      color: _workStarted ? Colors.green : _primary,
                       borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                            color: (_workStarted ? Colors.green : _primary)
+                                .withOpacity(0.3),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4))
+                      ],
                     ),
                     child: Text(
-                      'EN ROUTE',
-                      style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                      _workStarted ? 'IN PROGRESS' : 'EN ROUTE',
+                      style: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12),
                     ),
                   ),
                 ],

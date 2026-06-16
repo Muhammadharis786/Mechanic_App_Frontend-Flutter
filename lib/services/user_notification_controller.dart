@@ -6,6 +6,7 @@ import '../main.dart'; // To access navigatorKey
 import '../screens/authentication/user_session.dart';
 import '../screens/user/user_notification_screen.dart';
 import 'user_websocket_service.dart';
+import 'active_service_request_tracking.dart';
 
 class UserNotificationController {
   // Singleton
@@ -39,6 +40,9 @@ class UserNotificationController {
 
     _userWebSocket = UserWebSocketService(
       onNotificationReceived: (data, type) {
+        if (type == 'request_expired' || type == 'request_cancelled') {
+          ActiveServiceRequestTracking.clear();
+        }
         // 1. Show Global Overlay
         showNotificationOverlay(data, type);
 
@@ -78,6 +82,8 @@ class UserNotificationController {
       'work_completed' => '✅ Work Completed!',
       'send_charges' => '💰 Bill Ready',
       'rejected' => '❌ Appointment Rejected',
+      'request_expired' => '⏳ Request Expired',
+      'request_cancelled' => '❌ Request Cancelled',
       _ => '🔔 Appointment Update',
     };
     final String message = data['message']?.toString() ?? '';

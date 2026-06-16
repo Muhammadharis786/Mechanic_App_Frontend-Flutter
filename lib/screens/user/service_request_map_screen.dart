@@ -136,6 +136,8 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     } else {
       _initializePosition();
     }
+    
+    ActiveServiceRequestTracking.current.addListener(_onGlobalTrackingChanged);
 
     // Initialize the smooth marker animation ticker
     _markerTicker = createTicker(_onMarkerTick);
@@ -215,6 +217,17 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     } else {
       // If all caught up, stop ticker to save battery
       _markerTicker.stop();
+    }
+  }
+
+  void _onGlobalTrackingChanged() {
+    final active = ActiveServiceRequestTracking.current.value;
+    if (active == null && mounted && !_cancelExitHandled) {
+      debugPrint('MapScreen: Active tracking cleared globally, exiting...');
+      _exitToUserHome(
+        snackMessage: 'Request expired or was completed.',
+        snackColor: Colors.orange,
+      );
     }
   }
 
@@ -303,6 +316,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
 
   @override
   void dispose() {
+    ActiveServiceRequestTracking.current.removeListener(_onGlobalTrackingChanged);
     _markerTicker.dispose();
     _spinController.dispose();
     _searchCtrl.dispose();
@@ -569,8 +583,16 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
             .toUpperCase() ??
         '';
 
-    if (backendType == 'ROAD_REQUEST_CANCELLED') {
-      _handleRequestCancelledBySocket(data);
+    if (backendType == 'ROAD_REQUEST_CANCELLED' || status == 'EXPIRED') {
+      if (status == 'EXPIRED') {
+        _exitToUserHome(
+          snackMessage: data['message']?.toString() ??
+              'No mechanic was available. Please try again later.',
+          snackColor: Colors.redAccent,
+        );
+      } else {
+        _handleRequestCancelledBySocket(data);
+      }
       return;
     }
 
