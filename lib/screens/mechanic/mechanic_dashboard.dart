@@ -93,6 +93,27 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
     _fetchRecentJobs();
     _initWebSocket();
     FcmNotificationService.instance.syncTokenWithBackend();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncActiveTrackingWithServer();
+      _subscribeActiveRequestTopic();
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    if (state == AppLifecycleState.resumed) {
+      return;
+    }
+
+    final shouldGoOffline = state == AppLifecycleState.detached;
+
+    if (shouldGoOffline && isOnline && !_lifecycleOfflineUpdateInProgress) {
+      _lifecycleOfflineUpdateInProgress = true;
+      unawaited(_toggleOnlineStatus(false, showSnack: false));
+    }
   }
 
   void _initWebSocket() {

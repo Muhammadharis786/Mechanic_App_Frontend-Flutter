@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'role_selection_screen.dart';
+import '../l10n/app_strings.dart';
+import '../services/app_state.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -19,26 +21,26 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   late Animation<double> _fadeIn;
   late Animation<Offset> _slideUp;
 
-  final List<Map<String, String>> onboardingData = [
+  List<Map<String, String>> get onboardingData => [
     {
       "image": "assets/images/boardi1.png",
-      "title": "Welcome to OnFix",
-      "desc": "Find nearby mechanics easily when your vehicle breaks down."
+      "title": AppStrings.t('onboard1Title'),
+      "desc": AppStrings.t('onboard1Desc'),
     },
     {
       "image": "assets/images/onboardd2.png",
-      "title": "Book Appointments",
-      "desc": "Get a mechanic to service your vehicle at home or on the road."
+      "title": AppStrings.t('onboard2Title'),
+      "desc": AppStrings.t('onboard2Desc'),
     },
     {
       "image": "assets/images/onboardd3.png",
-      "title": "Fast & Reliable Service",
-      "desc": "Quick, reliable support from experts — no matter where you are."
+      "title": AppStrings.t('onboard3Title'),
+      "desc": AppStrings.t('onboard3Desc'),
     },
     {
       "image": "assets/images/onboard4.png",
-      "title": "Switch Roles Easily",
-      "desc": "Seamlessly switch between being a customer and a service provider anytime."
+      "title": AppStrings.t('onboard4Title'),
+      "desc": AppStrings.t('onboard4Desc'),
     },
   ];
 
@@ -185,12 +187,15 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       ),
                     );
                   },
-                  child: Text(
-                    "Skip >",
-                    style: GoogleFonts.poppins(
-                      color: const Color.fromARGB(255, 70, 68, 68),
-                      fontSize: 18,
-                      fontWeight: FontWeight.w300,
+                  child: ValueListenableBuilder<Locale>(
+                    valueListenable: appLanguageController,
+                    builder: (_, __, ___) => Text(
+                      AppStrings.t('skip'),
+                      style: GoogleFonts.poppins(
+                        color: const Color.fromARGB(255, 70, 68, 68),
+                        fontSize: 18,
+                        fontWeight: FontWeight.w300,
+                      ),
                     ),
                   ),
                 ),
@@ -240,8 +245,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                         ),
                         child: Text(
                           _currentPage == onboardingData.length - 1
-                              ? "Get Started"
-                              : "Next",
+                              ? AppStrings.t('getStarted')
+                              : AppStrings.t('next'),
                           style: GoogleFonts.poppins(
                             fontSize: 18,
                             fontWeight: FontWeight.w600,

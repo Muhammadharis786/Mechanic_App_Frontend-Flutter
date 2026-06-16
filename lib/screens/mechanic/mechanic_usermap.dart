@@ -88,6 +88,10 @@ class _MechanicUserMapState extends State<MechanicUserMap>
   double? _approvedFinalPrice;
   double? _approvedArrivalPrice;
   final TextEditingController _priceController = TextEditingController();
+
+  // Navigation mode
+  bool _navigationStarted = false; // true after mechanic taps "Start Navigation"
+  bool _userInteracting = false;   // true while user is manually panning/zooming
   
   // State
   bool _isLocatingMechanic = false;
@@ -950,6 +954,9 @@ class _MechanicUserMapState extends State<MechanicUserMap>
   }
 
   void _followMechanic(LatLng position, double bearing) {
+    // Only auto-follow if navigation has been started AND user isn't manually panning
+    if (!_navigationStarted || _userInteracting) return;
+
     final now = DateTime.now();
     if (_lastCameraFollowAt != null &&
         now.difference(_lastCameraFollowAt!).inMilliseconds < 280) {
@@ -961,12 +968,29 @@ class _MechanicUserMapState extends State<MechanicUserMap>
       CameraUpdate.newCameraPosition(
         CameraPosition(
           target: position,
-          zoom: 17,
-          tilt: 45,
+          zoom: 17.5,
+          tilt: 60,          // Deep 3D tilt like Google Maps navigation
           bearing: bearing,
         ),
       ),
     );
+  }
+
+  void _startNavigation() {
+    setState(() => _navigationStarted = true);
+    // Immediately jump to 3D navigation view
+    if (_mechanicCurrentPos != null) {
+      _mapController?.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: _mechanicCurrentPos!,
+            zoom: 17.5,
+            tilt: 60,
+            bearing: _mechanicBearing,
+          ),
+        ),
+      );
+    }
   }
 
   double _bearingBetween(LatLng from, LatLng to) {
@@ -1523,9 +1547,22 @@ class _MechanicUserMapState extends State<MechanicUserMap>
                     zoom: 14,
                   ),
                   myLocationEnabled: false,
-                  zoomControlsEnabled: false,
-                  compassEnabled: false,
+                  zoomControlsEnabled: false,    // We provide custom zoom buttons
+                  compassEnabled: true,
                   mapToolbarEnabled: false,
+                  zoomGesturesEnabled: true,     // Pinch-to-zoom enabled
+                  scrollGesturesEnabled: true,   // Pan enabled
+                  rotateGesturesEnabled: true,   // Two-finger rotate enabled
+                  tiltGesturesEnabled: true,     // Two-finger tilt enabled
+                  onCameraMove: (_) {
+                    // When user manually moves camera, pause auto-follow
+                    if (_navigationStarted && !_userInteracting) {
+                      setState(() => _userInteracting = true);
+                    }
+                  },
+                  onCameraIdle: () {
+                    // Do NOT auto-resume here — user must tap re-center to resume
+                  },
                   markers: {
                     if (_mechanicCurrentPos != null)
                       Marker(
@@ -1554,6 +1591,81 @@ class _MechanicUserMapState extends State<MechanicUserMap>
                   polylines: _polylines,
                 ),
 
+          // Custom zoom controls (bottom-right)
+          Positioned(
+            right: 16,
+            bottom: 340,
+            child: Column(
+              children: [
+                // Re-center button (appears when user has panned away)
+                if (_navigationStarted && _userInteracting)
+                  GestureDetector(
+                    onTap: () {
+                      setState(() => _userInteracting = false);
+                      if (_mechanicCurrentPos != null) {
+                        _mapController?.animateCamera(
+                          CameraUpdate.newCameraPosition(
+                            CameraPosition(
+                              target: _mechanicCurrentPos!,
+                              zoom: 17.5,
+                              tilt: 60,
+                              bearing: _mechanicBearing,
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 6)],
+                      ),
+                      child: Icon(Icons.my_location_rounded, color: _primary, size: 22),
+                    ),
+                  ),
+                // Zoom In
+                GestureDetector(
+                  onTap: () => _mapController?.animateCamera(CameraUpdate.zoomIn()),
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(12),
+                        topRight: Radius.circular(12),
+                      ),
+                      boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 6)],
+                    ),
+                    child: const Icon(Icons.add_rounded, color: Colors.black87, size: 24),
+                  ),
+                ),
+                Container(height: 1, width: 44, color: Colors.grey.shade200),
+                // Zoom Out
+                GestureDetector(
+                  onTap: () => _mapController?.animateCamera(CameraUpdate.zoomOut()),
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: const BorderRadius.only(
+                        bottomLeft: Radius.circular(12),
+                        bottomRight: Radius.circular(12),
+                      ),
+                      boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 6)],
+                    ),
+                    child: const Icon(Icons.remove_rounded, color: Colors.black87, size: 24),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
           // Top Header
           SafeArea(
             child: Padding(
@@ -1573,69 +1685,38 @@ class _MechanicUserMapState extends State<MechanicUserMap>
                     ),
                   ),
                   const Spacer(),
-                  if (!_workStarted)
-                    GestureDetector(
-                      onTap: _isCancelling ? null : _cancelRequestByMechanic,
-                      child: Container(
-                        margin: const EdgeInsets.only(right: 8),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(15),
-                          border: Border.all(color: Colors.red.shade100),
-                          boxShadow: [
-                            BoxShadow(
-                                color: Colors.black.withOpacity(0.05),
-                                blurRadius: 10,
-                                offset: const Offset(0, 4))
-                          ],
-                        ),
-                        child: Row(
-                          children: [
-                            _isCancelling
-                                ? const SizedBox(
-                                    width: 14,
-                                    height: 14,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2, color: Colors.red),
-                                  )
-                                : Icon(Icons.cancel_outlined,
-                                    color: Colors.red.shade600, size: 18),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Cancel',
-                              style: GoogleFonts.poppins(
-                                  color: Colors.red.shade600,
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 13),
-                            ),
-                          ],
-                        ),
+                  // Show 3D badge when in navigation mode
+                  if (_navigationStarted)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.black87,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.navigation_rounded, color: Colors.white, size: 14),
+                          const SizedBox(width: 4),
+                          Text(
+                            '3D NAV',
+                            style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: _primary,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        'EN ROUTE',
+                        style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
                       ),
                     ),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: _workStarted ? Colors.green : _primary,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                            color: (_workStarted ? Colors.green : _primary)
-                                .withOpacity(0.3),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4))
-                      ],
-                    ),
-                    child: Text(
-                      _workStarted ? 'IN PROGRESS' : 'EN ROUTE',
-                      style: GoogleFonts.poppins(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 12),
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -2058,7 +2139,39 @@ class _MechanicUserMapState extends State<MechanicUserMap>
                         ],
                       ),
                     )
+                  else if (!_navigationStarted)
+                    // START NAVIGATION button — shown right after accepting
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _startNavigation,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF1A73E8), // Google blue
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          elevation: 4,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.navigation_rounded, color: Colors.white, size: 22),
+                            const SizedBox(width: 8),
+                            Text(
+                              'START NAVIGATION',
+                              style: GoogleFonts.poppins(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                fontSize: 15,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
                   else
+                    // Navigation started: show I HAVE ARRIVED or SEND CHARGES
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
@@ -2066,14 +2179,13 @@ class _MechanicUserMapState extends State<MechanicUserMap>
                             ? (_isSendingPrice ? null : _showSendChargesDialog)
                             : (_isCheckingArrival ? null : _onHaveArrived),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor:
-                              _hasArrived ? _primary : _primary,
+                          backgroundColor: _primary,
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
                           ),
                         ),
-                        child: _isSendingPrice
+                        child: _isSendingPrice || _isCheckingArrival
                             ? const SizedBox(
                                 width: 22,
                                 height: 22,
