@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:mech_app/screens/authentication/user_session.dart';
 
 import 'mechanic_otp_screen.dart';
+import 'package:mech_app/widgets/app_back_button.dart';
 
 class MechanicRegisterPhoneScreen extends StatefulWidget {
   const MechanicRegisterPhoneScreen({super.key});
@@ -117,15 +118,7 @@ class _MechanicRegisterPhoneScreenState
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        leading: IconButton(
-          onPressed: () => Navigator.pop(context),
-          icon: const Icon(
-            Icons.arrow_back_ios_new_rounded,
-            color: Color(0xFFFB3300),
-            size: 18,
-          ),
-          splashRadius: 20,
-        ),
+        leading: const AppBackButton(),
         title: Text(
           "Mechanic Registration",
           style: GoogleFonts.poppins(color: theme.textTheme.titleLarge?.color),

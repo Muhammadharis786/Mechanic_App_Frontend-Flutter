@@ -7,6 +7,7 @@ import 'package:mech_app/screens/homescreen.dart';
 import 'package:mech_app/screens/role_selection_screen.dart';
 import 'package:mech_app/screens/authentication/user_session.dart';
 import 'package:mech_app/services/user_notification_controller.dart';
+import 'package:mech_app/widgets/app_back_button.dart';
 
 class SettingsMenuBar extends StatefulWidget {
   const SettingsMenuBar({super.key});
@@ -72,8 +73,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
         appBar: AppBar(
           backgroundColor: isDark ? Colors.black : Colors.white,
           elevation: 0,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios, color: Color(0xFFFB3300), size: 22),
+          leading: AppBackButton(
             onPressed: () {
               Navigator.pushAndRemoveUntil(
                 context,

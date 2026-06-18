@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
 import 'package:mech_app/services/user_notification_controller.dart';
 import 'package:mech_app/screens/user/service_review_screen.dart';
+import 'package:mech_app/widgets/app_back_button.dart';
 
 class RequestHistoryScreen extends StatefulWidget {
   const RequestHistoryScreen({super.key});
@@ -446,9 +447,7 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
         backgroundColor: isDark ? Colors.black : Colors.white,
         elevation: 0,
         centerTitle: false,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios,
-              color: isDark ? Colors.white : Colors.black, size: 20),
+        leading: AppBackButton(
           onPressed: () => Navigator.pushReplacement(
               context, MaterialPageRoute(builder: (_) => const HomeScreen())),
         ),

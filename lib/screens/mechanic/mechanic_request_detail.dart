@@ -7,6 +7,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
+import '../../widgets/app_back_button.dart';
 
 class MechanicRequestDetailScreen extends StatefulWidget {
   final Map<String, dynamic> request;
@@ -297,6 +298,7 @@ class _MechanicRequestDetailScreenState
         backgroundColor: Theme.of(context).appBarTheme.backgroundColor ??
             Theme.of(context).scaffoldBackgroundColor,
         centerTitle: true,
+        leading: const AppBackButton(),
         iconTheme: IconThemeData(color: primaryColor),
         elevation: 0,
       ),

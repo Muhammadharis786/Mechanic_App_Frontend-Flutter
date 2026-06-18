@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import '../authentication/user_session.dart';
+import '../../widgets/app_back_button.dart';
 
 class MechanicHistoryScreen extends StatefulWidget {
   const MechanicHistoryScreen({super.key});
@@ -63,6 +64,7 @@ class _MechanicHistoryScreenState extends State<MechanicHistoryScreen> {
         backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         elevation: 0,
         centerTitle: true,
+        leading: const AppBackButton(),
         iconTheme: IconThemeData(color: primaryColor),
       ),
       body: _isLoading

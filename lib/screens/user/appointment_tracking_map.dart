@@ -5,6 +5,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../../widgets/app_back_button.dart';
 
 class AppointmentTrackingMap extends StatefulWidget {
   final double userLat;
@@ -339,10 +340,7 @@ class _AppointmentTrackingMapState extends State<AppointmentTrackingMap> {
           padding: const EdgeInsets.all(8.0),
           child: CircleAvatar(
             backgroundColor: isDark ? Colors.black54 : Colors.white70,
-            child: IconButton(
-              icon: Icon(Icons.arrow_back_ios_new, size: 18, color: isDark ? Colors.white : Colors.black),
-              onPressed: () => Navigator.pop(context),
-            ),
+            child: const AppBackButton(),
           ),
         ),
       ),

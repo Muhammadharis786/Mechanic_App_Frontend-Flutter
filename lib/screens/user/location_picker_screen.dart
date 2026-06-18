@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
@@ -61,7 +62,6 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
 
     _sessionToken = Uuid().v4();
     _getUserLocation();
-    _fetchSuggestions('');
 
     _searchFocus.addListener(() {
       if (_searchFocus.hasFocus) {
@@ -114,9 +114,15 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
   Future<void> _fetchSuggestions(String input) async {
     var query = input.trim();
 
-    // Use Karachi as default query to show area suggestions even before typing
     if (query.isEmpty) {
-      query = 'Karachi';
+      if (mounted) {
+        setState(() {
+          _suggestions = [];
+          _showSuggestions = false;
+          _isLoading = false;
+        });
+      }
+      return;
     }
 
     setState(() => _isLoading = true);
@@ -352,6 +358,79 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
     });
   }
 
+  Widget _buildMarkerWidget() {
+    return SizedBox(
+      width: 56,
+      height: 56,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          if (_isDragging)
+            AnimatedBuilder(
+              animation: _spinController,
+              builder: (context, child) => Transform.rotate(
+                angle: _spinController.value * 2 * math.pi,
+                child: CustomPaint(
+                  size: const Size(56, 56),
+                  painter: _DashedCirclePainter(color: _primary),
+                ),
+              ),
+            ),
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: _primary.withValues(alpha: 0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+              border: Border.all(
+                color: _isDragging ? Colors.transparent : _primary,
+                width: 3,
+              ),
+            ),
+            child: const Icon(
+              Icons.location_pin,
+              color: _primary,
+              size: 26,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTooltip(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      constraints: const BoxConstraints(maxWidth: 260),
+      decoration: BoxDecoration(
+        color: Colors.black87,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 2)),
+        ],
+      ),
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          fontFamily: 'Bricolage Grotesque',
+          color: Colors.white,
+          fontSize: 12,
+          fontWeight: FontWeight.w400,
+        ),
+      ),
+    );
+  }
+
   // ───────────────────────── UI ─────────────────────────
   @override
   Widget build(BuildContext context) {
@@ -371,7 +450,10 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
             zoomControlsEnabled: false,
             onCameraMove: (pos) => _markerPos = pos.target,
             onCameraMoveStarted: () {
-              setState(() => _isDragging = true);
+              setState(() {
+                _isDragging = true;
+                _locationLabel = null;
+              });
               _searchFocus.unfocus();
             },
             onCameraIdle: () async {
@@ -387,31 +469,37 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
 
           // CENTER PIN
           Center(
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 250),
-              curve: Curves.easeOut,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: _primary.withValues(alpha: 0.25),
-                          blurRadius: 12,
-                          spreadRadius: 2,
-                        ),
-                      ],
-                    ),
-                    child: Icon(Icons.location_on, size: 42, color: _primary),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildMarkerWidget(),
+                Container(
+                  width: 3,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: _primary,
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                ],
-              ),
+                ),
+                Container(
+                  width: 10,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.black26,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ],
             ),
           ),
+
+          if (_locationLabel != null && !_isDragging)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 80),
+                child: _buildTooltip(_locationLabel!),
+              ),
+            ),
 
           // SEARCH BAR
           SafeArea(
@@ -600,4 +688,38 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
       ),
     );
   }
+}
+
+class _DashedCirclePainter extends CustomPainter {
+  final Color color;
+  _DashedCirclePainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 2.5
+      ..style = PaintingStyle.stroke;
+
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2 - 2;
+    const dashCount = 10;
+    final dashAngle = math.pi * 2 / dashCount;
+    const gapFraction = 0.4;
+
+    for (int i = 0; i < dashCount; i++) {
+      final start = dashAngle * i;
+      final sweep = dashAngle * (1 - gapFraction);
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        start,
+        sweep,
+        false,
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedCirclePainter old) => old.color != color;
 }

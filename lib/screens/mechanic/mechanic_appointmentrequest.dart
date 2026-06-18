@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../authentication/user_session.dart';
+import '../../widgets/app_back_button.dart';
 import '../user/appointment_tracking_map.dart';
 import '../../services/mechanic_notification_controller.dart';
 
@@ -711,6 +712,7 @@ class _MechanicAppointmentRequestScreenState
         backgroundColor: isDark ? Colors.black : Colors.white,
         elevation: 0,
         centerTitle: true,
+        leading: const AppBackButton(),
         actions: [
           IconButton(
             icon: Icon(Icons.refresh_rounded,

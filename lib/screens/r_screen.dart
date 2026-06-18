@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'otp_screen.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import '../widgets/app_back_button.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -91,16 +92,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               // Back button
               Row(
                 children: [
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(
-                      Icons.arrow_back_ios_new_rounded,
-                      color: Color(0xFFFB3300),
-                      size: 20,
-                    ),
-                    padding: const EdgeInsets.all(4),
-                    splashRadius: 20,
-                  ),
+                  const AppBackButton(),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(

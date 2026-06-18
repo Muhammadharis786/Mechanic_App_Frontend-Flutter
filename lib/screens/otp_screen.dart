@@ -2,6 +2,7 @@
 // ignore_for_file: use_build_context_synchronously
 
 import 'package:flutter/material.dart';
+import '../widgets/app_back_button.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mech_app/screens/verify_screen.dart';
@@ -160,16 +161,7 @@ Future<void> _resendOtp() async {
             fontWeight: FontWeight.w600,
           ),
         ),
-        // ── SIRF YEH CHANGE HUA ─────────────────────────────────────
-        leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios_new,   // V-shape back arrow
-            color: Color(0xFFFB3300),   // Deep orange
-            size: 20,
-          ),
-          onPressed: () => Navigator.pop(context),
-        ),
-        // ─────────────────────────────────────────────────────────────
+        leading: const AppBackButton(),
         iconTheme: const IconThemeData(color: Colors.black),
       ),
       body: Padding(

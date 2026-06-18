@@ -10,6 +10,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'service_request_map_screen.dart';
 import 'service_request_notes_screen.dart';
+import '../../widgets/app_back_button.dart';
 
 class Mechanic {
   final String id;
@@ -239,10 +240,7 @@ class _MechanicDetailScreenState extends State<MechanicDetailScreen> {
             left: 16,
             child: CircleAvatar(
               backgroundColor: isDark ? Colors.grey[900] : Colors.white,
-              child: IconButton(
-                icon: Icon(Icons.arrow_back_ios, color: isDark ? Colors.white : Colors.black, size: 20),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
+              child: const AppBackButton(),
             ),
           ),
 
@@ -610,10 +608,7 @@ class FullScreenMapScreen extends StatelessWidget {
             left: 16,
             child: CircleAvatar(
               backgroundColor: isDark ? Colors.grey[900] : Colors.white,
-              child: IconButton(
-                icon: Icon(Icons.close, color: isDark ? Colors.white : Colors.black),
-                onPressed: () => Navigator.pop(context),
-              ),
+              child: const AppBackButton(),
             ),
           ),
           Positioned(

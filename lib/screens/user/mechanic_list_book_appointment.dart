@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:mech_app/widgets/app_back_button.dart';
 
 class MechanicListScreenn extends StatelessWidget {
   final String serviceType;
@@ -24,10 +25,7 @@ class MechanicListScreenn extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 1,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios, color: primaryColor, size: 22),
-          onPressed: () => Navigator.pop(context),
-        ),
+        leading: const AppBackButton(),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'role_selection_screen.dart';
+import '../widgets/app_back_button.dart';
 
 class NewPassword extends StatefulWidget {
   final String email;
@@ -90,6 +91,7 @@ class _NewPasswordState extends State<NewPassword> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
+        leading: const AppBackButton(),
         title: Text(
           "Create New Password",
           style: GoogleFonts.poppins(

@@ -9,6 +9,7 @@ import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'mechanic_registration_screen.dart';
+import '../../widgets/app_back_button.dart';
 
 class MechanicKycScreen extends StatefulWidget {
   final String phoneNumber;
@@ -948,10 +949,7 @@ class _MechanicKycScreenState extends State<MechanicKycScreen> {
   }
 
   Widget _backButton() {
-    return IconButton(
-      onPressed: () => setState(() => _step--),
-      icon: const Icon(Icons.arrow_back_ios_new_rounded),
-    );
+    return AppBackButton(onPressed: () => setState(() => _step--));
   }
 
   Widget _scrollablePage({required Key key, required Color color, required EdgeInsets padding, required Widget child}) {

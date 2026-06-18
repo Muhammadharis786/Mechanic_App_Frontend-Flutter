@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../authentication/user_session.dart';
 import '../user/appointment_tracking_map.dart';
+import '../../widgets/app_back_button.dart';
 
 class MechanicBookingRequestScreen extends StatefulWidget {
   const MechanicBookingRequestScreen({super.key});
@@ -314,11 +315,7 @@ class _MechanicBookingRequestScreenState
       appBar: AppBar(
         backgroundColor: isDark ? Colors.black : Colors.white,
         elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios,
-              color: isDark ? Colors.white : Colors.black, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
+        leading: const AppBackButton(),
         title: Text(
           'Booking Requests',
           style: GoogleFonts.getFont('Bricolage Grotesque',

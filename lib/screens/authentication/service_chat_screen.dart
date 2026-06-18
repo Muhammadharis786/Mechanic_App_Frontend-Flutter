@@ -2,7 +2,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../auto_assign.dart';
-import 'user_session.dart'; 
+import 'user_session.dart';
+import '../../widgets/app_back_button.dart';
 
 class ServiceChatScreen extends StatefulWidget {
   final String serviceType;
@@ -110,11 +111,7 @@ Future<void> fetchOptions(int parentId) async {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 1,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios,
-              color: Colors.black, size: 22),
-          onPressed: () => Navigator.pop(context),
-        ),
+        leading: const AppBackButton(),
         title: Text(
           "${widget.serviceType} Assistant",
           style: const TextStyle(

@@ -9,6 +9,7 @@ import 'package:mech_app/screens/user/location_picker_screen.dart';
 import 'package:mech_app/screens/user/mechanic_list_book_appointment.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:mech_app/widgets/app_back_button.dart';
 
 const String _baseUrl =
     'https://mechanicapp-service-621632382478.asia-south1.run.app';
@@ -367,8 +368,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       appBar: AppBar(
         backgroundColor: isDark ? Colors.black : Colors.white,
         elevation: 1,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.black, size: 20),
+        leading: AppBackButton(
           onPressed: () => Navigator.pushReplacement(
               context, MaterialPageRoute(builder: (_) => HomeScreen())),
         ),
@@ -1017,27 +1017,43 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           fontSize: 15));
 
   Widget _sectionTitleWithSeeAll(
-          String title, String seeAllText, VoidCallback onSeeAll) =>
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(title,
-              style: GoogleFonts.getFont('Bricolage Grotesque',
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15)),
-          TextButton(
-            onPressed: onSeeAll,
-            style: ButtonStyle(
-              backgroundColor: MaterialStateProperty.all(Colors.white),
-              overlayColor: MaterialStateProperty.all(Colors.deepOrange.shade100),
+          String title, String seeAllText, VoidCallback onSeeAll) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(title,
+            style: GoogleFonts.getFont('Bricolage Grotesque',
+                fontWeight: FontWeight.w700,
+                fontSize: 15)),
+        InkWell(
+          onTap: onSeeAll,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+                horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.grey[850] : Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: const [
+                BoxShadow(
+                  color: Colors.black12,
+                  blurRadius: 4,
+                ),
+              ],
             ),
-            child: Text(seeAllText,
-                style: GoogleFonts.getFont('Bricolage Grotesque',
-                    color: Colors.deepOrange,
-                    fontWeight: FontWeight.w600)),
+            child: Text(
+              seeAllText,
+              style: TextStyle(
+                  fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                  color: Colors.deepOrange,
+                  fontWeight: FontWeight.w500),
+            ),
           ),
-        ],
-      );
+        ),
+      ],
+    );
+  }
 
   Widget _buildServiceFilters(bool isDark) {
     return SizedBox(

@@ -1159,61 +1159,58 @@ class _HomeScreenState extends State<HomeScreen> {
                     );
                   }
                 }),
-              ],
-            ),
-          ),
-
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-            child: InkWell(
-              onTap: () async {
-                UserNotificationController().dispose(); // Close WebSocket
-                if (await UserSession().trySwitchTo('MECHANIC')) {
-                  if (context.mounted) {
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (_) => const MechanicDashboardScreen()),
-                      (route) => false,
-                    );
-                  }
-                } else {
-                  if (context.mounted) {
-                    Navigator.push(
-                      context, 
-                      MaterialPageRoute(builder: (_) => const MechanicLoginScreen())
-                    );
-                  }
-                }
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                decoration: BoxDecoration(
-                  color: isDark ? Colors.grey[850] : Colors.white,
-                  border: Border.all(color: primaryColor.withOpacity(0.3), width: 1.5),
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: [
-                    BoxShadow(
-                      color: primaryColor.withOpacity(0.05),
-                      blurRadius: 10, offset: const Offset(0, 4)
-                    )
-                  ],
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.swap_horiz_outlined, color: primaryColor, size: 22),
-                    const SizedBox(width: 10),
-                    Text(
-                      'Return to Mechanic',
-                      style: TextStyle(
-                          fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
-                          color: Color(0xFFFB3300), 
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500),
+                const SizedBox(height: 12),
+                InkWell(
+                  onTap: () async {
+                    UserNotificationController().dispose(); // Close WebSocket
+                    if (await UserSession().trySwitchTo('MECHANIC')) {
+                      if (context.mounted) {
+                        Navigator.pushAndRemoveUntil(
+                          context,
+                          MaterialPageRoute(builder: (_) => const MechanicDashboardScreen()),
+                          (route) => false,
+                        );
+                      }
+                    } else {
+                      if (context.mounted) {
+                        Navigator.push(
+                          context, 
+                          MaterialPageRoute(builder: (_) => const MechanicLoginScreen())
+                        );
+                      }
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.grey[850] : Colors.white,
+                      border: Border.all(color: primaryColor.withOpacity(0.3), width: 1.5),
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color: primaryColor.withOpacity(0.05),
+                          blurRadius: 10, offset: const Offset(0, 4)
+                        )
+                      ],
                     ),
-                  ],
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.swap_horiz_outlined, color: primaryColor, size: 22),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Return to Mechanic',
+                          style: TextStyle(
+                              fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                              color: Color(0xFFFB3300), 
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
         ],

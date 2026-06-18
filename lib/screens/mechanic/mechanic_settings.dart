@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '/main.dart';
 import '../authentication/user_session.dart';
 import '../role_selection_screen.dart';
+import '../../widgets/app_back_button.dart';
 
 class MechanicSettingsScreen extends StatefulWidget {
   const MechanicSettingsScreen({super.key});
@@ -170,6 +171,7 @@ class _MechanicSettingsScreenState extends State<MechanicSettingsScreen> {
         title: Text("Settings", style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w600)),
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         elevation: 0,
+        leading: const AppBackButton(),
         iconTheme: IconThemeData(color: isDarkMode ? Colors.white : Colors.black),
       ),
       body: ListView(
