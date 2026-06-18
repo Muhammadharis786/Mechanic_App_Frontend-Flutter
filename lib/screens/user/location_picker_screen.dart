@@ -434,6 +434,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
   // ───────────────────────── UI ─────────────────────────
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       body: Stack(
         children: [
@@ -517,10 +518,11 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
                         () => _fetchSuggestions(v),
                       );
                     },
+                    style: TextStyle(color: isDark ? Colors.white : Colors.black),
                     decoration: InputDecoration(
                       hintText: "Search location in Karachi...",
                       filled: true,
-                      fillColor: Colors.white,
+                      fillColor: isDark ? const Color(0xFF1E1E22) : Colors.white,
                       prefixIcon: const Icon(Icons.search, color: Color(0xFFFB3300)),
                       suffixIcon: _isLoading 
                         ? Padding(
@@ -537,15 +539,15 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
                         : null,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
+                        borderSide: BorderSide(color: isDark ? Colors.grey.shade800 : Colors.grey.shade300),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
+                        borderSide: BorderSide(color: isDark ? Colors.grey.shade800 : Colors.grey.shade300),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Color(0xFFFB3300), width: 2),
+                        borderSide: const BorderSide(color: Color(0xFFFB3300), width: 2),
                       ),
                     ),
                   ),
@@ -557,13 +559,13 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
                     margin: const EdgeInsets.symmetric(horizontal: 10),
                     constraints: const BoxConstraints(maxHeight: 320),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: isDark ? const Color(0xFF1E1E22) : Colors.white,
                       borderRadius: BorderRadius.circular(14),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.12),
+                          color: isDark ? Colors.black38 : Colors.black.withValues(alpha: 0.12),
                           blurRadius: 10,
-                          offset: Offset(0, 4),
+                          offset: const Offset(0, 4),
                         ),
                       ],
                     ),
@@ -636,10 +638,10 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: isDark ? const Color(0xFF1E1E22) : Colors.white,
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
-                    BoxShadow(color: Colors.black.withValues(alpha: 0.12), blurRadius: 8, offset: const Offset(0, 3)),
+                    BoxShadow(color: isDark ? Colors.black38 : Colors.black.withValues(alpha: 0.12), blurRadius: 8, offset: const Offset(0, 3)),
                   ],
                 ),
                 child: Row(
@@ -651,7 +653,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
                         _locationLabel!,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: isDark ? Colors.white : Colors.black87),
                       ),
                     ),
                   ],
@@ -664,7 +666,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
             right: 16,
             bottom: 120,
             child: FloatingActionButton(
-              backgroundColor: Colors.white,
+              backgroundColor: isDark ? const Color(0xFF1E1E22) : Colors.white,
               onPressed: _getUserLocation,
               child: Icon(Icons.my_location, color: _primary),
             ),

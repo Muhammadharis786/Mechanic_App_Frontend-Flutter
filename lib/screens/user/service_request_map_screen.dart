@@ -1642,8 +1642,9 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: isDark ? Colors.black : Colors.white,
       body: Stack(
         children: [
           GoogleMap(
@@ -1906,6 +1907,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
   }
 
   Widget _buildSearchBar() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: Row(
@@ -1915,11 +1917,11 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
             child: Container(
               width: 40,
               height: 40,
-              decoration: const BoxDecoration(
-                color: Colors.white,
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E1E22) : Colors.white,
                 shape: BoxShape.circle,
                 boxShadow: [
-                  BoxShadow(color: Colors.black12, blurRadius: 6)
+                  BoxShadow(color: isDark ? Colors.black38 : Colors.black12, blurRadius: 6)
                 ],
               ),
               child: const Icon(
@@ -1934,17 +1936,17 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
             child: Container(
               height: 46,
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: isDark ? const Color(0xFF1E1E22) : Colors.white,
                 borderRadius: BorderRadius.circular(14),
-                boxShadow: const [
-                  BoxShadow(color: Colors.black12, blurRadius: 8)
+                boxShadow: [
+                  BoxShadow(color: isDark ? Colors.black38 : Colors.black12, blurRadius: 8)
                 ],
               ),
               child: TextField(
                 controller: _searchCtrl,
                 focusNode: _searchFocus,
-                style: const TextStyle(
-                    fontFamily: 'Bricolage Grotesque', fontSize: 14),
+                style: TextStyle(
+                    fontFamily: 'Bricolage Grotesque', fontSize: 14, color: isDark ? Colors.white : Colors.black87),
                 decoration: InputDecoration(
                   hintText: 'Search location...',
                   hintStyle: TextStyle(
@@ -2483,16 +2485,17 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
   }
 
   Widget _buildPriceApprovalCard() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
         borderRadius: BorderRadius.circular(24),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: Colors.black26,
+            color: isDark ? Colors.black38 : Colors.black26,
             blurRadius: 20,
-            offset: Offset(0, 8),
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -2514,7 +2517,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
             style: GoogleFonts.poppins(
               fontSize: 15,
               fontWeight: FontWeight.w600,
-              color: Colors.grey.shade600,
+              color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
             ),
           ),
           const SizedBox(height: 8),
@@ -2523,7 +2526,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
             style: GoogleFonts.poppins(
               fontSize: 38,
               fontWeight: FontWeight.w800,
-              color: Colors.black87,
+              color: isDark ? Colors.white : Colors.black87,
               letterSpacing: 1.5,
             ),
           ),
@@ -2532,7 +2535,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
             'Please review and confirm the charges',
             style: GoogleFonts.poppins(
               fontSize: 12,
-              color: Colors.grey.shade500,
+              color: isDark ? Colors.grey.shade400 : Colors.grey.shade50,
             ),
           ),
           const SizedBox(height: 24),
@@ -2627,16 +2630,17 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
         (mechanic['distanceText'] ?? mechanic['distance'] ?? '--').toString();
     final eta = _acceptedEta ?? mechanic['eta']?.toString() ?? '--';
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: Colors.black26,
+            color: isDark ? Colors.black38 : Colors.black26,
             blurRadius: 15,
-            offset: Offset(0, 5),
+            offset: const Offset(0, 5),
           ),
         ],
       ),
@@ -2648,7 +2652,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
             children: [
               CircleAvatar(
                 radius: 28,
-                backgroundColor: Colors.grey.shade200,
+                backgroundColor: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
                 backgroundImage:
                     image.startsWith('http') ? NetworkImage(image) : null,
                 child: image.startsWith('http')
@@ -2667,7 +2671,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
                       style: GoogleFonts.poppins(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
-                        color: Colors.black87,
+                        color: isDark ? Colors.white : Colors.black87,
                       ),
                     ),
                     const SizedBox(height: 3),
@@ -2677,7 +2681,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.poppins(
                         fontSize: 12,
-                        color: Colors.grey.shade600,
+                        color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
                       ),
                     ),
                     Text(
@@ -2686,7 +2690,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.poppins(
                         fontSize: 11,
-                        color: Colors.grey.shade500,
+                        color: isDark ? Colors.grey.shade400 : Colors.grey.shade500,
                       ),
                     ),
                     if (_workCompleted) ...[
@@ -2943,16 +2947,17 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
   }
 
   Widget _buildWaitingCard() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: Colors.black26,
+            color: isDark ? Colors.black38 : Colors.black26,
             blurRadius: 15,
-            offset: Offset(0, 5),
+            offset: const Offset(0, 5),
           ),
         ],
       ),
@@ -2973,7 +2978,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
             style: GoogleFonts.poppins(
               fontSize: 18,
               fontWeight: FontWeight.w700,
-              color: Colors.black87,
+              color: isDark ? Colors.white : Colors.black87,
             ),
           ),
           const SizedBox(height: 6),
@@ -2981,7 +2986,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
             '${_mechanicMarkers.length} nearby mechanic${_mechanicMarkers.length == 1 ? '' : 's'} notified',
             style: GoogleFonts.poppins(
               fontSize: 13,
-              color: Colors.grey.shade600,
+              color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
             ),
           ),
           const SizedBox(height: 4),

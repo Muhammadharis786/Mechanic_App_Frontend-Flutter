@@ -1148,11 +1148,16 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
 
   void _callMechanic(String phone) async {
     final Uri uri = Uri(scheme: 'tel', path: phone);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
-    } else {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("Cannot call mechanic")));
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      debugPrint('Could not launch dialer: $e');
+      try {
+        await launchUrl(uri);
+      } catch (ex) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text("Cannot call mechanic")));
+      }
     }
   }
 

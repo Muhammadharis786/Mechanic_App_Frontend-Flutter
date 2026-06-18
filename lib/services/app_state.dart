@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'app_preferences.dart';
 
 class AppThemeController extends ValueNotifier<ThemeMode> {
-  AppThemeController() : super(ThemeMode.dark);
+  AppThemeController() : super(ThemeMode.light);
 
   Future<void> load() async {
     final savedMode = await AppPreferences.getThemeMode();
@@ -10,6 +10,8 @@ class AppThemeController extends ValueNotifier<ThemeMode> {
       value = ThemeMode.light;
     } else if (savedMode == 'dark') {
       value = ThemeMode.dark;
+    } else {
+      value = ThemeMode.light;
     }
   }
 

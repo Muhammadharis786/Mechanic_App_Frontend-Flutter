@@ -36,22 +36,23 @@ class _MechanicListScreenState extends State<MechanicListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: isDark ? Colors.black : Colors.white,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: isDark ? Colors.black : Colors.white,
         elevation: 1,
         leading: const AppBackButton(),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Nearby Mechanics",
+            Text("Nearby Mechanics",
                 style: TextStyle(
-                    color: Colors.black,
+                    color: isDark ? Colors.white : Colors.black,
                     fontSize: 18,
                     fontWeight: FontWeight.bold)),
             Text(widget.serviceType,
-                style: TextStyle(fontSize: 13, color: Colors.grey)),
+                style: const TextStyle(fontSize: 13, color: Colors.grey)),
           ],
         ),
       ),
@@ -87,14 +88,15 @@ class _NearbyMechanicCardVertical extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
         borderRadius: BorderRadius.circular(18),
-        boxShadow: const [
-          BoxShadow(color: Colors.black12, blurRadius: 6),
+        boxShadow: [
+          BoxShadow(color: isDark ? Colors.black38 : Colors.black12, blurRadius: 6),
         ],
       ),
       child: Column(
@@ -155,12 +157,17 @@ class _NearbyMechanicCardVertical extends StatelessWidget {
                   final phone = mechanic['phonenumber'] as String?;
                   if (phone != null && phone.isNotEmpty) {
                      final Uri launchUri = Uri(scheme: 'tel', path: phone);
-                     if (await canLaunchUrl(launchUri)) {
-                       await launchUrl(launchUri);
-                     } else {
-                       ScaffoldMessenger.of(context).showSnackBar(
-                         SnackBar(content: Text('Could not launch dialer for $phone'))
-                       );
+                     try {
+                       await launchUrl(launchUri, mode: LaunchMode.externalApplication);
+                     } catch (e) {
+                       debugPrint('Could not launch dialer: $e');
+                       try {
+                         await launchUrl(launchUri);
+                       } catch (ex) {
+                         ScaffoldMessenger.of(context).showSnackBar(
+                           SnackBar(content: Text('Could not launch dialer for $phone'))
+                         );
+                       }
                      }
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(

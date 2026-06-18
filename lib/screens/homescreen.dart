@@ -18,6 +18,9 @@ import 'package:mech_app/screens/user/view_detail.dart';
 import 'package:mech_app/screens/user/user_profile.dart';
 import 'package:mech_app/screens/user/user_notification_screen.dart';
 import 'package:mech_app/screens/user/payment_webview_screen.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:url_launcher/url_launcher.dart';
 import './authentication/service_chat_screen.dart';
@@ -67,6 +70,63 @@ class _HomeScreenState extends State<HomeScreen> {
         .toList();
   }
 
+  String _locationName = "Loading location...";
+
+  Future<void> _loadLocationName() async {
+    if (UserSession().locationName != null && UserSession().locationName!.isNotEmpty) {
+      if (mounted) {
+        setState(() {
+          _locationName = UserSession().locationName!;
+        });
+      }
+    }
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        return;
+      }
+
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      final placeMarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+
+      if (placeMarks.isNotEmpty) {
+        final p = placeMarks.first;
+        final label = [
+          p.subLocality,
+          p.locality,
+        ]
+            .where((item) => item != null && item.isNotEmpty)
+            .join(', ');
+
+        final finalLabel = label.isNotEmpty ? label : 'Karachi';
+        if (mounted) {
+          setState(() {
+            _locationName = finalLabel;
+          });
+        }
+        UserSession().locationName = finalLabel;
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('location_name', finalLabel);
+      }
+    } catch (e) {
+      debugPrint("Error fetching home location: $e");
+      if (_locationName == "Loading location...") {
+        setState(() {
+          _locationName = "Location not available";
+        });
+      }
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -79,6 +139,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
     _fetchDashboardData();
     _fetchUnreadCount();
+    _loadLocationName();
     FcmNotificationService.instance.syncTokenWithBackend();
   }
 
@@ -378,10 +439,26 @@ class _HomeScreenState extends State<HomeScreen> {
                         fontWeight: FontWeight.w700,
                         color: isDark ? Colors.white : Colors.black),
                   ),
-            if (!_isLoading && _userId != null)
-              Text(
-                "ID: $_userId",
-                style: TextStyle(fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily, fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w400),
+            if (!_isLoading)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.location_on_rounded, size: 12, color: primaryColor),
+                  const SizedBox(width: 3),
+                  Flexible(
+                    child: Text(
+                      _locationName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                        fontSize: 11,
+                        color: Colors.grey,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ),
+                ],
               ),
           ],
         ),
@@ -1425,8 +1502,13 @@ class _NearbyMechanicCompactCard extends StatelessWidget {
                 final phone = mechanic['phonenumber'] as String?;
                 if (phone != null && phone.isNotEmpty) {
                   final Uri launchUri = Uri(scheme: 'tel', path: phone);
-                  if (await canLaunchUrl(launchUri)) {
-                    await launchUrl(launchUri);
+                  try {
+                    await launchUrl(launchUri, mode: LaunchMode.externalApplication);
+                  } catch (e) {
+                    debugPrint('Could not launch dialer: $e');
+                    try {
+                      await launchUrl(launchUri);
+                    } catch (_) {}
                   }
                 }
               }),

@@ -366,8 +366,13 @@ class _MechanicDetailScreenState extends State<MechanicDetailScreen> {
                             onPressed: widget.mechanic.phone.trim().isNotEmpty
                                 ? () async {
                                     final Uri launchUri = Uri(scheme: 'tel', path: widget.mechanic.phone);
-                                    if (await canLaunchUrl(launchUri)) {
-                                      await launchUrl(launchUri);
+                                    try {
+                                      await launchUrl(launchUri, mode: LaunchMode.externalApplication);
+                                    } catch (e) {
+                                      debugPrint('Could not launch dialer: $e');
+                                      try {
+                                        await launchUrl(launchUri);
+                                      } catch (_) {}
                                     }
                                   }
                                 : null,
