@@ -36,13 +36,14 @@ class MechanicDashboardScreen extends StatefulWidget {
 }
 
 class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final Color primaryColor = const Color(0xFFE64A19);
   final Color accentOrange = const Color(0xFFFF6D00);
 
   bool _isLoading = true;
   bool _isToggleLoading = false;
   bool isOnline = false;
+  bool _lifecycleOfflineUpdateInProgress = false;
 
   double totalEarnings = 0;
   double todaysEarnings = 0;
@@ -73,6 +74,17 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
   @override
   void initState() {
     super.initState();
+    // ✅ Security Check: If no session, redirect to role selection
+    if (UserSession().email == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
+          (route) => false,
+        );
+      });
+      return;
+    }
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 600),
       vsync: this,
@@ -109,11 +121,21 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
     }
 
     final shouldGoOffline = state == AppLifecycleState.detached;
-
     if (shouldGoOffline && isOnline && !_lifecycleOfflineUpdateInProgress) {
       _lifecycleOfflineUpdateInProgress = true;
-      unawaited(_toggleOnlineStatus(false, showSnack: false));
+      _toggleOnlineStatus(false, showSnack: false);
     }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    MechanicNotificationController().removeListener(_onGlobalNotificationReceived);
+    ActiveServiceRequestTracking.current.removeListener(_onActiveTrackingChanged);
+    _teardownActiveRequestSubscription();
+    _fadeController.dispose();
+    _activeRequestClient?.deactivate();
+    super.dispose();
   }
 
   void _initWebSocket() {
@@ -240,16 +262,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
     _activeRequestClient?.activate();
   }
 
-  @override
-  void dispose() {
-    MechanicNotificationController()
-        .removeListener(_onGlobalNotificationReceived);
-    ActiveServiceRequestTracking.current
-        .removeListener(_onActiveTrackingChanged);
-    _teardownActiveRequestSubscription();
-    _fadeController.dispose();
-    super.dispose();
-  }
+
 
   void _openNotificationCenter({int initialTabIndex = 0}) {
     Navigator.push(

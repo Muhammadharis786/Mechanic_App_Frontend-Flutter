@@ -169,8 +169,9 @@ class _MechanicSettingsScreenState extends State<MechanicSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return LanguageBuilder(
-      builder: (context) {
+    return ValueListenableBuilder<Locale>(
+      valueListenable: appLanguageController,
+      builder: (context, locale, _) {
         bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
         return Scaffold(

@@ -447,10 +447,14 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
         elevation: 0,
         centerTitle: false,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios,
-              color: isDark ? Colors.white : Colors.black, size: 20),
           onPressed: () => Navigator.pushReplacement(
               context, MaterialPageRoute(builder: (_) => const HomeScreen())),
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: Color(0xFFFB3300),
+            size: 18,
+          ),
+          splashRadius: 20,
         ),
         title: Text(
           'Appointments',

@@ -335,15 +335,14 @@ class _AppointmentTrackingMapState extends State<AppointmentTrackingMap> {
         centerTitle: true,
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: CircleAvatar(
-            backgroundColor: isDark ? Colors.black54 : Colors.white70,
-            child: IconButton(
-              icon: Icon(Icons.arrow_back_ios_new, size: 18, color: isDark ? Colors.white : Colors.black),
-              onPressed: () => Navigator.pop(context),
-            ),
+        leading: IconButton(
+          onPressed: () => Navigator.pop(context),
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: Color(0xFFFB3300),
+            size: 18,
           ),
+          splashRadius: 20,
         ),
       ),
       body: GoogleMap(

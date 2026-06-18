@@ -146,18 +146,26 @@ class UserSession {
       } catch (e) {
         // Ignore network errors for logout
       }
-    } catch (e) {
-      print("❌ Error calling logout API: $e");
     } finally {
+      // ✅ Full Cleanup: Clear memory
       email = null;
       password = null;
       userType = null;
       _userId = null;
       latitude = null;
       longitude = null;
-      locationName = null; // ✅ FIX: logout par clear karo
+      locationName = null;
+
+      _cachedUserEmail = null;
+      _cachedUserPassword = null;
+      _cachedUserId = null;
+      _cachedMechPhone = null;
+      _cachedMechPassword = null;
+      _cachedMechId = null;
 
       final prefs = await SharedPreferences.getInstance();
+      
+      // ✅ Clear Active Session
       await prefs.remove('email');
       await prefs.remove('password');
       await prefs.remove('userType');
@@ -166,23 +174,15 @@ class UserSession {
       await prefs.remove('user_lng');
       await prefs.remove('location_name');
 
-      // Clear the cached switch credentials specifically for the role that logged out
-      if (activeType == 'USER') {
-        _cachedUserEmail = null;
-        _cachedUserPassword = null;
-        _cachedUserId = null;
-        await prefs.remove('cached_user_email');
-        await prefs.remove('cached_user_pass');
-        await prefs.remove('cached_user_numeric_id');
-      } else if (activeType == 'MECHANIC') {
-        _cachedMechPhone = null;
-        _cachedMechPassword = null;
-        _cachedMechId = null;
-        await prefs.remove('cached_mech_id');
-        await prefs.remove('cached_mech_pass');
-        await prefs.remove('cached_mech_numeric_id');
-      }
-      print("✅ Client-side credentials & Storage cleared");
+      // ✅ Clear ALL Cached Credentials (Force fresh login for both roles)
+      await prefs.remove('cached_user_email');
+      await prefs.remove('cached_user_pass');
+      await prefs.remove('cached_user_numeric_id');
+      await prefs.remove('cached_mech_id');
+      await prefs.remove('cached_mech_pass');
+      await prefs.remove('cached_mech_numeric_id');
+
+      print("✅ Full system logout: All credentials & caches cleared");
     }
   }
 

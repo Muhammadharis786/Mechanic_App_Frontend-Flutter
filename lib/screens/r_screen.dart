@@ -102,9 +102,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     icon: const Icon(
                       Icons.arrow_back_ios_new_rounded,
                       color: Color(0xFFFB3300),
-                      size: 20,
+                      size: 18,
                     ),
-                    padding: const EdgeInsets.all(4),
                     splashRadius: 20,
                   ),
                   const SizedBox(width: 12),

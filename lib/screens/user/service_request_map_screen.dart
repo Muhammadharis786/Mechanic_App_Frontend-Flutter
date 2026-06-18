@@ -1818,8 +1818,8 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
                         BoxShadow(color: Colors.black12, blurRadius: 6)
                       ],
                     ),
-                    child: Icon(_isAccepted ? Icons.close : Icons.arrow_back_ios_new,
-                        color: Colors.black87, size: 18),
+                    child: Icon(_isAccepted ? Icons.close : Icons.arrow_back_ios_new_rounded,
+                        color: Color(0xFFFB3300), size: 18),
                   ),
                 ),
               ),
@@ -1919,8 +1919,8 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
                   BoxShadow(color: Colors.black12, blurRadius: 6)
                 ],
               ),
-              child: const Icon(Icons.arrow_back_ios_new,
-                  color: Colors.black87, size: 18),
+              child: const Icon(Icons.arrow_back_ios_new_rounded,
+                  color: Color(0xFFFB3300), size: 18),
             ),
           ),
           const SizedBox(width: 8),

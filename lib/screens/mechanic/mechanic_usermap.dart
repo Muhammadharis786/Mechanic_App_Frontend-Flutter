@@ -1681,10 +1681,51 @@ class _MechanicUserMapState extends State<MechanicUserMap>
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
                       ),
-                      child: const Icon(Icons.arrow_back_ios_new, size: 20),
+                      child: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFFFB3300), size: 18),
                     ),
                   ),
                   const Spacer(),
+                  if (!_workStarted)
+                    GestureDetector(
+                      onTap: _isCancelling ? null : _cancelRequestByMechanic,
+                      child: Container(
+                        margin: const EdgeInsets.only(right: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(15),
+                          border: Border.all(color: Colors.red.shade100),
+                          boxShadow: [
+                            BoxShadow(
+                                color: Colors.black.withOpacity(0.05),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4))
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _isCancelling
+                                ? const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2, color: Colors.red),
+                                  )
+                                : Icon(Icons.cancel_outlined,
+                                    color: Colors.red.shade600, size: 16),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Cancel',
+                              style: GoogleFonts.poppins(
+                                  color: Colors.red.shade600,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   // Show 3D badge when in navigation mode
                   if (_navigationStarted)
                     Container(

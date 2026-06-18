@@ -72,8 +72,13 @@ class _MechanicForgotPasswordScreenState extends State<MechanicForgotPasswordScr
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios, color: isDark ? Colors.white : Colors.black),
           onPressed: () => Navigator.pop(context),
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: Color(0xFFFB3300),
+            size: 18,
+          ),
+          splashRadius: 20,
         ),
       ),
       body: Padding(

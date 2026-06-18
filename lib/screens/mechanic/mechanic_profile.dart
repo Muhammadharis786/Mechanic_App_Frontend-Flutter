@@ -283,8 +283,13 @@ class _MechanicProfileScreenState extends State<MechanicProfileScreen> {
         elevation: 0,
         centerTitle: true,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios, color: isDark ? Colors.white : Colors.black, size: 20),
           onPressed: () => Navigator.pop(context),
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: Color(0xFFFB3300),
+            size: 18,
+          ),
+          splashRadius: 20,
         ),
       ),
       body: _isLoading

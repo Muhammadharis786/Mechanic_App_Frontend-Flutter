@@ -233,14 +233,14 @@ class _MechanicOtpScreenState extends State<MechanicOtpScreen> {
         ),
         backgroundColor: theme.appBarTheme.backgroundColor ?? theme.scaffoldBackgroundColor,
         elevation: 0,
-        // ── CHANGE 2: Deep orange V-shape arrow ─────────────────────
         leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios_new,
-            color: Color(0xFFFB3300),
-            size: 20,
-          ),
           onPressed: () => Navigator.pop(context),
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: Color(0xFFFB3300),
+            size: 18,
+          ),
+          splashRadius: 20,
         ),
         iconTheme: IconThemeData(color: isDark ? Colors.white : Colors.black),
       ),

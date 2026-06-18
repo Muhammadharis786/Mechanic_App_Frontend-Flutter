@@ -5,7 +5,15 @@ import '../services/app_state.dart';
 class AppStrings {
   static bool get isUrdu => appLanguageController.value.languageCode == 'ur';
 
-  static String t(String key) => _all[isUrdu ? 'ur' : 'en']?[key] ?? key;
+  static String t(String key, [Map<String, dynamic>? args]) {
+    String value = _all[isUrdu ? 'ur' : 'en']?[key] ?? key;
+    if (args != null && args.isNotEmpty) {
+      args.forEach((k, v) {
+        value = value.replaceAll('{$k}', v.toString());
+      });
+    }
+    return value;
+  }
 
   static const Map<String, Map<String, String>> _all = {
     'en': {
@@ -119,6 +127,7 @@ class AppStrings {
       // ── Common ──
       'loading': 'Loading...',
       'error': 'Something went wrong',
+      'errorGeneric': 'Error: {msg}',
       'retry': 'Retry',
       'save': 'Save',
       'submit': 'Submit',
@@ -245,6 +254,7 @@ class AppStrings {
       // ── Common ──
       'loading': 'لوڈ ہو رہا ہے...',
       'error': 'کچھ غلط ہو گیا',
+      'errorGeneric': 'خرابی: {msg}',
       'retry': 'دوبارہ کوشش',
       'save': 'محفوظ کریں',
       'submit': 'جمع کریں',

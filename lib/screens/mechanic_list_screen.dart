@@ -41,9 +41,13 @@ class _MechanicListScreenState extends State<MechanicListScreen> {
         backgroundColor: Colors.white,
         elevation: 1,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios,
-              color: primaryColor, size: 22),
           onPressed: () => Navigator.pop(context),
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: Color(0xFFFB3300),
+            size: 18,
+          ),
+          splashRadius: 20,
         ),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

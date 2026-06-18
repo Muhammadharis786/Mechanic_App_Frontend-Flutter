@@ -70,6 +70,17 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    // ✅ Security Check: If no session, redirect to role selection
+    if (UserSession().email == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
+          (route) => false,
+        );
+      });
+      return;
+    }
     ActiveServiceRequestTracking.current.addListener(_onActiveTrackingChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await ActiveServiceRequestTracking.load();

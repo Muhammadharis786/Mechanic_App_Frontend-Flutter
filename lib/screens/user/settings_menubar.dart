@@ -25,8 +25,9 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
 
   @override
   Widget build(BuildContext context) {
-    return LanguageBuilder(
-      builder: (context) {
+    return ValueListenableBuilder<Locale>(
+      valueListenable: appLanguageController,
+      builder: (context, locale, _) {
         final isDark = themeNotifier.value == ThemeMode.dark;
 
         return WillPopScope(
@@ -44,7 +45,6 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
               backgroundColor: isDark ? Colors.black : Colors.white,
               elevation: 0,
               leading: IconButton(
-                icon: const Icon(Icons.arrow_back_ios, color: Color(0xFFFB3300), size: 22),
                 onPressed: () {
                   Navigator.pushAndRemoveUntil(
                     context,
@@ -52,6 +52,12 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
                     (_) => false,
                   );
                 },
+                icon: const Icon(
+                  Icons.arrow_back_ios_new_rounded,
+                  color: Color(0xFFFB3300),
+                  size: 18,
+                ),
+                splashRadius: 20,
               ),
               title: Text(
                 AppStrings.t('settings'),

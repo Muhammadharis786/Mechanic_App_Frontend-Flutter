@@ -950,7 +950,12 @@ class _MechanicKycScreenState extends State<MechanicKycScreen> {
   Widget _backButton() {
     return IconButton(
       onPressed: () => setState(() => _step--),
-      icon: const Icon(Icons.arrow_back_ios_new_rounded),
+      icon: const Icon(
+        Icons.arrow_back_ios_new_rounded,
+        color: Color(0xFFFB3300),
+        size: 18,
+      ),
+      splashRadius: 20,
     );
   }
 
