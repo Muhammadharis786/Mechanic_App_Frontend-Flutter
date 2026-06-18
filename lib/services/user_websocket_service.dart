@@ -39,6 +39,8 @@ class UserWebSocketService {
     _subscribeToTopic('/topic/appointment/in-progress/$userId', 'in_progress');
     _subscribeToTopic('/topic/appointment/completework/$userId', 'work_completed');
     _subscribeToTopic('/topic/appointment/sendcharges/$userId', 'send_charges');
+    _subscribeToTopic('/topic/request-status/$userId', 'request_expired');
+    _subscribeToTopic('/topic/user/requests/$userId', 'request_cancelled');
   }
 
   void _subscribeToTopic(String destination, String type) {

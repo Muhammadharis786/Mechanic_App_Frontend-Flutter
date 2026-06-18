@@ -403,6 +403,10 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
             zoomControlsEnabled: false,
             mapToolbarEnabled: false,
             compassEnabled: false,
+            zoomGesturesEnabled: true,
+            scrollGesturesEnabled: true,
+            rotateGesturesEnabled: true,
+            tiltGesturesEnabled: true,
           ),
 
           // 2. Linear Progress Bar at the top SafeArea

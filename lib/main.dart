@@ -4,21 +4,18 @@ import 'screens/s_screen.dart';
 import 'firebase_options.dart';
 import 'services/fcm_notification_service.dart';
 import 'services/connectivity_controller.dart';
+import 'services/app_state.dart';
 
 // ===== GLOBAL THEME NOTIFIER =====
-class ThemeNotifier extends ValueNotifier<ThemeMode> {
-  ThemeNotifier() : super(ThemeMode.light);
-
-  void setDark() => value = ThemeMode.dark;
-  void setLight() => value = ThemeMode.light;
-}
-
-final themeNotifier = ThemeNotifier();
+final themeNotifier = appThemeController;
+final languageNotifier = appLanguageController;
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await themeNotifier.load();
+  await languageNotifier.load();
   await FcmNotificationService.instance.initialize();
   ConnectivityController().init();
   runApp(const MechConnectApp());
@@ -32,49 +29,69 @@ class MechConnectApp extends StatelessWidget {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: themeNotifier,
       builder: (context, currentMode, _) {
-        return MaterialApp(
-          navigatorKey: navigatorKey,
-          debugShowCheckedModeBanner: false,
-          title: 'MechConnect',
+        return ValueListenableBuilder<Locale>(
+          valueListenable: languageNotifier,
+          builder: (context, currentLocale, _) {
+            final isUrdu = currentLocale.languageCode == 'ur';
+            return MaterialApp(
+              navigatorKey: navigatorKey,
+              debugShowCheckedModeBanner: false,
+              title: 'OnFix',
+              locale: currentLocale,
+              builder: (context, child) {
+                return Directionality(
+                  textDirection: isUrdu ? TextDirection.rtl : TextDirection.ltr,
+                  child: child ?? const SizedBox.shrink(),
+                );
+              },
 
-          // ===== THEMES =====
-          theme: ThemeData(
-            brightness: Brightness.light,
-            primaryColor: Colors.orange,
-            scaffoldBackgroundColor: Colors.white,
-            fontFamily: 'Poppins',
-            colorScheme: const ColorScheme.light(
-              primary: Color(0xFFFB3300),
-              secondary: Colors.deepOrange,
-              surface: Colors.white,
-              onPrimary: Colors.white,
-              surfaceTint: Colors.transparent,
-            ),
-          ),
-          darkTheme: ThemeData(
-            brightness: Brightness.dark,
-            primaryColor: Colors.deepOrange,
-            scaffoldBackgroundColor: Colors.black,
-            fontFamily: 'Poppins',
-            colorScheme: const ColorScheme.dark(
-              primary: Colors.deepOrange,
-              secondary: Colors.orange,
-              surface: Colors.black,
-              onPrimary: Colors.white,
-              surfaceTint: Colors.transparent,
-            ),
-          ),
-          themeMode: currentMode,
+              // ===== THEMES =====
+              theme: ThemeData(
+                brightness: Brightness.light,
+                primaryColor: const Color(0xFFFB3300),
+                scaffoldBackgroundColor: Colors.white,
+                fontFamily: 'Poppins',
+                colorScheme: const ColorScheme.light(
+                  primary: Color(0xFFFB3300),
+                  secondary: Colors.deepOrange,
+                  surface: Colors.white,
+                  onPrimary: Colors.white,
+                  surfaceTint: Colors.transparent,
+                ),
+              ),
+              darkTheme: ThemeData(
+                brightness: Brightness.dark,
+                primaryColor: const Color(0xFFFF6D00),
+                scaffoldBackgroundColor: const Color(0xFF000000),
+                fontFamily: 'Poppins',
+                colorScheme: const ColorScheme.dark(
+                  primary: Color(0xFFFF6D00),
+                  secondary: Color(0xFFFF8A50),
+                  surface: Color(0xFF0F0F0F),
+                  onPrimary: Colors.white,
+                  surfaceTint: Colors.transparent,
+                ),
+                appBarTheme: const AppBarTheme(
+                  backgroundColor: Color(0xFF000000),
+                  foregroundColor: Colors.white,
+                ),
+                cardColor: const Color(0xFF121212),
+                dividerColor: Colors.white12,
+              ),
+              themeMode: currentMode,
 
-          // ===== REMOVE OVERSCROLL GREY GLOW =====
-          scrollBehavior: const _NoGlowScrollBehavior(),
+              // ===== REMOVE OVERSCROLL GREY GLOW =====
+              scrollBehavior: const _NoGlowScrollBehavior(),
 
-          home: const SplashScreen(),
+              home: const SplashScreen(),
+            );
+          },
         );
       },
     );
   }
 }
+
 
 // Removes the grey/blue glow on overscroll (Android)
 class _NoGlowScrollBehavior extends ScrollBehavior {

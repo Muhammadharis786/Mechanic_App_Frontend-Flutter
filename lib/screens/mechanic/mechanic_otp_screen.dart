@@ -143,6 +143,8 @@ class _MechanicOtpScreenState extends State<MechanicOtpScreen> {
 
     setState(() {
       _isLoading = true;
+      _otpController.clear();
+      _isOtpComplete = false;
     });
 
     final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/registerwithotp");

@@ -85,9 +85,14 @@ class _MechanicUserMapState extends State<MechanicUserMap>
   bool _isCompletingWork = false;
   bool _isConfirmingCashPayment = false;
   bool _showJobCompletedBanner = false;
+  bool _isCancelling = false;
   double? _approvedFinalPrice;
   double? _approvedArrivalPrice;
   final TextEditingController _priceController = TextEditingController();
+
+  // Navigation mode
+  bool _navigationStarted = false; // true after mechanic taps "Start Navigation"
+  bool _userInteracting = false;   // true while user is manually panning/zooming
   
   // State
   bool _isLocatingMechanic = false;
@@ -606,6 +611,84 @@ class _MechanicUserMapState extends State<MechanicUserMap>
     }
   }
 
+  Future<void> _cancelRequestByMechanic() async {
+    final requestId = widget.requestData['requestId']?.toString() ??
+        widget.requestData['requestid']?.toString();
+    if (requestId == null) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Cancel Request',
+            style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
+        content: Text('Are you sure you want to cancel this service request?',
+            style: GoogleFonts.poppins()),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('No', style: GoogleFonts.poppins(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Yes, Cancel',
+                style: GoogleFonts.poppins(
+                    color: Colors.red, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isCancelling = true);
+
+    try {
+      final response = await http.get(
+        Uri.parse(
+          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/cancel/$requestId',
+        ),
+        headers: UserSession().getAuthHeader(),
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        ActiveServiceRequestTracking.clear();
+        if (mounted) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => const MechanicDashboardScreen()),
+            (route) => false,
+          );
+        }
+      } else {
+        String errMsg = 'Failed to cancel: ${response.body}';
+        try {
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map && decoded['message'] != null) {
+            errMsg = decoded['message'].toString();
+          }
+        } catch (_) {}
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errMsg),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isCancelling = false);
+    }
+  }
+
   void _goToDashboardAfterCancellation() {
     if (_isClosingForCancellation) return;
     _isClosingForCancellation = true;
@@ -872,6 +955,9 @@ class _MechanicUserMapState extends State<MechanicUserMap>
   }
 
   void _followMechanic(LatLng position, double bearing) {
+    // Only auto-follow if navigation has been started AND user isn't manually panning
+    if (!_navigationStarted || _userInteracting) return;
+
     final now = DateTime.now();
     if (_lastCameraFollowAt != null &&
         now.difference(_lastCameraFollowAt!).inMilliseconds < 280) {
@@ -883,12 +969,29 @@ class _MechanicUserMapState extends State<MechanicUserMap>
       CameraUpdate.newCameraPosition(
         CameraPosition(
           target: position,
-          zoom: 17,
-          tilt: 45,
+          zoom: 17.5,
+          tilt: 60,          // Deep 3D tilt like Google Maps navigation
           bearing: bearing,
         ),
       ),
     );
+  }
+
+  void _startNavigation() {
+    setState(() => _navigationStarted = true);
+    // Immediately jump to 3D navigation view
+    if (_mechanicCurrentPos != null) {
+      _mapController?.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: _mechanicCurrentPos!,
+            zoom: 17.5,
+            tilt: 60,
+            bearing: _mechanicBearing,
+          ),
+        ),
+      );
+    }
   }
 
   double _bearingBetween(LatLng from, LatLng to) {
@@ -1445,9 +1548,22 @@ class _MechanicUserMapState extends State<MechanicUserMap>
                     zoom: 14,
                   ),
                   myLocationEnabled: false,
-                  zoomControlsEnabled: false,
-                  compassEnabled: false,
+                  zoomControlsEnabled: false,    // We provide custom zoom buttons
+                  compassEnabled: true,
                   mapToolbarEnabled: false,
+                  zoomGesturesEnabled: true,     // Pinch-to-zoom enabled
+                  scrollGesturesEnabled: true,   // Pan enabled
+                  rotateGesturesEnabled: true,   // Two-finger rotate enabled
+                  tiltGesturesEnabled: true,     // Two-finger tilt enabled
+                  onCameraMove: (_) {
+                    // When user manually moves camera, pause auto-follow
+                    if (_navigationStarted && !_userInteracting) {
+                      setState(() => _userInteracting = true);
+                    }
+                  },
+                  onCameraIdle: () {
+                    // Do NOT auto-resume here — user must tap re-center to resume
+                  },
                   markers: {
                     if (_mechanicCurrentPos != null)
                       Marker(
@@ -1476,6 +1592,81 @@ class _MechanicUserMapState extends State<MechanicUserMap>
                   polylines: _polylines,
                 ),
 
+          // Custom zoom controls (bottom-right)
+          Positioned(
+            right: 16,
+            bottom: 340,
+            child: Column(
+              children: [
+                // Re-center button (appears when user has panned away)
+                if (_navigationStarted && _userInteracting)
+                  GestureDetector(
+                    onTap: () {
+                      setState(() => _userInteracting = false);
+                      if (_mechanicCurrentPos != null) {
+                        _mapController?.animateCamera(
+                          CameraUpdate.newCameraPosition(
+                            CameraPosition(
+                              target: _mechanicCurrentPos!,
+                              zoom: 17.5,
+                              tilt: 60,
+                              bearing: _mechanicBearing,
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 6)],
+                      ),
+                      child: Icon(Icons.my_location_rounded, color: _primary, size: 22),
+                    ),
+                  ),
+                // Zoom In
+                GestureDetector(
+                  onTap: () => _mapController?.animateCamera(CameraUpdate.zoomIn()),
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(12),
+                        topRight: Radius.circular(12),
+                      ),
+                      boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 6)],
+                    ),
+                    child: const Icon(Icons.add_rounded, color: Colors.black87, size: 24),
+                  ),
+                ),
+                Container(height: 1, width: 44, color: Colors.grey.shade200),
+                // Zoom Out
+                GestureDetector(
+                  onTap: () => _mapController?.animateCamera(CameraUpdate.zoomOut()),
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: const BorderRadius.only(
+                        bottomLeft: Radius.circular(12),
+                        bottomRight: Radius.circular(12),
+                      ),
+                      boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 6)],
+                    ),
+                    child: const Icon(Icons.remove_rounded, color: Colors.black87, size: 24),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
           // Top Header
           SafeArea(
             child: Padding(
@@ -1499,17 +1690,38 @@ class _MechanicUserMapState extends State<MechanicUserMap>
                     ),
                   ),
                   const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: _primary,
-                      borderRadius: BorderRadius.circular(20),
+                  // Show 3D badge when in navigation mode
+                  if (_navigationStarted)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.black87,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.navigation_rounded, color: Colors.white, size: 14),
+                          const SizedBox(width: 4),
+                          Text(
+                            '3D NAV',
+                            style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: _primary,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        'EN ROUTE',
+                        style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                      ),
                     ),
-                    child: Text(
-                      'EN ROUTE',
-                      style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -1932,7 +2144,39 @@ class _MechanicUserMapState extends State<MechanicUserMap>
                         ],
                       ),
                     )
+                  else if (!_navigationStarted)
+                    // START NAVIGATION button — shown right after accepting
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _startNavigation,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF1A73E8), // Google blue
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          elevation: 4,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.navigation_rounded, color: Colors.white, size: 22),
+                            const SizedBox(width: 8),
+                            Text(
+                              'START NAVIGATION',
+                              style: GoogleFonts.poppins(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                fontSize: 15,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
                   else
+                    // Navigation started: show I HAVE ARRIVED or SEND CHARGES
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
@@ -1940,14 +2184,13 @@ class _MechanicUserMapState extends State<MechanicUserMap>
                             ? (_isSendingPrice ? null : _showSendChargesDialog)
                             : (_isCheckingArrival ? null : _onHaveArrived),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor:
-                              _hasArrived ? _primary : _primary,
+                          backgroundColor: _primary,
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
                           ),
                         ),
-                        child: _isSendingPrice
+                        child: _isSendingPrice || _isCheckingArrival
                             ? const SizedBox(
                                 width: 22,
                                 height: 22,

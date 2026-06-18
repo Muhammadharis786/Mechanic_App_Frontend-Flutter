@@ -24,6 +24,7 @@ import 'package:stomp_dart_client/stomp_dart_client.dart';
 import '../../utils/time_utils.dart';
 import 'mechanic_history.dart';
 import '../../services/fcm_notification_service.dart';
+import '../../services/mechanic_presence_service.dart';
 
 class MechanicDashboardScreen extends StatefulWidget {
   const MechanicDashboardScreen({super.key});
@@ -34,15 +35,13 @@ class MechanicDashboardScreen extends StatefulWidget {
 }
 
 class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+    with SingleTickerProviderStateMixin {
   final Color primaryColor = const Color(0xFFE64A19);
   final Color accentOrange = const Color(0xFFFF6D00);
 
   bool _isLoading = true;
   bool _isToggleLoading = false;
   bool isOnline = false;
-  bool _restoreOnlineOnResume = false;
-  bool _lifecycleOfflineUpdateInProgress = false;
 
   double totalEarnings = 0;
   double todaysEarnings = 0;
@@ -105,10 +104,6 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
     super.didChangeAppLifecycleState(state);
 
     if (state == AppLifecycleState.resumed) {
-      if (_restoreOnlineOnResume) {
-        _restoreOnlineOnResume = false;
-        unawaited(_toggleOnlineStatus(true, showSnack: false));
-      }
       return;
     }
 
@@ -116,9 +111,9 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached;
+    final shouldGoOffline = state == AppLifecycleState.detached;
 
     if (shouldGoOffline && isOnline && !_lifecycleOfflineUpdateInProgress) {
-      _restoreOnlineOnResume = true;
       _lifecycleOfflineUpdateInProgress = true;
       unawaited(_toggleOnlineStatus(false, showSnack: false));
     }
@@ -260,7 +255,12 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
     MechanicNotificationController().removeListener(
       _onGlobalNotificationReceived,
     );
+    MechanicNotificationController()
+        .removeListener(_onGlobalNotificationReceived);
+    ActiveServiceRequestTracking.current
+        .removeListener(_onActiveTrackingChanged);
     _teardownActiveRequestSubscription();
+    _fadeController.dispose();
     super.dispose();
   }
 
@@ -318,6 +318,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                 ? onlineStatus
                 : onlineStatus.toString().toLowerCase() == 'true';
           }
+          unawaited(MechanicPresenceService.instance.setLocalOnlineFlag(isOnline));
 
           _isLoading = false;
         });
@@ -332,6 +333,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
           MechanicLiveLocationService.instance.start(
             requestId: activeRequestId,
           );
+          unawaited(MechanicPresenceService.instance.ensureAndroidPresenceGuard());
         }
         await _syncActiveTrackingWithServer();
         _subscribeActiveRequestTopic();
@@ -392,9 +394,16 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
           'Content-Type': 'application/json',
         },
         body: jsonEncode({"isonline": value ? "true" : "false"}),
+    try {
+      final active = ActiveServiceRequestTracking.current.value;
+      final activeRequestId = active?['requestId']?.toString() ??
+          active?['requestid']?.toString();
+      final success = await MechanicPresenceService.instance.updateOnlineStatus(
+        value,
+        activeRequestId: activeRequestId,
       );
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
+      if (success) {
         if (mounted) {
           setState(() => isOnline = value);
         } else {
@@ -429,6 +438,8 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
             const SnackBar(
               content: Text('Failed to update status. Please try again.'),
             ),
+              content: Text('Failed to update status. Please try again.'),
+            ),
           );
         }
       }
@@ -439,9 +450,6 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
         ).showSnackBar(SnackBar(content: Text('Error updating status: $e')));
       }
     } finally {
-      if (!value) {
-        _lifecycleOfflineUpdateInProgress = false;
-      }
       if (showSnack && mounted) {
         setState(() => _isToggleLoading = false);
       }
@@ -2056,6 +2064,12 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.push(
+                          builder: (_) => const MechanicEarningsScreen()));
+                }),
+                _drawerItem(Icons.build_rounded, "My Services", context,
+                    isDark: isDark, onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (_) => const MechanicServicesScreen(),

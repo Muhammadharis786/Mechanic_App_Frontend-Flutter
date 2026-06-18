@@ -87,6 +87,11 @@ Future<void> _resendOtp() async {
   final email = widget.email;
   final password = widget.password;
 
+  setState(() {
+    _otpController.clear();
+    _isOtpComplete = false;
+  });
+
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(content: Text("Resending OTP...")),
   );
