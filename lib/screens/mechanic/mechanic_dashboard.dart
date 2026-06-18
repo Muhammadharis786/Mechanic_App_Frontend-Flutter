@@ -35,13 +35,15 @@ class MechanicDashboardScreen extends StatefulWidget {
 }
 
 class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final Color primaryColor = const Color(0xFFE64A19);
   final Color accentOrange = const Color(0xFFFF6D00);
 
   bool _isLoading = true;
   bool _isToggleLoading = false;
   bool isOnline = false;
+  bool _restoreOnlineOnResume = false;
+  bool _lifecycleOfflineUpdateInProgress = false;
 
   double totalEarnings = 0;
   double todaysEarnings = 0;
@@ -104,6 +106,10 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
     super.didChangeAppLifecycleState(state);
 
     if (state == AppLifecycleState.resumed) {
+      if (_restoreOnlineOnResume) {
+        _restoreOnlineOnResume = false;
+        unawaited(_toggleOnlineStatus(true, showSnack: false));
+      }
       return;
     }
 
@@ -111,9 +117,9 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached;
-    final shouldGoOffline = state == AppLifecycleState.detached;
 
     if (shouldGoOffline && isOnline && !_lifecycleOfflineUpdateInProgress) {
+      _restoreOnlineOnResume = true;
       _lifecycleOfflineUpdateInProgress = true;
       unawaited(_toggleOnlineStatus(false, showSnack: false));
     }
@@ -383,17 +389,6 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
       setState(() => _isToggleLoading = true);
     }
 
-    final url = Uri.parse(
-      "https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/isonline",
-    );
-    try {
-      final response = await http.post(
-        url,
-        headers: {
-          ...UserSession().getAuthHeader(),
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({"isonline": value ? "true" : "false"}),
     try {
       final active = ActiveServiceRequestTracking.current.value;
       final activeRequestId = active?['requestId']?.toString() ??
@@ -438,8 +433,6 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
             const SnackBar(
               content: Text('Failed to update status. Please try again.'),
             ),
-              content: Text('Failed to update status. Please try again.'),
-            ),
           );
         }
       }
@@ -450,6 +443,9 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
         ).showSnackBar(SnackBar(content: Text('Error updating status: $e')));
       }
     } finally {
+      if (!value) {
+        _lifecycleOfflineUpdateInProgress = false;
+      }
       if (showSnack && mounted) {
         setState(() => _isToggleLoading = false);
       }
@@ -2058,18 +2054,12 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                 ),
                 _drawerItem(
                   Icons.build_rounded,
-                  "Services",
+                  "My Services",
                   context,
                   isDark: isDark,
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.push(
-                          builder: (_) => const MechanicEarningsScreen()));
-                }),
-                _drawerItem(Icons.build_rounded, "My Services", context,
-                    isDark: isDark, onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (_) => const MechanicServicesScreen(),

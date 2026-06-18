@@ -128,7 +128,6 @@ class _MechanicServicesScreenState extends State<MechanicServicesScreen>
         elevation: 0,
         centerTitle: true,
         leading: const AppBackButton(),
-        iconTheme: IconThemeData(color: primaryColor),
         iconTheme: IconThemeData(
             color: isDark ? Colors.white : const Color(0xFFFB3300)),
       ),
