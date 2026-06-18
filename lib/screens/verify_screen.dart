@@ -175,7 +175,7 @@ class _VerifyScreenState extends State<VerifyScreen> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      "Welcome Back 👋",
+                      "Welcome Back!",
                       style: GoogleFonts.poppins(
                         fontSize: 28,
                         fontWeight: FontWeight.w700,
