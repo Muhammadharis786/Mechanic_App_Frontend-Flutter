@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:mech_app/screens/homescreen.dart';
+import 'package:mech_app/widgets/app_back_button.dart';
 
 class BookingConfirmationScreen extends StatelessWidget {
   final Map<String, dynamic> bookingData;
@@ -562,10 +563,7 @@ class FullScreenMapScreen extends StatelessWidget {
         backgroundColor: isDark ? const Color(0xFF121212) : Colors.white,
         foregroundColor: isDark ? Colors.white : Colors.black,
         elevation: 1,
-        leading: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: () => Navigator.pop(context),
-        ),
+        leading: const AppBackButton(),
       ),
       body: GoogleMap(
         initialCameraPosition: CameraPosition(target: LatLng(lat, lng), zoom: 16),

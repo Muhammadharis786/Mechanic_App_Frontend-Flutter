@@ -10,6 +10,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'service_request_map_screen.dart';
 import 'service_request_notes_screen.dart';
+import '../../widgets/app_back_button.dart';
 
 class Mechanic {
   final String id;
@@ -237,14 +238,9 @@ class _MechanicDetailScreenState extends State<MechanicDetailScreen> {
           Positioned(
             top: MediaQuery.of(context).padding.top + 10,
             left: 16,
-            child: IconButton(
-              onPressed: () => Navigator.of(context).pop(),
-              icon: const Icon(
-                Icons.arrow_back_ios_new_rounded,
-                color: Color(0xFFFB3300),
-                size: 18,
-              ),
-              splashRadius: 20,
+            child: CircleAvatar(
+              backgroundColor: isDark ? Colors.grey[900] : Colors.white,
+              child: const AppBackButton(),
             ),
           ),
 
@@ -370,8 +366,13 @@ class _MechanicDetailScreenState extends State<MechanicDetailScreen> {
                             onPressed: widget.mechanic.phone.trim().isNotEmpty
                                 ? () async {
                                     final Uri launchUri = Uri(scheme: 'tel', path: widget.mechanic.phone);
-                                    if (await canLaunchUrl(launchUri)) {
-                                      await launchUrl(launchUri);
+                                    try {
+                                      await launchUrl(launchUri, mode: LaunchMode.externalApplication);
+                                    } catch (e) {
+                                      debugPrint('Could not launch dialer: $e');
+                                      try {
+                                        await launchUrl(launchUri);
+                                      } catch (_) {}
                                     }
                                   }
                                 : null,
@@ -612,10 +613,7 @@ class FullScreenMapScreen extends StatelessWidget {
             left: 16,
             child: CircleAvatar(
               backgroundColor: isDark ? Colors.grey[900] : Colors.white,
-              child: IconButton(
-                icon: Icon(Icons.close, color: isDark ? Colors.white : Colors.black),
-                onPressed: () => Navigator.pop(context),
-              ),
+              child: const AppBackButton(),
             ),
           ),
           Positioned(

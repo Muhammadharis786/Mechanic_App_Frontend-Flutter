@@ -8,6 +8,7 @@ import 'otpScreenforgotpassword.dart';
 import 'r_screen.dart';
 import 'enable_loc.dart';
 import '../services/fcm_notification_service.dart';
+import '../widgets/app_back_button.dart';
 
 class VerifyScreen extends StatefulWidget {
   const VerifyScreen({super.key});
@@ -169,19 +170,11 @@ class _VerifyScreenState extends State<VerifyScreen> {
               // Back button
               Row(
                 children: [
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(
-                      Icons.arrow_back_ios_new_rounded,
-                      color: Color(0xFFFB3300),
-                      size: 18,
-                    ),
-                    splashRadius: 20,
-                  ),
+                  const AppBackButton(),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      "Welcome Back 👋",
+                      "Welcome Back!",
                       style: GoogleFonts.poppins(
                         fontSize: 28,
                         fontWeight: FontWeight.w700,

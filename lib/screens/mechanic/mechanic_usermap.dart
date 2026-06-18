@@ -11,6 +11,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
+import '../../widgets/app_back_button.dart';
 import '../../services/active_service_request_tracking.dart';
 import '../../services/mechanic_live_location_service.dart';
 import '../../services/mechanic_notification_controller.dart';
@@ -1681,7 +1682,11 @@ class _MechanicUserMapState extends State<MechanicUserMap>
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
                       ),
-                      child: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFFFB3300), size: 18),
+                      child: const Icon(
+                        Icons.arrow_back_ios_new_rounded,
+                        color: Color(0xFFFB3300),
+                        size: 20,
+                      ),
                     ),
                   ),
                   const Spacer(),

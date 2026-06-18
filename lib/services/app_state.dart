@@ -10,6 +10,8 @@ class AppThemeController extends ValueNotifier<ThemeMode> {
       value = ThemeMode.light;
     } else if (savedMode == 'dark') {
       value = ThemeMode.dark;
+    } else {
+      value = ThemeMode.light;
     }
   }
 

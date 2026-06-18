@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../widgets/app_back_button.dart';
 
 class MechanicEarningsScreen extends StatefulWidget {
   const MechanicEarningsScreen({super.key});
@@ -42,6 +43,7 @@ class _MechanicEarningsScreenState extends State<MechanicEarningsScreen> {
             Theme.of(context).scaffoldBackgroundColor,
         elevation: 0,
         centerTitle: true,
+        leading: const AppBackButton(),
         iconTheme: IconThemeData(color: primaryColor),
       ),
       body: RefreshIndicator(

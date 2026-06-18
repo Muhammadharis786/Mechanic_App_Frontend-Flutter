@@ -7,6 +7,7 @@ import 'mechanic_appointmentrequest.dart';
 import 'mechanic_request_detail.dart';
 import '../authentication/user_session.dart';
 import '../../utils/time_utils.dart';
+import '../../widgets/app_back_button.dart';
 
 class MechanicNotificationScreen extends StatefulWidget {
   final List<Map<String, dynamic>> dailyRequests;
@@ -112,6 +113,7 @@ class _MechanicNotificationScreenState
         backgroundColor: isDark ? Colors.black : Colors.white,
         elevation: 0,
         centerTitle: true,
+        leading: const AppBackButton(),
         title: Text(
           'Notifications',
           style: GoogleFonts.getFont('Bricolage Grotesque',

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../../widgets/app_back_button.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'mechanic_login.dart';
@@ -83,15 +84,7 @@ class _MechanicNewPasswordScreenState extends State<MechanicNewPasswordScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
-          onPressed: () => Navigator.pop(context),
-          icon: const Icon(
-            Icons.arrow_back_ios_new_rounded,
-            color: Color(0xFFFB3300),
-            size: 18,
-          ),
-          splashRadius: 20,
-        ),
+        leading: const AppBackButton(),
       ),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24),

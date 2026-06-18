@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart'; // kIsWeb check karne ke liye
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart'; // Web redirect handle karne ke liye
 import 'package:webview_flutter/webview_flutter.dart';
+import '../../widgets/app_back_button.dart';
 
 class PaymentWebViewScreen extends StatefulWidget {
   final String url;
@@ -98,6 +99,14 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
         title: const Text('Secure Payment'),
         backgroundColor: const Color(0xFFFB3300),
         foregroundColor: Colors.white,
+        leading: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Material(
+            color: Colors.white,
+            shape: const CircleBorder(),
+            child: const AppBackButton(),
+          ),
+        ),
       ),
       body: Stack(
         children: [

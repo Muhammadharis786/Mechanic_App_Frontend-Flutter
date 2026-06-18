@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../widgets/app_back_button.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../authentication/user_session.dart';
@@ -126,6 +127,7 @@ class _MechanicServicesScreenState extends State<MechanicServicesScreen>
         backgroundColor: cardColor,
         elevation: 0,
         centerTitle: true,
+        leading: const AppBackButton(),
         iconTheme: IconThemeData(
             color: isDark ? Colors.white : const Color(0xFFFB3300)),
       ),

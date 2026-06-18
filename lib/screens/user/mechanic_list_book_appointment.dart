@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:mech_app/widgets/app_back_button.dart';
 
 class MechanicListScreenn extends StatelessWidget {
   final String serviceType;
@@ -19,28 +20,21 @@ class MechanicListScreenn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: isDark ? Colors.black : Colors.white,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: isDark ? Colors.black : Colors.white,
         elevation: 1,
-        leading: IconButton(
-          onPressed: () => Navigator.pop(context),
-          icon: const Icon(
-            Icons.arrow_back_ios_new_rounded,
-            color: Color(0xFFFB3300),
-            size: 18,
-          ),
-          splashRadius: 20,
-        ),
+        leading: const AppBackButton(),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               "Nearby Mechanics",
               style: TextStyle(
                   fontFamily: 'Bricolage Grotesque',
-                  color: Colors.black,
+                  color: isDark ? Colors.white : Colors.black,
                   fontSize: 18,
                   fontWeight: FontWeight.w500),
             ),
@@ -114,14 +108,15 @@ class MechanicListScreenn extends StatelessWidget {
       statusLabel = 'Available';
     }
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-            color: isSelected ? primaryColor : Colors.grey.shade200, width: 1.5),
-        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 5)],
+            color: isSelected ? primaryColor : (isDark ? Colors.grey.shade800 : Colors.grey.shade200), width: 1.5),
+        boxShadow: [BoxShadow(color: isDark ? Colors.black38 : Colors.black12, blurRadius: 5)],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -182,7 +177,7 @@ class MechanicListScreenn extends StatelessWidget {
                           style: TextStyle(
                               fontFamily: 'Bricolage Grotesque',
                               fontSize: 11,
-                              color: Colors.grey.shade600)),
+                              color: isDark ? Colors.grey.shade400 : Colors.grey.shade600)),
                     ]
                   ],
                 ),
@@ -259,8 +254,13 @@ class MechanicListScreenn extends StatelessWidget {
 
   void _callMechanic(String phone) async {
     final Uri uri = Uri(scheme: 'tel', path: phone);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      debugPrint('Could not launch dialer: $e');
+      try {
+        await launchUrl(uri);
+      } catch (_) {}
     }
   }
 }

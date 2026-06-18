@@ -163,9 +163,10 @@ class _ServiceReviewScreenState extends State<ServiceReviewScreen> {
   Widget build(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
     final cardWidth = width > 420 ? 420.0 : width - 40;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: Colors.grey.shade50,
+      backgroundColor: isDark ? Colors.black : Colors.grey.shade50,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -175,9 +176,9 @@ class _ServiceReviewScreenState extends State<ServiceReviewScreen> {
               margin: const EdgeInsets.symmetric(horizontal: 20),
               padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: isDark ? const Color(0xFF1E1E22) : Colors.white,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.grey.shade300),
+                border: Border.all(color: isDark ? Colors.grey.shade800 : Colors.grey.shade300),
                 boxShadow: const [
                   BoxShadow(
                     color: Color(0x14000000),
@@ -200,7 +201,7 @@ class _ServiceReviewScreenState extends State<ServiceReviewScreen> {
                               style: GoogleFonts.poppins(
                                 fontSize: 18,
                                 fontWeight: FontWeight.w800,
-                                color: Colors.black87,
+                                color: isDark ? Colors.white : Colors.black87,
                               ),
                             ),
                             const SizedBox(height: 2),
@@ -208,7 +209,7 @@ class _ServiceReviewScreenState extends State<ServiceReviewScreen> {
                               'It takes less than 60 seconds to complete',
                               style: GoogleFonts.poppins(
                                 fontSize: 11,
-                                color: Colors.grey.shade600,
+                                color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
                               ),
                             ),
                           ],
@@ -231,14 +232,14 @@ class _ServiceReviewScreenState extends State<ServiceReviewScreen> {
                     ],
                   ),
                   const SizedBox(height: 14),
-                  Divider(color: Colors.grey.shade200, height: 1),
+                  Divider(color: isDark ? Colors.grey.shade800 : Colors.grey.shade200, height: 1),
                   const SizedBox(height: 16),
                   Text(
                     'How was your overall experience?',
                     style: GoogleFonts.poppins(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
-                      color: Colors.black87,
+                      color: isDark ? Colors.white : Colors.black87,
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -271,7 +272,7 @@ class _ServiceReviewScreenState extends State<ServiceReviewScreen> {
                           emoji,
                           style: TextStyle(
                             fontSize: selected ? 18 : 14,
-                            color: selected ? Colors.black87 : Colors.grey.shade500,
+                            color: selected ? (isDark ? Colors.white : Colors.black87) : Colors.grey.shade500,
                           ),
                         ),
                       );
@@ -283,7 +284,7 @@ class _ServiceReviewScreenState extends State<ServiceReviewScreen> {
                     style: GoogleFonts.poppins(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
-                      color: Colors.black87,
+                      color: isDark ? Colors.white : Colors.black87,
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -308,12 +309,14 @@ class _ServiceReviewScreenState extends State<ServiceReviewScreen> {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 9),
                           decoration: BoxDecoration(
-                            color: selected ? const Color(0xFFEAF8F0) : Colors.white,
+                            color: selected
+                                ? (isDark ? const Color(0xFF1B4D3E) : const Color(0xFFEAF8F0))
+                                : (isDark ? const Color(0xFF2E2E32) : Colors.white),
                             borderRadius: BorderRadius.circular(30),
                             border: Border.all(
                               color: selected
                                   ? const Color(0xFF36B37E)
-                                  : Colors.grey.shade300,
+                                  : (isDark ? Colors.grey.shade800 : Colors.grey.shade300),
                             ),
                           ),
                           child: Row(
@@ -331,8 +334,8 @@ class _ServiceReviewScreenState extends State<ServiceReviewScreen> {
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
                                   color: selected
-                                      ? const Color(0xFF1E7F5A)
-                                      : Colors.grey.shade700,
+                                      ? (isDark ? const Color(0xFF66E0B2) : const Color(0xFF1E7F5A))
+                                      : (isDark ? Colors.grey.shade400 : Colors.grey.shade700),
                                 ),
                               ),
                             ],
@@ -347,7 +350,7 @@ class _ServiceReviewScreenState extends State<ServiceReviewScreen> {
                     style: GoogleFonts.poppins(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
-                      color: Colors.black87,
+                      color: isDark ? Colors.white : Colors.black87,
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -359,6 +362,7 @@ class _ServiceReviewScreenState extends State<ServiceReviewScreen> {
                         controller: _commentCtrl,
                         minLines: 4,
                         maxLines: 6,
+                        style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                         decoration: InputDecoration(
                           hintText: _hasTagsSelected
                               ? 'Tag selected (comment will be tag text)'
@@ -368,14 +372,14 @@ class _ServiceReviewScreenState extends State<ServiceReviewScreen> {
                             color: Colors.grey.shade500,
                           ),
                           filled: true,
-                          fillColor: Colors.grey.shade50,
+                          fillColor: isDark ? const Color(0xFF2E2E32) : Colors.grey.shade50,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: BorderSide(color: Colors.grey.shade300),
+                            borderSide: BorderSide(color: isDark ? Colors.grey.shade800 : Colors.grey.shade300),
                           ),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: BorderSide(color: Colors.grey.shade300),
+                            borderSide: BorderSide(color: isDark ? Colors.grey.shade800 : Colors.grey.shade300),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),

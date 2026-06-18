@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '/main.dart';
 import '../authentication/user_session.dart';
 import '../role_selection_screen.dart';
+import '../../widgets/app_back_button.dart';
 import '../../services/app_state.dart';
 import '../../l10n/app_strings.dart';
 
@@ -170,36 +171,61 @@ class _MechanicSettingsScreenState extends State<MechanicSettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<Locale>(
-      valueListenable: appLanguageController,
+      valueListenable: languageNotifier,
       builder: (context, locale, _) {
-        bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
+        return ValueListenableBuilder<ThemeMode>(
+          valueListenable: themeNotifier,
+          builder: (context, currentMode, _) {
+            final isDarkMode = currentMode == ThemeMode.dark;
 
-        return Scaffold(
-          appBar: AppBar(
-            title: Text(AppStrings.t('settings'), style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w600)),
-            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-            elevation: 0,
-            iconTheme: IconThemeData(color: isDarkMode ? Colors.white : Colors.black),
-          ),
-          body: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              _buildTile(AppStrings.t('language'), languageCode == 'ur' ? AppStrings.t('urdu') : AppStrings.t('english'), _showLanguageOptions, isDarkMode),
-              _buildTile(AppStrings.t('night'), isDarkMode ? AppStrings.t('dark') : AppStrings.t('light'), _showThemeOptions, isDarkMode),
-              const SizedBox(height: 20),
-              const Divider(),
-              ListTile(
-                title: Text(AppStrings.t('logout'), style: GoogleFonts.poppins(color: Colors.red, fontWeight: FontWeight.w500)),
-                trailing: Icon(Icons.arrow_forward_ios, size: 16, color: primaryColor),
-                onTap: _confirmLogout,
+            return Scaffold(
+              appBar: AppBar(
+                title: Text(
+                  AppStrings.t('settings'),
+                  style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w600),
+                ),
+                backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+                elevation: 0,
+                leading: const AppBackButton(),
+                iconTheme: IconThemeData(color: isDarkMode ? Colors.white : Colors.black),
               ),
-              ListTile(
-                title: Text(AppStrings.t('deleteAccount'), style: GoogleFonts.poppins(color: Colors.red, fontWeight: FontWeight.w500)),
-                trailing: Icon(Icons.arrow_forward_ios, size: 16, color: primaryColor),
-                onTap: _confirmDelete,
+              body: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  _buildTile(
+                    AppStrings.t('language'),
+                    locale.languageCode == 'ur' ? AppStrings.t('urdu') : AppStrings.t('english'),
+                    _showLanguageOptions,
+                    isDarkMode,
+                  ),
+                  _buildTile(
+                    AppStrings.t('night'),
+                    isDarkMode ? AppStrings.t('dark') : AppStrings.t('light'),
+                    _showThemeOptions,
+                    isDarkMode,
+                  ),
+                  const SizedBox(height: 20),
+                  const Divider(),
+                  ListTile(
+                    title: Text(
+                      AppStrings.t('logout'),
+                      style: GoogleFonts.poppins(color: Colors.red, fontWeight: FontWeight.w500),
+                    ),
+                    trailing: Icon(Icons.arrow_forward_ios, size: 16, color: primaryColor),
+                    onTap: _confirmLogout,
+                  ),
+                  ListTile(
+                    title: Text(
+                      AppStrings.t('deleteAccount'),
+                      style: GoogleFonts.poppins(color: Colors.red, fontWeight: FontWeight.w500),
+                    ),
+                    trailing: Icon(Icons.arrow_forward_ios, size: 16, color: primaryColor),
+                    onTap: _confirmDelete,
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         );
       },
     );

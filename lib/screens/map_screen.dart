@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'authentication/user_session.dart';
+import '../widgets/app_back_button.dart';
 
 class MapScreen extends StatefulWidget {
   final String serviceType;
@@ -43,6 +44,7 @@ class _MapScreenState extends State<MapScreen> {
       appBar: AppBar(
         title: Text("${widget.serviceType} Mechanic Location"),
         backgroundColor: Colors.deepOrange,
+        leading: const AppBackButton(),
       ),
       body: Stack(
         fit: StackFit.expand,

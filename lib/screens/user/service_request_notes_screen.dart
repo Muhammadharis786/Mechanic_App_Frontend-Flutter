@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'service_request_map_screen.dart';
+import '../../widgets/app_back_button.dart';
 
 class ServiceRequestNotesScreen extends StatefulWidget {
   final String serviceType;
@@ -89,6 +90,7 @@ class _ServiceRequestNotesScreenState extends State<ServiceRequestNotesScreen> {
         ),
         backgroundColor: Colors.transparent,
         elevation: 0,
+        leading: const AppBackButton(),
         iconTheme: IconThemeData(color: isDark ? Colors.white : Colors.black),
       ),
       body: SafeArea(

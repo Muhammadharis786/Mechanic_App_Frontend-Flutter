@@ -9,6 +9,7 @@ import 'package:mech_app/screens/user/location_picker_screen.dart';
 import 'package:mech_app/screens/user/mechanic_list_book_appointment.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:mech_app/widgets/app_back_button.dart';
 
 const String _baseUrl =
     'https://mechanicapp-service-621632382478.asia-south1.run.app';
@@ -367,7 +368,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       appBar: AppBar(
         backgroundColor: isDark ? Colors.black : Colors.white,
         elevation: 1,
-        leading: IconButton(
+        leading: AppBackButton(
           onPressed: () => Navigator.pushReplacement(
               context, MaterialPageRoute(builder: (_) => HomeScreen())),
           icon: const Icon(
@@ -1022,27 +1023,43 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           fontSize: 15));
 
   Widget _sectionTitleWithSeeAll(
-          String title, String seeAllText, VoidCallback onSeeAll) =>
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(title,
-              style: GoogleFonts.getFont('Bricolage Grotesque',
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15)),
-          TextButton(
-            onPressed: onSeeAll,
-            style: ButtonStyle(
-              backgroundColor: MaterialStateProperty.all(Colors.white),
-              overlayColor: MaterialStateProperty.all(Colors.deepOrange.shade100),
+          String title, String seeAllText, VoidCallback onSeeAll) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(title,
+            style: GoogleFonts.getFont('Bricolage Grotesque',
+                fontWeight: FontWeight.w700,
+                fontSize: 15)),
+        InkWell(
+          onTap: onSeeAll,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+                horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.grey[850] : Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: const [
+                BoxShadow(
+                  color: Colors.black12,
+                  blurRadius: 4,
+                ),
+              ],
             ),
-            child: Text(seeAllText,
-                style: GoogleFonts.getFont('Bricolage Grotesque',
-                    color: Colors.deepOrange,
-                    fontWeight: FontWeight.w600)),
+            child: Text(
+              seeAllText,
+              style: TextStyle(
+                  fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                  color: Colors.deepOrange,
+                  fontWeight: FontWeight.w500),
+            ),
           ),
-        ],
-      );
+        ),
+      ],
+    );
+  }
 
   Widget _buildServiceFilters(bool isDark) {
     return SizedBox(
@@ -1137,11 +1154,16 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
 
   void _callMechanic(String phone) async {
     final Uri uri = Uri(scheme: 'tel', path: phone);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
-    } else {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("Cannot call mechanic")));
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      debugPrint('Could not launch dialer: $e');
+      try {
+        await launchUrl(uri);
+      } catch (ex) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text("Cannot call mechanic")));
+      }
     }
   }
 

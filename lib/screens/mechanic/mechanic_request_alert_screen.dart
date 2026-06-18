@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import '../../services/mechanic_live_location_service.dart';
+import '../../utils/distance_formatter.dart';
 import '../../services/active_service_request_tracking.dart';
 import '../../services/emergency_alert_service.dart';
 import '../../services/mechanic_notification_controller.dart';
@@ -28,10 +30,7 @@ const String _mapStyle = '''
 class MechanicRequestAlertScreen extends StatefulWidget {
   final Map<String, dynamic> requestData;
 
-  const MechanicRequestAlertScreen({
-    super.key,
-    required this.requestData,
-  });
+  const MechanicRequestAlertScreen({super.key, required this.requestData});
 
   @override
   State<MechanicRequestAlertScreen> createState() =>
@@ -42,7 +41,7 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
     with SingleTickerProviderStateMixin {
   GoogleMapController? _mapController;
   late LatLng _targetPos;
-  
+
   // Timer stuff
   Timer? _timer;
   int _secondsLeft = 60;
@@ -50,8 +49,11 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
   bool _isAccepting = false;
   bool _isRejecting = false;
   bool _isClosingForCancellation = false;
-  
+
   final Color primaryColor = const Color(0xFFFB3300);
+  final String _googleApiKey = 'AIzaSyBpyZg2i30gOLUKK0furYdGDbWXe4lqpkU';
+  String _calculatedDistance = '--';
+  String _calculatedEta = '--';
 
   @override
   void initState() {
@@ -59,24 +61,29 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
     // Safely parse latitude and longitude
     double lat = 0.0;
     double lng = 0.0;
-    
+
     if (widget.requestData['userLatitude'] != null) {
       if (widget.requestData['userLatitude'] is num) {
         lat = (widget.requestData['userLatitude'] as num).toDouble();
       } else {
-        lat = double.tryParse(widget.requestData['userLatitude'].toString()) ?? 0.0;
+        lat =
+            double.tryParse(widget.requestData['userLatitude'].toString()) ??
+            0.0;
       }
     }
-    
+
     if (widget.requestData['userLongitude'] != null) {
       if (widget.requestData['userLongitude'] is num) {
         lng = (widget.requestData['userLongitude'] as num).toDouble();
       } else {
-        lng = double.tryParse(widget.requestData['userLongitude'].toString()) ?? 0.0;
+        lng =
+            double.tryParse(widget.requestData['userLongitude'].toString()) ??
+            0.0;
       }
     }
-    
+
     _targetPos = LatLng(lat, lng);
+    _fetchDistanceAndEta();
 
     MechanicNotificationController().addListener(_onNotification);
     ActiveServiceRequestTracking.save({
@@ -91,12 +98,11 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
   void _onNotification(Map<String, dynamic> data, String type) {
     final incomingReqId =
         data['requestId']?.toString() ?? data['requestid']?.toString();
-    final myReqId = widget.requestData['requestId']?.toString() ??
+    final myReqId =
+        widget.requestData['requestId']?.toString() ??
         widget.requestData['requestid']?.toString();
 
-    if (incomingReqId == null ||
-        myReqId == null ||
-        incomingReqId != myReqId) {
+    if (incomingReqId == null || myReqId == null || incomingReqId != myReqId) {
       return;
     }
 
@@ -108,9 +114,7 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
 
     if (data['type'] == 'ROAD_REQUEST_EXPIRED' ||
         data['backendType'] == 'ROAD_REQUEST_EXPIRED') {
-      _closeAfterRequestTakenByAnother(
-        data['message']?.toString(),
-      );
+      _closeAfterRequestTakenByAnother(data['message']?.toString());
     }
   }
 
@@ -179,6 +183,56 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
     });
   }
 
+  Future<void> _fetchDistanceAndEta() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
+
+      LocationPermission perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+        if (perm == LocationPermission.denied) return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+
+      final originLat = position.latitude;
+      final originLng = position.longitude;
+      final destLat = _targetPos.latitude;
+      final destLng = _targetPos.longitude;
+
+      final url = 'https://maps.googleapis.com/maps/api/directions/json'
+          '?origin=$originLat,$originLng'
+          '&destination=$destLat,$destLng'
+          '&key=$_googleApiKey';
+
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['status'] == 'OK' &&
+            data['routes'] != null &&
+            data['routes'].isNotEmpty) {
+          final legs = data['routes'][0]['legs'];
+          if (legs != null && legs.isNotEmpty) {
+            final distanceText = legs[0]['distance']['text'] as String;
+            final durationText = legs[0]['duration']['text'] as String;
+
+            if (mounted) {
+              setState(() {
+                _calculatedDistance = distanceText;
+                _calculatedEta = durationText;
+              });
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("Error fetching distance and ETA: $e");
+    }
+  }
+
   @override
   void dispose() {
     MechanicNotificationController().removeListener(_onNotification);
@@ -192,7 +246,7 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
   void _acceptRequest() {
     // TODO: Actually hit the API to accept the request
     // api/service-request/accept ...
-    
+
     debugPrint("✅ Request Accepted: ${widget.requestData}");
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -224,7 +278,8 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
   Future<void> _acceptRequestFromBackend() async {
     if (_isAccepting) return;
 
-    final requestId = widget.requestData['requestId']?.toString() ??
+    final requestId =
+        widget.requestData['requestId']?.toString() ??
         widget.requestData['requestid']?.toString() ??
         widget.requestData['serviceRequestId']?.toString() ??
         widget.requestData['servicerequestid']?.toString() ??
@@ -232,9 +287,9 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
         widget.requestData['roadrequestid']?.toString() ??
         widget.requestData['request_id']?.toString();
     if (requestId == null || requestId.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Request id missing')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Request id missing')));
       return;
     }
 
@@ -254,15 +309,18 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
       if (response.statusCode == 200 || response.statusCode == 201) {
         await EmergencyAlertService.instance.stopEffects();
         final acceptedData = jsonDecode(response.body);
-        
+
         // Merge original request data with acceptance response
         // so the map has serviceType, userNotes, and user location from the original notification
         final mergedData = <String, dynamic>{
-          ...widget.requestData,  // original notification data (serviceType, userNotes, userLatitude, etc.)
-          ...Map<String, dynamic>.from(acceptedData),  // acceptance response (mechanic details, user info)
+          ...widget
+              .requestData, // original notification data (serviceType, userNotes, userLatitude, etc.)
+          ...Map<String, dynamic>.from(
+            acceptedData,
+          ), // acceptance response (mechanic details, user info)
           'requestStatus': 'ACCEPTED',
         };
-        
+
         ActiveServiceRequestTracking.save(mergedData);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -286,15 +344,15 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
           }
         } catch (_) {}
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(message)));
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Accept request failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Accept request failed: $e')));
     } finally {
       if (mounted) {
         setState(() => _isAccepting = false);
@@ -307,16 +365,17 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final String userId = widget.requestData['userid']?.toString() ??
-        widget.requestData['userId']?.toString() ?? 'N/A';
-        
-    final String serviceType = widget.requestData['serviceType'] ?? 'General Service';
+    final String userId =
+        widget.requestData['userid']?.toString() ??
+        widget.requestData['userId']?.toString() ??
+        'N/A';
+
+    final String serviceType =
+        widget.requestData['serviceType'] ?? 'General Service';
     final String status = widget.requestData['requestStatus'] ?? 'PENDING';
-    final String distance = widget.requestData['distanceKm'] != null 
-        ? '${(widget.requestData['distanceKm'] as num).toStringAsFixed(1)} km' 
-        : '--';
-    final String eta = widget.requestData['eta']?.toString() ?? '--';
-    final String userNotes = widget.requestData['userNotes'] ?? 'No notes provided.';
+    final String distance = _calculatedDistance != '--' ? _calculatedDistance : _extractDistance(widget.requestData);
+    final String eta = _calculatedEta != '--' ? _calculatedEta : _extractEta(widget.requestData);
+    final String userNotes = _extractUserNotes(widget.requestData);
 
     final progress = _secondsLeft / _totalSeconds;
 
@@ -330,10 +389,7 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
               _mapController = c;
               c.setMapStyle(_mapStyle);
             },
-            initialCameraPosition: CameraPosition(
-              target: _targetPos,
-              zoom: 15,
-            ),
+            initialCameraPosition: CameraPosition(target: _targetPos, zoom: 15),
             markers: {
               Marker(
                 markerId: const MarkerId('user_location'),
@@ -341,7 +397,7 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
                 icon: BitmapDescriptor.defaultMarkerWithHue(
                   BitmapDescriptor.hueOrange, // Match primary color approx
                 ),
-              )
+              ),
             },
             myLocationEnabled: false,
             zoomControlsEnabled: false,
@@ -358,7 +414,10 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
             child: Align(
               alignment: Alignment.topCenter,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 child: Container(
                   decoration: BoxDecoration(
                     color: Colors.white,
@@ -373,7 +432,10 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 8,
+                            horizontal: 16,
+                          ),
                           child: Text(
                             "Emergency Request • $_secondsLeft s",
                             style: GoogleFonts.poppins(
@@ -411,7 +473,7 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
                     color: Colors.black26,
                     blurRadius: 15,
                     offset: Offset(0, 5),
-                  )
+                  ),
                 ],
               ),
               child: Column(
@@ -424,7 +486,11 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
                     children: [
                       Row(
                         children: [
-                          Icon(Icons.build_circle_rounded, color: primaryColor, size: 28),
+                          Icon(
+                            Icons.build_circle_rounded,
+                            color: primaryColor,
+                            size: 28,
+                          ),
                           const SizedBox(width: 8),
                           Text(
                             serviceType.toUpperCase(),
@@ -437,7 +503,10 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
                         ],
                       ),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.amber.shade100,
                           borderRadius: BorderRadius.circular(8),
@@ -462,17 +531,22 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
                     ),
                   ),
                   const Divider(height: 24),
-                  
+
                   // Info row: ETA & Distance
                   Row(
                     children: [
                       _infoBox(Icons.timer_rounded, "ETA", eta, isDark),
                       const SizedBox(width: 12),
-                      _infoBox(Icons.route_rounded, "Distance", distance, isDark),
+                      _infoBox(
+                        Icons.route_rounded,
+                        "Distance",
+                        distance,
+                        isDark,
+                      ),
                     ],
                   ),
                   const SizedBox(height: 16),
-                  
+
                   // Notes
                   Container(
                     width: double.infinity,
@@ -481,7 +555,9 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
                       color: isDark ? Colors.grey[850] : Colors.orange.shade50,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: isDark ? Colors.grey.shade800 : Colors.orange.shade100,
+                        color: isDark
+                            ? Colors.grey.shade800
+                            : Colors.orange.shade100,
                       ),
                     ),
                     child: Column(
@@ -507,7 +583,7 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
                       ],
                     ),
                   ),
-                  
+
                   const SizedBox(height: 20),
 
                   Row(
@@ -519,7 +595,10 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
                               : _rejectRequest,
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 16),
-                            side: const BorderSide(color: Colors.red, width: 1.5),
+                            side: const BorderSide(
+                              color: Colors.red,
+                              width: 1.5,
+                            ),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(14),
                             ),
@@ -528,7 +607,9 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
                               ? const SizedBox(
                                   width: 20,
                                   height: 20,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
                                 )
                               : Text(
                                   'REJECT',
@@ -594,7 +675,9 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
         decoration: BoxDecoration(
           color: isDark ? Colors.grey[800] : Colors.grey.shade50,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: isDark ? Colors.grey.shade700 : Colors.grey.shade200),
+          border: Border.all(
+            color: isDark ? Colors.grey.shade700 : Colors.grey.shade200,
+          ),
         ),
         child: Row(
           children: [
@@ -628,5 +711,41 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
         ),
       ),
     );
+  }
+
+  String _extractDistance(Map<String, dynamic> data) {
+    final dynamic rawDistance =
+        data['distanceKm'] ??
+        data['distance'] ??
+        data['distanceInKm'] ??
+        data['distance_in_km'] ??
+        data['distanceKmFormatted'];
+    if (rawDistance == null) return '--';
+    return DistanceFormatter.formatKilometers(rawDistance);
+  }
+
+  String _extractEta(Map<String, dynamic> data) {
+    final dynamic rawEta =
+        data['eta'] ??
+        data['ETA'] ??
+        data['estimatedTime'] ??
+        data['estimated_time'] ??
+        data['arrivalTime'] ??
+        data['arrival_time'];
+    if (rawEta == null) return '--';
+    return rawEta.toString();
+  }
+
+  String _extractUserNotes(Map<String, dynamic> data) {
+    final String rawNotes =
+        (data['userNotes'] ??
+                data['notes'] ??
+                data['note'] ??
+                data['user_notes'] ??
+                '')
+            .toString()
+            .trim();
+    if (rawNotes.isEmpty) return 'No notes provided.';
+    return rawNotes;
   }
 }

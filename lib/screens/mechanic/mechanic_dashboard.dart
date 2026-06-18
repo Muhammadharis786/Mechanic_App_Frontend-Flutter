@@ -18,7 +18,6 @@ import 'package:http/http.dart' as http;
 import '../authentication/user_session.dart';
 import '../homescreen.dart';
 import '../role_selection_screen.dart';
-import '../../services/websocket_service.dart';
 import '../../services/mechanic_notification_controller.dart';
 import '../../services/mechanic_live_location_service.dart';
 import 'package:stomp_dart_client/stomp_dart_client.dart';
@@ -43,6 +42,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
   bool _isLoading = true;
   bool _isToggleLoading = false;
   bool isOnline = false;
+  bool _restoreOnlineOnResume = false;
   bool _lifecycleOfflineUpdateInProgress = false;
 
   double totalEarnings = 0;
@@ -117,11 +117,20 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
     super.didChangeAppLifecycleState(state);
 
     if (state == AppLifecycleState.resumed) {
+      if (_restoreOnlineOnResume) {
+        _restoreOnlineOnResume = false;
+        unawaited(_toggleOnlineStatus(true, showSnack: false));
+      }
       return;
     }
 
-    final shouldGoOffline = state == AppLifecycleState.detached;
+    final shouldGoOffline =
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached;
+
     if (shouldGoOffline && isOnline && !_lifecycleOfflineUpdateInProgress) {
+      _restoreOnlineOnResume = true;
       _lifecycleOfflineUpdateInProgress = true;
       _toggleOnlineStatus(false, showSnack: false);
     }
@@ -144,7 +153,9 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
   }
 
   void _onGlobalNotificationReceived(
-      Map<String, dynamic> request, String type) {
+    Map<String, dynamic> request,
+    String type,
+  ) {
     final backendType =
         (request['type'] ?? request['backendType'])?.toString() ?? '';
 
@@ -231,9 +242,9 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                     (data['type'] ?? data['backendType'])?.toString() ?? '';
                 final status =
                     (data['status'] ?? data['requestStatus'])
-                            ?.toString()
-                            .toUpperCase() ??
-                        '';
+                        ?.toString()
+                        .toUpperCase() ??
+                    '';
 
                 if (backendType == 'ROAD_REQUEST_CANCELLED' ||
                     status == 'CANCELLED') {
@@ -262,7 +273,24 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
     _activeRequestClient?.activate();
   }
 
-
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _fadeController.dispose();
+    ActiveServiceRequestTracking.current.removeListener(
+      _onActiveTrackingChanged,
+    );
+    MechanicNotificationController().removeListener(
+      _onGlobalNotificationReceived,
+    );
+    MechanicNotificationController()
+        .removeListener(_onGlobalNotificationReceived);
+    ActiveServiceRequestTracking.current
+        .removeListener(_onActiveTrackingChanged);
+    _teardownActiveRequestSubscription();
+    _fadeController.dispose();
+    super.dispose();
+  }
 
   void _openNotificationCenter({int initialTabIndex = 0}) {
     Navigator.push(
@@ -282,11 +310,14 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
 
   Future<void> _fetchDashboardData() async {
     final url = Uri.parse(
-        "https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/dashboard");
+      "https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/dashboard",
+    );
 
     try {
-      final response =
-          await http.get(url, headers: UserSession().getAuthHeader());
+      final response = await http.get(
+        url,
+        headers: UserSession().getAuthHeader(),
+      );
 
       if (response.statusCode == 200) {
         final dynamic data = jsonDecode(response.body);
@@ -324,7 +355,8 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
 
         if (isOnline) {
           final active = ActiveServiceRequestTracking.current.value;
-          final activeRequestId = active?['requestId']?.toString() ??
+          final activeRequestId =
+              active?['requestId']?.toString() ??
               active?['requestid']?.toString();
           MechanicLiveLocationService.instance.start(
             requestId: activeRequestId,
@@ -343,10 +375,13 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
 
   Future<void> _fetchRecentJobs() async {
     final url = Uri.parse(
-        "https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/recent-activity");
+      "https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/recent-activity",
+    );
     try {
-      final response =
-          await http.get(url, headers: UserSession().getAuthHeader());
+      final response = await http.get(
+        url,
+        headers: UserSession().getAuthHeader(),
+      );
       if (response.statusCode == 200) {
         final dynamic data = jsonDecode(response.body);
         if (data is List) {
@@ -371,10 +406,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
     _subscribeActiveRequestTopic();
   }
 
-  Future<void> _toggleOnlineStatus(
-    bool value, {
-    bool showSnack = true,
-  }) async {
+  Future<void> _toggleOnlineStatus(bool value, {bool showSnack = true}) async {
     if (showSnack && mounted) {
       setState(() => _isToggleLoading = true);
     }
@@ -394,11 +426,25 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
         } else {
           isOnline = value;
         }
+
+        if (value) {
+          _lifecycleOfflineUpdateInProgress = false;
+          final active = ActiveServiceRequestTracking.current.value;
+          final activeRequestId =
+              active?['requestId']?.toString() ??
+              active?['requestid']?.toString();
+          MechanicLiveLocationService.instance.start(
+            requestId: activeRequestId,
+          );
+        } else {
+          MechanicLiveLocationService.instance.stop();
+        }
         if (showSnack && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content:
-                  Text(value ? 'You are now online' : 'You are now offline'),
+              content: Text(
+                value ? 'You are now online' : 'You are now offline',
+              ),
               backgroundColor: value ? Colors.green : Colors.orange,
             ),
           );
@@ -414,11 +460,14 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
       }
     } catch (e) {
       if (showSnack && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error updating status: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error updating status: $e')));
       }
     } finally {
+      if (!value) {
+        _lifecycleOfflineUpdateInProgress = false;
+      }
       if (showSnack && mounted) {
         setState(() => _isToggleLoading = false);
       }
@@ -427,11 +476,14 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
 
   Future<void> _fetchAppointmentNotifications() async {
     final url = Uri.parse(
-        "https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/appointments/allnotifications");
+      "https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/appointments/allnotifications",
+    );
 
     try {
-      final response =
-          await http.get(url, headers: UserSession().getAuthHeader());
+      final response = await http.get(
+        url,
+        headers: UserSession().getAuthHeader(),
+      );
 
       if (response.statusCode == 200) {
         final dynamic decoded = jsonDecode(response.body);
@@ -441,7 +493,8 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
             for (var item in decoded) {
               if (item is Map) {
                 _appointmentRequests.add(
-                    _mapAppointmentRequest(Map<String, dynamic>.from(item)));
+                  _mapAppointmentRequest(Map<String, dynamic>.from(item)),
+                );
               }
             }
           });
@@ -452,18 +505,19 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
     }
   }
 
+  // ignore: unused_element
   Map<String, dynamic> _mapRoadRequest(Map<String, dynamic> data) {
     return {
       'type': 'road',
-      'id': data['userid']?.toString() ??
+      'id':
+          data['userid']?.toString() ??
           DateTime.now().millisecondsSinceEpoch.toString(),
       'userName': data['username'] ?? 'Unknown User',
       'location': data['userlocname'] ?? 'Location not provided',
       'time': TimeAgo.format(data['created_at']),
       'issue': 'Emergency Roadside Assistance',
       'price': data['price'] != null ? 'Rs. ${data['price']}' : 'Rs. --',
-      'distance':
-          data['distance'] != null ? '${data['distance']} km away' : '',
+      'distance': data['distance'] != null ? '${data['distance']} km away' : '',
       'userimage': data['userimage'] ?? '',
       'lat': data['lat'],
       'lon': data['lon'],
@@ -473,10 +527,12 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
 
   Map<String, dynamic> _mapAppointmentRequest(Map<String, dynamic> data) {
     final rawUser = data['user'];
-    final Map<String, dynamic> user =
-        (rawUser is Map) ? Map<String, dynamic>.from(rawUser) : {};
+    final Map<String, dynamic> user = (rawUser is Map)
+        ? Map<String, dynamic>.from(rawUser)
+        : {};
 
-    final String username = data['username'] ??
+    final String username =
+        data['username'] ??
         data['userName'] ??
         user['username'] ??
         user['phonenumber'] ??
@@ -489,29 +545,30 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
     final rawTime = data['appointmentTime']?.toString() ?? '--';
     final scheduled = '$rawDate | $rawTime';
 
-    final dynamic rawIsRead =
-        data['read'] ?? data['isread'] ?? data['isRead'];
+    final dynamic rawIsRead = data['read'] ?? data['isread'] ?? data['isRead'];
     final bool isRead = rawIsRead is bool
         ? rawIsRead
         : (rawIsRead?.toString().toLowerCase() == 'true');
 
     return {
       'type': 'appointment',
-      'id': (data['notificationid'] ??
-              data['notificationId'] ??
-              data['id'] ??
-              data['appointmentid'] ??
-              data['appointmentId'] ??
-              DateTime.now().millisecondsSinceEpoch.toString())
+      'id':
+          (data['notificationid'] ??
+                  data['notificationId'] ??
+                  data['id'] ??
+                  data['appointmentid'] ??
+                  data['appointmentId'] ??
+                  DateTime.now().millisecondsSinceEpoch.toString())
+              .toString(),
+      'appointmentId': (data['appointmentid'] ?? data['appointmentId'] ?? '')
           .toString(),
-      'appointmentId':
-          (data['appointmentid'] ?? data['appointmentId'] ?? '').toString(),
       'userName': username,
       'userimage': userImg,
       'location':
           data['useraddress'] ?? data['address'] ?? 'Address not provided',
       'time': TimeAgo.format(data['created_at']),
-      'issue': data['problemDescription'] ??
+      'issue':
+          data['problemDescription'] ??
           data['problem'] ??
           'Service appointment request',
       'price': 'Rs. --',
@@ -530,21 +587,35 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
     final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor:
-          isDark ? const Color(0xFF121212) : const Color(0xFFF5F5F5),
+      backgroundColor: isDark
+          ? const Color(0xFF0F0F10)
+          : const Color(0xFFF8F9FA),
       appBar: AppBar(
-        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        backgroundColor: isDark ? const Color(0xFF0F0F10) : const Color(0xFFF8F9FA),
         elevation: 0,
-        iconTheme: IconThemeData(color: theme.iconTheme.color),
+        iconTheme: IconThemeData(color: isDark ? Colors.white : Colors.black87),
+        centerTitle: false,
+        title: Text(
+          'Dashboard',
+          style: GoogleFonts.poppins(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+        ),
         actions: [
           Stack(
             alignment: Alignment.center,
             children: [
               IconButton(
                 onPressed: () => _openNotificationCenter(
-                    initialTabIndex: _appointmentUnreadCount > 0 ? 1 : 0),
-                icon: Icon(Icons.notifications_outlined,
-                    color: primaryColor, size: 28),
+                  initialTabIndex: _appointmentUnreadCount > 0 ? 1 : 0,
+                ),
+                icon: Icon(
+                  Icons.notifications_none_rounded,
+                  color: isDark ? Colors.white : Colors.black87,
+                  size: 26,
+                ),
               ),
               if (_notificationCount > 0)
                 Positioned(
@@ -553,24 +624,31 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                   child: Container(
                     padding: const EdgeInsets.all(2),
                     decoration: BoxDecoration(
-                      color: Colors.red,
+                      color: const Color(0xFFFF3B30),
                       borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: isDark ? const Color(0xFF0F0F10) : const Color(0xFFF8F9FA),
+                        width: 1.5,
+                      ),
                     ),
-                    constraints:
-                        const BoxConstraints(minWidth: 16, minHeight: 16),
+                    constraints: const BoxConstraints(
+                      minWidth: 16,
+                      minHeight: 16,
+                    ),
                     child: Text(
                       '$_notificationCount',
                       style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold),
+                        color: Colors.white,
+                        fontSize: 8,
+                        fontWeight: FontWeight.bold,
+                      ),
                       textAlign: TextAlign.center,
                     ),
                   ),
                 ),
             ],
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 12),
         ],
       ),
       drawer: _buildDrawer(isDark, theme),
@@ -586,7 +664,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // ── PROFILE HEADER SECTION ──
+                      // ── PROFILE HEADER HERO CARD ──
                       _buildProfileHeader(isDark),
 
                       Padding(
@@ -594,7 +672,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 12),
 
                             // ── ACTIVE REQUEST BANNER ──
                             ValueListenableBuilder<Map<String, dynamic>?>(
@@ -602,7 +680,8 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                                   ActiveServiceRequestTracking.current,
                               builder: (context, activeRequest, _) {
                                 if (!ActiveServiceRequestTracking.isActive(
-                                    activeRequest)) {
+                                  activeRequest,
+                                )) {
                                   return const SizedBox.shrink();
                                 }
                                 final request = activeRequest!;
@@ -614,18 +693,17 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                                         .toUpperCase();
                                 final isPendingRoadRequest =
                                     requestStatus == 'PENDING' &&
-                                        request['mechanicId'] == null;
+                                    request['mechanicId'] == null;
                                 final isPaymentPending =
                                     request['paymentPending'] == true ||
-                                        requestStatus == 'PAYMENT_PENDING';
+                                    requestStatus == 'PAYMENT_PENDING';
                                 final isWaitingForPayment =
                                     request['workCompleted'] == true ||
-                                        requestStatus ==
-                                            'WAITING_FOR_PAYMENT' ||
-                                        requestStatus == 'WORK_COMPLETED';
+                                    requestStatus == 'WAITING_FOR_PAYMENT' ||
+                                    requestStatus == 'WORK_COMPLETED';
 
                                 return Container(
-                                  margin: const EdgeInsets.only(bottom: 16),
+                                  margin: const EdgeInsets.only(bottom: 20),
                                   padding: const EdgeInsets.all(16),
                                   decoration: BoxDecoration(
                                     gradient: LinearGradient(
@@ -633,13 +711,14 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                                       begin: Alignment.topLeft,
                                       end: Alignment.bottomRight,
                                     ),
-                                    borderRadius: BorderRadius.circular(16),
+                                    borderRadius: BorderRadius.circular(20),
                                     boxShadow: [
                                       BoxShadow(
-                                        color:
-                                            primaryColor.withValues(alpha: 0.3),
-                                        blurRadius: 10,
-                                        offset: const Offset(0, 4),
+                                        color: primaryColor.withValues(
+                                          alpha: 0.3,
+                                        ),
+                                        blurRadius: 12,
+                                        offset: const Offset(0, 6),
                                       ),
                                     ],
                                   ),
@@ -648,14 +727,14 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                                       Container(
                                         padding: const EdgeInsets.all(10),
                                         decoration: BoxDecoration(
-                                          color: Colors.white24,
-                                          borderRadius:
-                                              BorderRadius.circular(12),
+                                          color: Colors.white.withValues(alpha: 0.2),
+                                          borderRadius: BorderRadius.circular(14),
                                         ),
                                         child: const Icon(
-                                            Icons.navigation_rounded,
-                                            color: Colors.white,
-                                            size: 22),
+                                          Icons.navigation_rounded,
+                                          color: Colors.white,
+                                          size: 22,
+                                        ),
                                       ),
                                       const SizedBox(width: 14),
                                       Expanded(
@@ -667,27 +746,29 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                                               isPendingRoadRequest
                                                   ? 'Pending Service Request'
                                                   : isPaymentPending
-                                                      ? 'Payment Pending'
-                                                      : isWaitingForPayment
-                                                          ? 'Waiting for Payment'
-                                                          : 'Active Service in Progress',
+                                                  ? 'Payment Pending'
+                                                  : isWaitingForPayment
+                                                  ? 'Waiting for Payment'
+                                                  : 'Active Service in Progress',
                                               style: GoogleFonts.poppins(
                                                 color: Colors.white,
                                                 fontWeight: FontWeight.bold,
                                                 fontSize: 14,
                                               ),
                                             ),
+                                            const SizedBox(height: 2),
                                             Text(
                                               isPendingRoadRequest
                                                   ? 'Tap to view request details'
                                                   : isPaymentPending
-                                                      ? 'Tap to confirm cash payment'
-                                                      : isWaitingForPayment
-                                                          ? 'Customer payment pending'
-                                                          : 'Tap to resume tracking map',
+                                                  ? 'Tap to confirm cash payment'
+                                                  : isWaitingForPayment
+                                                  ? 'Customer payment pending'
+                                                  : 'Tap to resume tracking map',
                                               style: GoogleFonts.poppins(
-                                                color: Colors.white70,
-                                                fontSize: 12,
+                                                color: Colors.white.withValues(alpha: 0.85),
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w500,
                                               ),
                                             ),
                                           ],
@@ -700,10 +781,12 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                                             MaterialPageRoute(
                                               builder: (context) =>
                                                   isPendingRoadRequest
-                                                      ? MechanicRequestAlertScreen(
-                                                          requestData: request)
-                                                      : MechanicUserMap(
-                                                          requestData: request),
+                                                  ? MechanicRequestAlertScreen(
+                                                      requestData: request,
+                                                    )
+                                                  : MechanicUserMap(
+                                                      requestData: request,
+                                                    ),
                                             ),
                                           );
                                           if (!mounted) return;
@@ -713,16 +796,23 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                                         style: ElevatedButton.styleFrom(
                                           backgroundColor: Colors.white,
                                           foregroundColor: primaryColor,
+                                          elevation: 4,
+                                          shadowColor: Colors.black.withValues(alpha: 0.15),
                                           padding: const EdgeInsets.symmetric(
-                                              horizontal: 14, vertical: 10),
+                                            horizontal: 14,
+                                            vertical: 10,
+                                          ),
                                           shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(10)),
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
                                         ),
-                                        child: Text('RESUME',
-                                            style: GoogleFonts.poppins(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 12)),
+                                        child: Text(
+                                          'RESUME',
+                                          style: GoogleFonts.poppins(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                          ),
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -740,13 +830,12 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                               'Overview',
                               style: GoogleFonts.poppins(
                                 fontSize: 17,
-                                fontWeight: FontWeight.w700,
-                                color: theme.textTheme.titleLarge?.color,
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.white : Colors.black87,
                               ),
                             ),
                             const SizedBox(height: 14),
                             _buildStatsGrid(isDark),
-
                             const SizedBox(height: 24),
 
                             // ── QUICK ACTIONS ──
@@ -754,14 +843,14 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                               'Quick Actions',
                               style: GoogleFonts.poppins(
                                 fontSize: 17,
-                                fontWeight: FontWeight.w700,
-                                color: theme.textTheme.titleLarge?.color,
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.white : Colors.black87,
                               ),
                             ),
                             const SizedBox(height: 14),
                             _buildQuickActions(isDark),
 
-                            const SizedBox(height: 24),
+                            const SizedBox(height: 16),
 
                             // ── RECENT ACTIVITY ──
                             Row(
@@ -771,26 +860,44 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                                   'Recent Activity',
                                   style: GoogleFonts.poppins(
                                     fontSize: 17,
-                                    fontWeight: FontWeight.w700,
-                                    color: theme.textTheme.titleLarge?.color,
+                                    fontWeight: FontWeight.bold,
+                                    color: isDark ? Colors.white : Colors.black87,
                                   ),
                                 ),
-                                TextButton(
-                                  onPressed: () => Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                          builder: (_) =>
-                                              const MechanicHistoryScreen())),
-                                  child: Text(
-                                    'See All',
-                                    style: GoogleFonts.poppins(
-                                        color: primaryColor,
-                                        fontWeight: FontWeight.w600),
+                                InkWell(
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          const MechanicHistoryScreen(),
+                                    ),
+                                  ),
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 14, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+                                      borderRadius: BorderRadius.circular(12),
+                                      boxShadow: const [
+                                        BoxShadow(
+                                          color: Colors.black12,
+                                          blurRadius: 4,
+                                        ),
+                                      ],
+                                    ),
+                                    child: Text(
+                                      "See All",
+                                      style: TextStyle(
+                                          fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                                          color: primaryColor,
+                                          fontWeight: FontWeight.w500),
+                                    ),
                                   ),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 10),
                             _buildRecentActivity(isDark),
 
                             const SizedBox(height: 30),
@@ -805,426 +912,719 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
     );
   }
 
-  // ── PROFILE HEADER ──
+  // ── PROFILE HEADER HERO CARD ──
   Widget _buildProfileHeader(bool isDark) {
     return Container(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        gradient: LinearGradient(
+          colors: [
+            primaryColor,
+            accentOrange,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+            color: primaryColor.withValues(alpha: 0.35),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
-      child: Row(
-        children: [
-          // Profile Photo
-          Stack(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(3),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(22),
+        child: Stack(
+          children: [
+            // Background abstract decorative circles
+            Positioned(
+              right: -30,
+              top: -30,
+              child: Container(
+                width: 150,
+                height: 150,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    colors: [primaryColor, accentOrange],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-                child: CircleAvatar(
-                  radius: 36,
-                  backgroundColor: Colors.grey.shade200,
-                  backgroundImage: mechanicImageUrl.isNotEmpty
-                      ? NetworkImage(mechanicImageUrl)
-                      : const AssetImage('assets/images/m1.jpg')
-                          as ImageProvider,
+                  color: Colors.white.withValues(alpha: 0.08),
                 ),
               ),
-              Positioned(
-                bottom: 2,
-                right: 2,
-                child: Container(
-                  width: 14,
-                  height: 14,
-                  decoration: BoxDecoration(
-                    color: isOnline ? Colors.green : Colors.grey,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
-                  ),
+            ),
+            Positioned(
+              left: -50,
+              bottom: -50,
+              child: Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.05),
                 ),
               ),
-            ],
-          ),
-          const SizedBox(width: 16),
-          // Name & Rating
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Hello, $mechanicName 👋',
-                  style: GoogleFonts.poppins(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? Colors.white : Colors.black87,
+            ),
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Row 1: Photo, Name & Rating, Edit Button
+                  Row(
+                    children: [
+                      // Profile Photo with custom status ring
+                      Stack(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(3),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.6),
+                                width: 2,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.1),
+                                  blurRadius: 8,
+                                ),
+                              ],
+                            ),
+                            child: CircleAvatar(
+                              radius: 34,
+                              backgroundColor: Colors.white24,
+                              backgroundImage: mechanicImageUrl.isNotEmpty
+                                  ? NetworkImage(mechanicImageUrl)
+                                  : const AssetImage('assets/images/m1.jpg') as ImageProvider,
+                            ),
+                          ),
+                          Positioned(
+                            bottom: 2,
+                            right: 2,
+                            child: Container(
+                              width: 16,
+                              height: 16,
+                              decoration: BoxDecoration(
+                                color: isOnline ? const Color(0xFF4CAF50) : const Color(0xFF9E9E9E),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: accentOrange,
+                                  width: 2.5,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(width: 14),
+                      // Name & Rating & Status pill
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Hello, $mechanicName 👋',
+                              style: GoogleFonts.poppins(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                // Rating Badge
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.2),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.star_rounded,
+                                        color: Colors.amber,
+                                        size: 14,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        mechanicRating.toStringAsFixed(1),
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                // Online Status Pill
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: isOnline 
+                                        ? Colors.green.shade600.withValues(alpha: 0.3)
+                                        : Colors.white.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: isOnline 
+                                          ? Colors.green.shade300.withValues(alpha: 0.5)
+                                          : Colors.white.withValues(alpha: 0.25),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    isOnline ? 'Online' : 'Offline',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      // Edit profile icon
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const MechanicProfileScreen(),
+                            ),
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                              Icons.edit_rounded,
+                              color: Colors.white,
+                              size: 18,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    // Stars
-                    Row(
-                      children: List.generate(5, (i) {
-                        return Icon(
-                          i < mechanicRating.floor()
-                              ? Icons.star_rounded
-                              : i < mechanicRating
-                                  ? Icons.star_half_rounded
-                                  : Icons.star_outline_rounded,
-                          color: Colors.amber,
-                          size: 16,
-                        );
-                      }),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      '${mechanicRating.toStringAsFixed(1)} Rating',
-                      style: GoogleFonts.poppins(
-                        fontSize: 13,
-                        color: isDark ? Colors.grey.shade400 : Colors.black54,
+                  const SizedBox(height: 20),
+                  // Earnings Summary bottom glassmorphic bar
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        width: 1,
                       ),
                     ),
-                  ],
-                ),
-              ],
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            children: [
+                              Text(
+                                "Today's Earnings",
+                                style: GoogleFonts.poppins(
+                                  color: Colors.white.withValues(alpha: 0.8),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Rs. ${todaysEarnings.toStringAsFixed(0)}',
+                                style: GoogleFonts.poppins(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          width: 1,
+                          height: 30,
+                          color: Colors.white.withValues(alpha: 0.2),
+                        ),
+                        Expanded(
+                          child: Column(
+                            children: [
+                              Text(
+                                "Total Earnings",
+                                style: GoogleFonts.poppins(
+                                  color: Colors.white.withValues(alpha: 0.8),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Rs. ${totalEarnings.toStringAsFixed(0)}',
+                                style: GoogleFonts.poppins(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          // Profile edit button
-          IconButton(
-            onPressed: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const MechanicProfileScreen())),
-            icon: Icon(Icons.edit_outlined, color: primaryColor, size: 22),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
   // ── ONLINE TOGGLE ──
   Widget _buildOnlineToggle(bool isDark) {
+    final statusColor = isOnline ? const Color(0xFF4CAF50) : const Color(0xFFFF6D00);
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF2A2A2A) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: isOnline
-              ? Colors.green.withValues(alpha: 0.4)
-              : Colors.red.withValues(alpha: 0.3),
+              ? Colors.green.withValues(alpha: 0.2)
+              : Colors.orange.withValues(alpha: 0.15),
           width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
+            color: (isOnline ? Colors.green : Colors.orange).withValues(
+              alpha: isDark ? 0.12 : 0.05,
+            ),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: isOnline
-                  ? Colors.green.withValues(alpha: 0.12)
-                  : Colors.red.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(
-              isOnline ? Icons.sensors_rounded : Icons.sensors_off_rounded,
-              color: isOnline ? Colors.green.shade600 : Colors.red.shade400,
-              size: 22,
-            ),
+          // Pulse status indicator icon
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              if (isOnline)
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.green.withValues(alpha: 0.15),
+                  ),
+                ),
+              Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: isOnline
+                      ? Colors.green.withValues(alpha: 0.15)
+                      : Colors.orange.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  isOnline ? Icons.wifi_tethering_rounded : Icons.portable_wifi_off_rounded,
+                  color: isOnline ? Colors.green : Colors.orange,
+                  size: 18,
+                ),
+              ),
+            ],
           ),
           const SizedBox(width: 14),
-          Text(
-            'Offline',
-            style: GoogleFonts.poppins(
-              color: isOnline
-                  ? (isDark ? Colors.grey.shade600 : Colors.grey.shade400)
-                  : Colors.red.shade400,
-              fontWeight: isOnline ? FontWeight.w500 : FontWeight.bold,
-              fontSize: 15,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      isOnline ? 'Go Offline' : 'Go Online',
+                      style: GoogleFonts.poppins(
+                        color: isDark ? Colors.white : Colors.black87,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: statusColor,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  isOnline
+                      ? 'You are active & visible to customers'
+                      : 'You are currently hidden from search',
+                  style: GoogleFonts.poppins(
+                    color: isDark ? Colors.grey.shade400 : Colors.grey.shade500,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(width: 12),
           _isToggleLoading
               ? const SizedBox(
                   width: 48,
-                  height: 36,
+                  height: 24,
                   child: Center(
                     child: SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+                      ),
                     ),
                   ),
                 )
               : Switch(
                   value: isOnline,
-                  activeColor: Colors.green.shade500,
-                  activeTrackColor: Colors.green.shade200,
-                  inactiveThumbColor: Colors.red.shade400,
-                  inactiveTrackColor: Colors.red.shade100,
+                  activeThumbColor: Colors.green,
+                  activeTrackColor: Colors.green.withValues(alpha: 0.3),
+                  inactiveThumbColor: Colors.grey.shade400,
+                  inactiveTrackColor: Colors.grey.shade300,
                   onChanged: _toggleOnlineStatus,
                 ),
-          const SizedBox(width: 12),
-          Text(
-            'Online',
-            style: GoogleFonts.poppins(
-              color: isOnline
-                  ? Colors.green.shade600
-                  : (isDark ? Colors.grey.shade600 : Colors.grey.shade400),
-              fontWeight: isOnline ? FontWeight.bold : FontWeight.w500,
-              fontSize: 15,
-            ),
-          ),
         ],
       ),
     );
   }
 
-  // ── STATS 2x2 GRID ──
+  // ── STATS OVERVIEW CARDS ──
   Widget _buildStatsGrid(bool isDark) {
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisSpacing: 12,
-      mainAxisSpacing: 12,
-      childAspectRatio: 1.4,
+    return Column(
       children: [
-        _gridStatCard(
-          label: "Today's Services",
-          value: todaysServices.toString(),
-          icon: Icons.build_circle_rounded,
-          accentColor: primaryColor,
-          isDark: isDark,
+        Row(
+          children: [
+            Expanded(
+              child: _buildStatCardMinimalist(
+                label: "Today's Services",
+                value: todaysServices.toString(),
+                icon: Icons.build_circle_rounded,
+                bgColor: primaryColor,
+                isDark: isDark,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildStatCardMinimalist(
+                label: "Today's Earnings",
+                value: 'Rs. ${todaysEarnings.toStringAsFixed(0)}',
+                icon: Icons.trending_up_rounded,
+                bgColor: const Color(0xFF1E88E5),
+                isDark: isDark,
+              ),
+            ),
+          ],
         ),
-        _gridStatCard(
-          label: "Today's Earnings",
-          value: 'Rs. ${todaysEarnings.toStringAsFixed(0)}',
-          icon: Icons.trending_up_rounded,
-          accentColor: const Color(0xFF1E88E5),
-          isDark: isDark,
-        ),
-        _gridStatCard(
-          label: 'Total Earnings',
-          value: 'Rs. ${totalEarnings.toStringAsFixed(0)}',
-          icon: Icons.account_balance_wallet_rounded,
-          accentColor: const Color(0xFF43A047),
-          isDark: isDark,
-        ),
-        _gridStatCard(
-          label: 'Total Services',
-          value: totalServices.toString(),
-          icon: Icons.handyman_rounded,
-          accentColor: const Color(0xFF9C27B0),
-          isDark: isDark,
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildStatCardMinimalist(
+                label: 'Total Earnings',
+                value: 'Rs. ${totalEarnings.toStringAsFixed(0)}',
+                icon: Icons.account_balance_wallet_rounded,
+                bgColor: const Color(0xFF43A047),
+                isDark: isDark,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildStatCardMinimalist(
+                label: 'Total Services',
+                value: totalServices.toString(),
+                icon: Icons.handyman_rounded,
+                bgColor: const Color(0xFF9C27B0),
+                isDark: isDark,
+              ),
+            ),
+          ],
         ),
       ],
     );
   }
 
-  Widget _gridStatCard({
+  Widget _buildStatCardMinimalist({
     required String label,
     required String value,
     required IconData icon,
-    required Color accentColor,
+    required Color bgColor,
     required bool isDark,
   }) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF2A2A2A) : Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isDark 
+              ? Colors.white.withValues(alpha: 0.06) 
+              : Colors.orange.withValues(alpha: 0.15),
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
         ],
-        border: isDark
-            ? Border.all(color: Colors.grey.shade800, width: 1)
-            : null,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: accentColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: accentColor, size: 22),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                value,
-                style: GoogleFonts.poppins(
-                  color: isDark ? Colors.white : Colors.black87,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+              // Clean white icon container/card
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: Colors.grey.shade200,
+                    width: 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
-                overflow: TextOverflow.ellipsis,
+                child: Icon(
+                  icon, 
+                  color: primaryColor,
+                  size: 20,
+                ),
               ),
-              Text(
-                label,
-                style: GoogleFonts.poppins(
-                  color: isDark ? Colors.grey.shade400 : Colors.black54,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                ),
-                overflow: TextOverflow.ellipsis,
+              Icon(
+                icon,
+                color: (isDark ? Colors.white : primaryColor).withValues(alpha: 0.04),
+                size: 36,
               ),
             ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            value,
+            style: GoogleFonts.poppins(
+              color: isDark ? Colors.white : Colors.black87,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: GoogleFonts.poppins(
+              color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
     );
   }
 
-  // ── QUICK ACTIONS ──
+  // ── QUICK ACTIONS (HORIZONTAL ROW) ──
   Widget _buildQuickActions(bool isDark) {
     final actions = [
       {
         'label': 'Bookings',
-        'icon': Icons.event_note_rounded,
-        'color': const Color(0xFFE64A19),
+        'icon': Icons.assignment_turned_in_rounded,
+        'color': primaryColor,
         'badge': 0,
-        'onTap': () => Navigator.push(context,
-            MaterialPageRoute(builder: (_) => const MechanicBookingRequestScreen())),
+        'onTap': () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const MechanicBookingRequestScreen(),
+          ),
+        ),
       },
       {
         'label': 'Appointments',
-        'icon': Icons.calendar_today_rounded,
+        'icon': Icons.calendar_month_rounded,
         'color': const Color(0xFF1E88E5),
         'badge': _appointmentUnreadCount,
         'onTap': () => Navigator.push(
-            context,
-            MaterialPageRoute(
-                builder: (_) => MechanicAppointmentRequestScreen(
-                      requests: _appointmentRequests,
-                      onReadUpdate: () {
-                        if (mounted) setState(() {});
-                      },
-                    ))).then((_) => _fetchAppointmentNotifications()),
+          context,
+          MaterialPageRoute(
+            builder: (_) => MechanicAppointmentRequestScreen(
+              requests: _appointmentRequests,
+              onReadUpdate: () {
+                if (mounted) setState(() {});
+              },
+            ),
+          ),
+        ).then((_) => _fetchAppointmentNotifications()),
       },
       {
         'label': 'Earnings',
-        'icon': Icons.account_balance_wallet_rounded,
+        'icon': Icons.payments_rounded,
         'color': const Color(0xFF43A047),
         'badge': 0,
-        'onTap': () => Navigator.push(context,
-            MaterialPageRoute(builder: (_) => const MechanicEarningsScreen())),
+        'onTap': () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const MechanicEarningsScreen()),
+        ),
       },
       {
         'label': 'Services',
-        'icon': Icons.build_rounded,
+        'icon': Icons.construction_rounded,
         'color': const Color(0xFF9C27B0),
         'badge': 0,
-        'onTap': () => Navigator.push(context,
-            MaterialPageRoute(builder: (_) => const MechanicServicesScreen())),
+        'onTap': () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const MechanicServicesScreen()),
+        ),
       },
     ];
 
     return Row(
-      children: actions.map((action) {
+      children: actions.asMap().entries.map((entry) {
+        final idx = entry.key;
+        final action = entry.value;
         final badge = action['badge'] as int;
         final color = action['color'] as Color;
+        final isLast = idx == actions.length - 1;
+
         return Expanded(
-          child: GestureDetector(
-            onTap: action['onTap'] as VoidCallback,
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 4),
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+          child: Padding(
+            padding: EdgeInsets.only(right: isLast ? 0 : 8),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: action['onTap'] as VoidCallback,
                 borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color:
-                        Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-                border: isDark
-                    ? Border.all(color: Colors.grey.shade800)
-                    : null,
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: color.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Icon(action['icon'] as IconData,
-                            color: color, size: 24),
+                splashColor: color.withValues(alpha: 0.1),
+                highlightColor: color.withValues(alpha: 0.05),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.grey.withValues(alpha: 0.12),
+                      width: 1.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.03),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
                       ),
-                      if (badge > 0)
-                        Positioned(
-                          top: -4,
-                          right: -4,
-                          child: Container(
-                            padding: const EdgeInsets.all(3),
-                            decoration: const BoxDecoration(
-                              color: Colors.red,
-                              shape: BoxShape.circle,
-                            ),
-                            constraints: const BoxConstraints(
-                                minWidth: 16, minHeight: 16),
-                            child: Text(
-                              '$badge',
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.bold),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    action['label'] as String,
-                    style: GoogleFonts.poppins(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: isDark ? Colors.white70 : Colors.black87,
-                    ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: isDark ? const Color(0xFF2A2A30) : Colors.grey.shade50,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade200,
+                                width: 1,
+                              ),
+                            ),
+                            child: Icon(
+                              action['icon'] as IconData,
+                              color: color,
+                              size: 18,
+                            ),
+                          ),
+                          if (badge > 0)
+                            Positioned(
+                              right: -6,
+                              top: -6,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 5,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFF3B30),
+                                  borderRadius: BorderRadius.circular(8),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.red.withValues(alpha: 0.3),
+                                      blurRadius: 4,
+                                    ),
+                                  ],
+                                ),
+                                child: Text(
+                                  badge > 99 ? '99+' : '$badge',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        action['label'] as String,
+                        style: GoogleFonts.poppins(
+                          fontSize: 9.0,
+                          fontWeight: FontWeight.w500,
+                          color: isDark ? Colors.white.withValues(alpha: 0.9) : Colors.black87,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),
@@ -1233,34 +1633,56 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
     );
   }
 
-  // ── RECENT ACTIVITY ──
+  // ── RECENT ACTIVITY (TIMELINE STYLE) ──
   Widget _buildRecentActivity(bool isDark) {
     if (_recentJobs.isEmpty) {
       return Container(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(28),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF2A2A2A) : Colors.white,
-          borderRadius: BorderRadius.circular(16),
+          color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
+              color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.03),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
           ],
+          border: Border.all(
+            color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.grey.withValues(alpha: 0.12),
+            width: 1.5,
+          ),
         ),
         child: Center(
           child: Column(
             children: [
-              Icon(Icons.history_rounded,
-                  size: 40,
-                  color: isDark ? Colors.grey.shade600 : Colors.grey.shade400),
-              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: primaryColor.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.history_rounded,
+                  size: 38,
+                  color: primaryColor,
+                ),
+              ),
+              const SizedBox(height: 12),
               Text(
                 'No recent activity',
                 style: GoogleFonts.poppins(
-                  color: isDark ? Colors.grey.shade500 : Colors.grey.shade500,
+                  color: isDark ? Colors.white : Colors.black87,
                   fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Complete your first job to see it here',
+                style: GoogleFonts.poppins(
+                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade500,
+                  fontSize: 11,
                 ),
               ),
             ],
@@ -1269,111 +1691,176 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
       );
     }
 
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF2A2A2A) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        children: _recentJobs.asMap().entries.map((entry) {
-          final i = entry.key;
-          final job = entry.value;
-          final isLast = i == _recentJobs.length - 1;
+    return Column(
+      children: _recentJobs.asMap().entries.map((entry) {
+        final i = entry.key;
+        final job = entry.value;
+        final isLast = i == _recentJobs.length - 1;
 
-          // New API fields
-          final String type = job['type']?.toString() ?? 'SERVICE_REQUEST';
-          final bool isAppointment = type == 'APPOINTMENT';
-          final amount = job['amount']?.toString() ?? '--';
-          final username = job['username']?.toString() ?? 'Customer';
-          final serviceType = job['serviceType']?.toString() ?? 'Service';
-          final completedAt = job['completedAt']?.toString() ?? '';
-          final displayDate = completedAt.length >= 10
-              ? completedAt.substring(0, 10)
-              : completedAt;
+        // API fields
+        final String type = job['type']?.toString() ?? 'SERVICE_REQUEST';
+        final bool isAppointment = type == 'APPOINTMENT';
+        final amount = job['amount']?.toString() ?? '--';
+        final username = job['username']?.toString() ?? 'Customer';
+        final serviceType = job['serviceType']?.toString() ?? 'Service';
+        final completedAt = job['completedAt']?.toString() ?? '';
+        final displayDate = completedAt.length >= 10
+            ? completedAt.substring(0, 10)
+            : completedAt;
 
-          // Icon aur color type ke hisaab se
-          final IconData activityIcon = isAppointment
-              ? Icons.calendar_today_rounded
-              : Icons.build_circle_rounded;
-          final Color activityColor = isAppointment
-              ? const Color(0xFF1E88E5)
-              : primaryColor;
+        final IconData activityIcon = isAppointment
+            ? Icons.calendar_month_rounded
+            : Icons.build_circle_rounded;
+        final Color activityColor = isAppointment
+            ? const Color(0xFF1E88E5)
+            : primaryColor;
 
-          return Column(
+        return IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              ListTile(
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                leading: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: activityColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(activityIcon, color: activityColor, size: 20),
-                ),
-                title: Text(
-                  username,
-                  style: GoogleFonts.poppins(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                    color: isDark ? Colors.white : Colors.black87,
-                  ),
-                ),
-                subtitle: Text(
-                  serviceType,
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    color: isDark ? Colors.grey.shade400 : Colors.black54,
-                  ),
-                ),
-                trailing: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.end,
+              // Timeline vertical indicator
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Column(
                   children: [
-                    Text(
-                      amount == '--' ? 'Rs. --' : 'Rs. $amount',
-                      style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                        color: Colors.green.shade600,
-                      ),
-                    ),
-                    if (displayDate.isNotEmpty)
-                      Text(
-                        displayDate,
-                        style: GoogleFonts.poppins(
-                          fontSize: 10,
-                          color: isDark
-                              ? Colors.grey.shade500
-                              : Colors.grey.shade500,
+                    Container(
+                      width: 16,
+                      height: 16,
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF0F0F10) : const Color(0xFFF8F9FA),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: activityColor,
+                          width: 3,
                         ),
                       ),
+                    ),
+                    if (!isLast)
+                      Expanded(
+                        child: Container(
+                          width: 2,
+                          color: activityColor.withValues(alpha: 0.3),
+                        ),
+                      )
+                    else
+                      const SizedBox(height: 12),
                   ],
                 ),
               ),
-              if (!isLast)
-                Divider(
-                  height: 1,
-                  indent: 16,
-                  endIndent: 16,
-                  color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
+              const SizedBox(width: 12),
+              // Activity Card
+              Expanded(
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border(
+                      top: BorderSide(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade200),
+                      right: BorderSide(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade200),
+                      bottom: BorderSide(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade200),
+                      left: BorderSide(color: activityColor, width: 4),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: isDark ? 0.12 : 0.03),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () {},
+                      borderRadius: BorderRadius.circular(18),
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: activityColor.withValues(alpha: 0.08),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                activityIcon,
+                                color: activityColor,
+                                size: 18,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    username,
+                                    style: GoogleFonts.poppins(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                      color: isDark ? Colors.white : Colors.black87,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    serviceType,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 11,
+                                      color: isDark ? Colors.grey.shade400 : Colors.grey.shade500,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  amount == '--' ? 'Rs. --' : 'Rs. $amount',
+                                  style: GoogleFonts.poppins(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                    color: const Color(0xFF4CAF50),
+                                  ),
+                                ),
+                                if (displayDate.isNotEmpty) ...[
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    displayDate,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 9,
+                                      color: isDark ? Colors.grey.shade500 : Colors.grey.shade500,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
+              ),
             ],
-          );
-        }).toList(),
-      ),
+          ),
+        );
+      }).toList(),
     );
   }
 
-  // ── DRAWER ──
+  // ── DRAWER ITEM ──
   Widget _drawerItem(
     IconData icon,
     String title,
@@ -1384,78 +1871,78 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
     VoidCallback? onTap,
     int badgeCount = 0,
   }) {
-    final Color itemColor =
-        isLogout ? Colors.red : (isDark ? Colors.white70 : Colors.black87);
+    final Color itemColor = isLogout
+        ? const Color(0xFFFF3B30)
+        : (isDark ? Colors.white70 : Colors.black87);
     final Color selectedBgColor = isDark
         ? primaryColor.withValues(alpha: 0.15)
-        : primaryColor.withValues(alpha: 0.1);
+        : primaryColor.withValues(alpha: 0.08);
     final Color selectedTextColor = primaryColor;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 6),
+      margin: const EdgeInsets.only(bottom: 2),
       decoration: BoxDecoration(
         color: isSelected ? selectedBgColor : Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: ListTile(
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        leading: Icon(icon,
-            color: isSelected ? selectedTextColor : itemColor, size: 24),
+        dense: true,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        leading: Icon(
+          icon,
+          color: isSelected ? selectedTextColor : itemColor,
+          size: 22,
+        ),
         title: Text(
           title,
           style: GoogleFonts.poppins(
             color: isSelected ? selectedTextColor : itemColor,
-            fontSize: 15,
-            fontWeight:
-                isSelected ? FontWeight.w600 : FontWeight.w500,
+            fontSize: 14,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
           ),
         ),
         trailing: badgeCount > 0
             ? Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.red,
-                  borderRadius: BorderRadius.circular(20),
+                  color: const Color(0xFFFF3B30),
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
                   badgeCount > 99 ? '99+' : '$badgeCount',
                   style: GoogleFonts.poppins(
                     color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               )
             : null,
         onTap: onTap,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
         minLeadingWidth: 20,
       ),
     );
   }
 
+  // ── BUILD DRAWER ──
   Drawer _buildDrawer(bool isDark, ThemeData theme) {
     return Drawer(
-      backgroundColor: theme.drawerTheme.backgroundColor ??
-          (isDark ? const Color(0xFF1E1E1E) : Colors.grey.shade50),
+      backgroundColor: isDark ? const Color(0xFF0F0F10) : Colors.white,
       child: Column(
         children: [
           Container(
             padding: EdgeInsets.only(
               top: MediaQuery.of(context).padding.top + 20,
-              bottom: 24,
+              bottom: 14,
               left: 20,
               right: 20,
             ),
             decoration: BoxDecoration(
-              color: isDark ? Colors.grey[900] : Colors.white,
+              color: isDark ? const Color(0xFF1E1E22) : Colors.white,
               border: Border(
                 bottom: BorderSide(
-                  color:
-                      isDark ? Colors.white10 : Colors.grey.shade100,
+                  color: isDark ? Colors.white10 : Colors.grey.shade100,
                   width: 1,
                 ),
               ),
@@ -1463,24 +1950,25 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
             child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(3),
+                  padding: const EdgeInsets.all(2),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     shape: BoxShape.circle,
                     border: Border.all(
-                        color: primaryColor.withValues(alpha: 0.5),
-                        width: 2),
+                      color: primaryColor.withValues(alpha: 0.5),
+                      width: 2,
+                    ),
                   ),
                   child: CircleAvatar(
-                    radius: 32,
+                    radius: 30,
                     backgroundColor: Colors.grey.shade200,
                     backgroundImage: mechanicImageUrl.isNotEmpty
                         ? NetworkImage(mechanicImageUrl)
                         : const AssetImage('assets/images/m1.jpg')
-                            as ImageProvider,
+                              as ImageProvider,
                   ),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1489,8 +1977,8 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                         _isLoading ? "Loading..." : mechanicName,
                         style: GoogleFonts.poppins(
                           color: isDark ? Colors.white : Colors.black87,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -1498,16 +1986,20 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                       const SizedBox(height: 2),
                       Row(
                         children: [
-                          Icon(Icons.star_rounded,
-                              color: Colors.amber, size: 14),
+                          const Icon(
+                            Icons.star_rounded,
+                            color: Colors.amber,
+                            size: 14,
+                          ),
                           const SizedBox(width: 4),
                           Text(
-                            '$mechanicRating Rating',
+                            '${mechanicRating.toStringAsFixed(1)} Rating',
                             style: GoogleFonts.poppins(
                               color: isDark
                                   ? Colors.grey.shade400
                                   : Colors.grey.shade600,
-                              fontSize: 12,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ],
@@ -1521,166 +2013,213 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
 
           Expanded(
             child: ListView(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               children: [
                 _drawerItem(
-                    Icons.dashboard_customize_rounded, "Dashboard", context,
-                    isDark: isDark,
-                    isSelected: true,
-                    onTap: () => Navigator.pop(context)),
-                _drawerItem(Icons.calendar_today_rounded,
-                    "Appointment Requests", context,
-                    isDark: isDark,
-                    badgeCount: _appointmentUnreadCount,
-                    onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => MechanicAppointmentRequestScreen(
-                        requests: _appointmentRequests,
-                        onReadUpdate: () {
-                          if (mounted) setState(() {});
-                        },
-                      ),
-                    ),
-                  ).then((_) => _fetchAppointmentNotifications());
-                }),
+                  Icons.dashboard_customize_rounded,
+                  "Dashboard",
+                  context,
+                  isDark: isDark,
+                  isSelected: true,
+                  onTap: () => Navigator.pop(context),
+                ),
                 _drawerItem(
-                    Icons.event_note_rounded, "Booking Requests", context,
-                    isDark: isDark,
-                    onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
+                  Icons.calendar_today_rounded,
+                  "Appointment Requests",
+                  context,
+                  isDark: isDark,
+                  badgeCount: _appointmentUnreadCount,
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (_) =>
-                              const MechanicBookingRequestScreen()));
-                }),
-                _drawerItem(Icons.account_balance_wallet_rounded, "Earnings",
-                    context,
-                    isDark: isDark, onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
+                        builder: (_) => MechanicAppointmentRequestScreen(
+                          requests: _appointmentRequests,
+                          onReadUpdate: () {
+                            if (mounted) setState(() {});
+                          },
+                        ),
+                      ),
+                    ).then((_) => _fetchAppointmentNotifications());
+                  },
+                ),
+                _drawerItem(
+                  Icons.event_note_rounded,
+                  "Booking Requests",
+                  context,
+                  isDark: isDark,
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (_) => const MechanicEarningsScreen()));
-                }),
-                _drawerItem(Icons.build_rounded, "My Services", context,
-                    isDark: isDark, onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
+                        builder: (_) => const MechanicBookingRequestScreen(),
+                      ),
+                    );
+                  },
+                ),
+                _drawerItem(
+                  Icons.account_balance_wallet_rounded,
+                  "Earnings",
+                  context,
+                  isDark: isDark,
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (_) => const MechanicServicesScreen()));
-                }),
-                _drawerItem(Icons.history_rounded, "Service History",
-                    context,
-                    isDark: isDark, onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
+                        builder: (_) => const MechanicEarningsScreen(),
+                      ),
+                    );
+                  },
+                ),
+                _drawerItem(
+                  Icons.build_rounded,
+                  "My Services",
+                  context,
+                  isDark: isDark,
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (_) => const MechanicHistoryScreen()));
-                }),
-                _drawerItem(Icons.person_outline_rounded, "Profile", context,
-                    isDark: isDark, onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
+                        builder: (_) => const MechanicServicesScreen(),
+                      ),
+                    );
+                  },
+                ),
+                _drawerItem(
+                  Icons.history_rounded,
+                  "Service History",
+                  context,
+                  isDark: isDark,
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (_) => const MechanicProfileScreen()));
-                }),
+                        builder: (_) => const MechanicHistoryScreen(),
+                      ),
+                    );
+                  },
+                ),
+                _drawerItem(
+                  Icons.person_outline_rounded,
+                  "Profile",
+                  context,
+                  isDark: isDark,
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const MechanicProfileScreen(),
+                      ),
+                    );
+                  },
+                ),
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 10),
                   child: Divider(
-                      color: isDark
-                          ? Colors.grey.shade800
-                          : Colors.grey.shade300,
-                      thickness: 1),
+                    color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+                    thickness: 1,
+                  ),
                 ),
-                _drawerItem(Icons.settings_outlined, "Settings", context,
-                    isDark: isDark, onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
+                _drawerItem(
+                  Icons.settings_outlined,
+                  "Settings",
+                  context,
+                  isDark: isDark,
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (_) => const MechanicSettingsScreen()));
-                }),
-                _drawerItem(Icons.logout_rounded, "Logout", context,
-                    isDark: isDark,
-                    isLogout: true,
-                    onTap: () async {
-                  final nav = Navigator.of(context);
-                  MechanicNotificationController().dispose();
-                  MechanicLiveLocationService.instance.stop();
-                  await UserSession().logout();
-                  nav.pushAndRemoveUntil(
-                    MaterialPageRoute(
-                        builder: (_) => const RoleSelectionScreen()),
-                    (route) => false,
-                  );
-                }),
-              ],
-            ),
-          ),
-
-          Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-            child: InkWell(
-              onTap: () async {
-                final nav = Navigator.of(context);
-                MechanicNotificationController().dispose();
-                MechanicLiveLocationService.instance.stop();
-                bool success = await UserSession().trySwitchTo('USER');
-                if (success) {
-                  nav.pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (_) => const HomeScreen()),
-                    (route) => false,
-                  );
-                } else {
-                  nav.pushAndRemoveUntil(
-                    MaterialPageRoute(
-                        builder: (_) => const RoleSelectionScreen()),
-                    (route) => false,
-                  );
-                }
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                decoration: BoxDecoration(
-                  color:
-                      isDark ? Colors.grey[850] : Colors.white,
-                  border: Border.all(
-                      color: primaryColor.withValues(alpha: 0.3),
-                      width: 1.5),
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: [
-                    BoxShadow(
-                      color: primaryColor.withValues(alpha: 0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    )
-                  ],
+                        builder: (_) => const MechanicSettingsScreen(),
+                      ),
+                    );
+                  },
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.swap_horiz_rounded,
-                        color: primaryColor, size: 22),
-                    const SizedBox(width: 10),
-                    Text(
-                      'Return to User',
-                      style: GoogleFonts.poppins(
-                          color: primaryColor,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600),
+                _drawerItem(
+                  Icons.logout_rounded,
+                  "Logout",
+                  context,
+                  isDark: isDark,
+                  isLogout: true,
+                  onTap: () async {
+                    final nav = Navigator.of(context);
+                    MechanicNotificationController().dispose();
+                    MechanicLiveLocationService.instance.stop();
+                    await UserSession().logout();
+                    nav.pushAndRemoveUntil(
+                      MaterialPageRoute(
+                        builder: (_) => const RoleSelectionScreen(),
+                      ),
+                      (route) => false,
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
+                InkWell(
+                  onTap: () async {
+                    final nav = Navigator.of(context);
+                    MechanicNotificationController().dispose();
+                    MechanicLiveLocationService.instance.stop();
+                    bool success = await UserSession().trySwitchTo('USER');
+                    if (success) {
+                      nav.pushAndRemoveUntil(
+                        MaterialPageRoute(builder: (_) => const HomeScreen()),
+                        (route) => false,
+                      );
+                    } else {
+                      nav.pushAndRemoveUntil(
+                        MaterialPageRoute(
+                          builder: (_) => const RoleSelectionScreen(),
+                        ),
+                        (route) => false,
+                      );
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+                      border: Border.all(
+                        color: primaryColor.withValues(alpha: 0.3),
+                        width: 1.5,
+                      ),
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color: primaryColor.withValues(alpha: 0.05),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                     ),
-                  ],
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.swap_horiz_rounded,
+                          color: primaryColor,
+                          size: 22,
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Return to User',
+                          style: GoogleFonts.poppins(
+                            color: primaryColor,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
         ],
@@ -1695,17 +2234,21 @@ class _SkeletonMechanicDashboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return SingleChildScrollView(
       child: Shimmer.fromColors(
-        baseColor: Colors.grey[300]!,
-        highlightColor: Colors.grey[100]!,
+        baseColor: isDark ? Colors.grey[850]! : Colors.grey[300]!,
+        highlightColor: isDark ? Colors.grey[800]! : Colors.grey[100]!,
         child: Column(
           children: [
             // Profile skeleton
             Container(
-              height: 100,
-              color: Colors.white,
-              margin: const EdgeInsets.only(bottom: 16),
+              height: 160,
+              margin: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(22),
+              ),
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1716,7 +2259,7 @@ class _SkeletonMechanicDashboard extends StatelessWidget {
                     height: 60,
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(20),
                     ),
                     margin: const EdgeInsets.only(bottom: 20),
                   ),
@@ -1733,38 +2276,57 @@ class _SkeletonMechanicDashboard extends StatelessWidget {
                       (_) => Container(
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(18),
+                          borderRadius: BorderRadius.circular(20),
                         ),
                       ),
                     ),
                   ),
                   const SizedBox(height: 20),
-                  // Quick actions skeleton
+                  // Quick actions skeleton (single horizontal row)
                   Row(
                     children: List.generate(
                       4,
-                      (_) => Expanded(
-                        child: Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 4),
-                          height: 80,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
+                      (idx) => Expanded(
+                        child: Padding(
+                          padding: EdgeInsets.only(right: idx == 3 ? 0 : 8),
+                          child: Container(
+                            height: 72,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
                   const SizedBox(height: 20),
-                  // Recent activity skeleton
+                  // Recent activity skeleton (timeline format)
                   ...List.generate(
                     3,
-                    (_) => Container(
-                      height: 64,
-                      margin: const EdgeInsets.only(bottom: 10),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
+                    (idx) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 16,
+                            height: 16,
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Container(
+                              height: 64,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),

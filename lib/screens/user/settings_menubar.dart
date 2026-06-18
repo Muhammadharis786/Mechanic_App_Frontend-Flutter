@@ -9,6 +9,7 @@ import 'package:mech_app/screens/authentication/user_session.dart';
 import 'package:mech_app/services/user_notification_controller.dart';
 import 'package:mech_app/services/app_state.dart';
 import 'package:mech_app/l10n/app_strings.dart';
+import 'package:mech_app/widgets/app_back_button.dart';
 
 class SettingsMenuBar extends StatefulWidget {
   const SettingsMenuBar({super.key});
@@ -26,64 +27,64 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<Locale>(
-      valueListenable: appLanguageController,
+      valueListenable: languageNotifier,
       builder: (context, locale, _) {
-        final isDark = themeNotifier.value == ThemeMode.dark;
+        return ValueListenableBuilder<ThemeMode>(
+          valueListenable: themeNotifier,
+          builder: (context, currentMode, _) {
+            final isDark = currentMode == ThemeMode.dark;
 
-        return WillPopScope(
-          onWillPop: () async {
-            Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute(builder: (_) => const HomeScreen()),
-              (_) => false,
+            return WillPopScope(
+              onWillPop: () async {
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (_) => const HomeScreen()),
+                  (_) => false,
+                );
+                return false;
+              },
+              child: Scaffold(
+                backgroundColor: isDark ? Colors.black : Colors.white,
+                appBar: AppBar(
+                  backgroundColor: isDark ? Colors.black : Colors.white,
+                  elevation: 0,
+                  leading: IconButton(
+                    icon: const Icon(Icons.arrow_back_ios, color: Color(0xFFFB3300), size: 22),
+                    onPressed: () {
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(builder: (_) => const HomeScreen()),
+                        (_) => false,
+                      );
+                    },
+                  ),
+                  title: Text(
+                    AppStrings.t('settings'),
+                    style: TextStyle(
+                      fontFamily: 'Bricolage Grotesque',
+                      color: isDark ? Colors.white : Colors.black,
+                      fontWeight: FontWeight.w500,
+                      fontSize: 18,
+                    ),
+                  ),
+                ),
+                body: Column(
+                  children: [
+                    _tile(AppStrings.t('phoneNumber'), phoneNumber, _changePhoneBottomSheet),
+                    _tile(AppStrings.t('language'), locale.languageCode == 'ur' ? AppStrings.t('urdu') : AppStrings.t('english'), _languageBottomSheet),
+                    _tile(
+                      AppStrings.t('night'),
+                      isDark ? AppStrings.t('dark') : AppStrings.t('light'),
+                      _themeBottomSheet,
+                    ),
+                    const Divider(),
+                    _tile(AppStrings.t('logout'), null, _logoutDialog, danger: true),
+                    _tile(AppStrings.t('deleteAccount'), null, _deleteAccountSheet, danger: true),
+                  ],
+                ),
+              ),
             );
-            return false;
           },
-          child: Scaffold(
-            backgroundColor: isDark ? Colors.black : Colors.white,
-            appBar: AppBar(
-              backgroundColor: isDark ? Colors.black : Colors.white,
-              elevation: 0,
-              leading: IconButton(
-                onPressed: () {
-                  Navigator.pushAndRemoveUntil(
-                    context,
-                    MaterialPageRoute(builder: (_) => const HomeScreen()),
-                    (_) => false,
-                  );
-                },
-                icon: const Icon(
-                  Icons.arrow_back_ios_new_rounded,
-                  color: Color(0xFFFB3300),
-                  size: 18,
-                ),
-                splashRadius: 20,
-              ),
-              title: Text(
-                AppStrings.t('settings'),
-                style: TextStyle(
-                  fontFamily: 'Bricolage Grotesque',
-                  color: isDark ? Colors.white : Colors.black,
-                  fontWeight: FontWeight.w500,
-                  fontSize: 18,
-                ),
-              ),
-            ),
-            body: Column(
-              children: [
-                _tile(AppStrings.t('phoneNumber'), phoneNumber, _changePhoneBottomSheet),
-                _tile(AppStrings.t('language'), languageCode == 'ur' ? AppStrings.t('urdu') : AppStrings.t('english'), _languageBottomSheet),
-                _tile(
-                  AppStrings.t('night'),
-                  isDark ? AppStrings.t('dark') : AppStrings.t('light'),
-                  _themeBottomSheet,
-                ),
-                const Divider(),
-                _tile(AppStrings.t('logout'), null, _logoutDialog, danger: true),
-                _tile(AppStrings.t('deleteAccount'), null, _deleteAccountSheet, danger: true),
-              ],
-            ),
-          ),
         );
       },
     );
@@ -459,7 +460,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(AppStrings.t('errorGeneric', {'msg': e.toString()})),
+            content: Text("Error: $e"),
             backgroundColor: Colors.red,
           ),
         );

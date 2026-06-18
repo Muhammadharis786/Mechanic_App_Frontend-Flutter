@@ -7,6 +7,7 @@ import 'package:pinput/pinput.dart';
 
 import 'mechanic_kyc_screen.dart';
 import 'mechanic_registration_screen.dart';
+import '../../widgets/app_back_button.dart';
 
 class MechanicOtpScreen extends StatefulWidget {
   final String phoneNumber;
@@ -233,15 +234,7 @@ class _MechanicOtpScreenState extends State<MechanicOtpScreen> {
         ),
         backgroundColor: theme.appBarTheme.backgroundColor ?? theme.scaffoldBackgroundColor,
         elevation: 0,
-        leading: IconButton(
-          onPressed: () => Navigator.pop(context),
-          icon: const Icon(
-            Icons.arrow_back_ios_new_rounded,
-            color: Color(0xFFFB3300),
-            size: 18,
-          ),
-          splashRadius: 20,
-        ),
+        leading: const AppBackButton(),
         iconTheme: IconThemeData(color: isDark ? Colors.white : Colors.black),
       ),
       body: SafeArea(
