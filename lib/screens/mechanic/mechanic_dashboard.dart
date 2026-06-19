@@ -273,24 +273,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
     _activeRequestClient?.activate();
   }
 
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _fadeController.dispose();
-    ActiveServiceRequestTracking.current.removeListener(
-      _onActiveTrackingChanged,
-    );
-    MechanicNotificationController().removeListener(
-      _onGlobalNotificationReceived,
-    );
-    MechanicNotificationController()
-        .removeListener(_onGlobalNotificationReceived);
-    ActiveServiceRequestTracking.current
-        .removeListener(_onActiveTrackingChanged);
-    _teardownActiveRequestSubscription();
-    _fadeController.dispose();
-    super.dispose();
-  }
+
 
   void _openNotificationCenter({int initialTabIndex = 0}) {
     Navigator.push(
@@ -1389,10 +1372,8 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
         color: isDark ? const Color(0xFF1E1E22) : Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: isDark 
-              ? Colors.white.withValues(alpha: 0.06) 
-              : Colors.orange.withValues(alpha: 0.15),
-          width: 1.5,
+          color: const Color(0xFFFB3300),
+          width: 0.8,
         ),
         boxShadow: [
           BoxShadow(
@@ -1544,8 +1525,8 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                     color: isDark ? const Color(0xFF1E1E22) : Colors.white,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.grey.withValues(alpha: 0.12),
-                      width: 1.5,
+                      color: const Color(0xFFFB3300),
+                      width: 0.8,
                     ),
                     boxShadow: [
                       BoxShadow(

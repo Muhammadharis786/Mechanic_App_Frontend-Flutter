@@ -371,12 +371,6 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
         leading: AppBackButton(
           onPressed: () => Navigator.pushReplacement(
               context, MaterialPageRoute(builder: (_) => HomeScreen())),
-          icon: const Icon(
-            Icons.arrow_back_ios_new_rounded,
-            color: Color(0xFFFB3300),
-            size: 18,
-          ),
-          splashRadius: 20,
         ),
         title: Text(
           "Book Appointment",
@@ -656,7 +650,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       );
     }
     return SizedBox(
-      height: 180,
+      height: 140,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         itemCount: _filteredMechanics.length,
@@ -722,7 +716,6 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
         (mechanic['distance'] as num?)?.toStringAsFixed(1) ?? '--';
     final isActive = mechanic['isactive'] as bool? ?? false;
     final isEngaged = mechanic['isengaged'] as bool? ?? false;
-    final phone = mechanic['phonenumber'] as String? ?? '';
     final imgUrl = mechanic['mechanicimgurl'] as String?;
     final mechId = mechanic['id']?.toString() ?? '??';
 
@@ -740,7 +733,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     }
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: isDark ? Colors.grey[900] : Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -857,7 +850,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -895,20 +888,6 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                     ),
                   ),
                 ),
-              ElevatedButton.icon(
-                onPressed: phone.isNotEmpty ? () => _callMechanic(phone) : null,
-                icon: const Icon(Icons.call_outlined,
-                    size: 14, color: Colors.white),
-                label: const Text("Call",
-                    style: TextStyle(color: Colors.white, fontSize: 11)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.lightGreen,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                ),
-              ),
             ],
           ),
         ],
@@ -1152,20 +1131,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
         ),
       );
 
-  void _callMechanic(String phone) async {
-    final Uri uri = Uri(scheme: 'tel', path: phone);
-    try {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } catch (e) {
-      debugPrint('Could not launch dialer: $e');
-      try {
-        await launchUrl(uri);
-      } catch (ex) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text("Cannot call mechanic")));
-      }
-    }
-  }
+
 
   Widget _dateTile(bool isDark) => ListTile(
         tileColor: isDark ? Colors.grey[900] : Colors.white,

@@ -55,7 +55,7 @@ class RoleSelectionScreen extends StatelessWidget {
                     style: GoogleFonts.poppins(
                       fontSize: 22,
                       fontWeight: FontWeight.w700,
-                      color: isDark ? Colors.white70 : Colors.black87,
+                      color: isDark ? Colors.white70 : const Color.fromARGB(221, 223, 222, 222),
                     ),
                   ),
                   const SizedBox(height: 30),

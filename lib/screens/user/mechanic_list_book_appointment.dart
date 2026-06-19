@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:mech_app/widgets/app_back_button.dart';
 
 class MechanicListScreenn extends StatelessWidget {
@@ -90,7 +89,6 @@ class MechanicListScreenn extends StatelessWidget {
         (mechanic['distance'] as num?)?.toStringAsFixed(1) ?? '--';
     final isActive = mechanic['isactive'] as bool? ?? false;
     final isEngaged = mechanic['isengaged'] as bool? ?? false;
-    final phone = mechanic['phonenumber'] as String? ?? '';
     final imgUrl = mechanic['mechanicimgurl'] as String?;
     final mechanicType = mechanic['MechanicType'] as String?;
     final locName = mechanic['mechaniclocname'] as String?;
@@ -231,36 +229,10 @@ class MechanicListScreenn extends StatelessWidget {
                         fontWeight: FontWeight.w500,
                         color: Colors.white)),
               ),
-              ElevatedButton.icon(
-                onPressed: phone.isNotEmpty ? () => _callMechanic(phone) : null,
-                icon: const Icon(Icons.call_outlined,
-                    size: 16, color: Colors.white),
-                label: const Text("Call",
-                    style: TextStyle(color: Colors.white, fontSize: 12)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.lightGreen,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
             ],
           ),
         ],
       ),
     );
-  }
-
-  void _callMechanic(String phone) async {
-    final Uri uri = Uri(scheme: 'tel', path: phone);
-    try {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } catch (e) {
-      debugPrint('Could not launch dialer: $e');
-      try {
-        await launchUrl(uri);
-      } catch (_) {}
-    }
   }
 }
