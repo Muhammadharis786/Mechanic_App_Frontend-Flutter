@@ -174,6 +174,31 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       return;
     }
 
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final selectedDateOnly = DateTime(selectedDate!.year, selectedDate!.month, selectedDate!.day);
+
+    if (selectedDateOnly.isBefore(today)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Cannot book an appointment for a past date")));
+      return;
+    }
+
+    if (selectedTime!.hour < 8 || selectedTime!.hour > 21 || (selectedTime!.hour == 21 && selectedTime!.minute > 0)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Appointments can only be booked between 8:00 AM till 9:00 PM")));
+      return;
+    }
+
+    if (selectedDateOnly.isAtSameMomentAs(today)) {
+      if (selectedTime!.hour < now.hour ||
+          (selectedTime!.hour == now.hour && selectedTime!.minute < now.minute)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Cannot select a time in the past for today")));
+        return;
+      }
+    }
+
     setState(() => _bookingInProgress = true); 
 
     try {
@@ -467,14 +492,14 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
               ),
               const SizedBox(height: 16),
 
-              // ── Date ───────────────────────────────────────────
-              _sectionTitle("Select Date"),
-              _dateTile(isDark),
-              const SizedBox(height: 16),
-
-              // ── Time ───────────────────────────────────────────
-              _sectionTitle("Select Time"),
-              _timeTile(isDark),
+              // ── Date & Time Row ─────────────────────────────────
+              Row(
+                children: [
+                  Expanded(child: _dateTile(isDark)),
+                  const SizedBox(width: 12),
+                  Expanded(child: _timeTile(isDark)),
+                ],
+              ),
               const SizedBox(height: 30),
 
               // ── Confirm button ──────────────────────────────────
@@ -650,7 +675,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       );
     }
     return SizedBox(
-      height: 180,
+      height: 140,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         itemCount: _filteredMechanics.length,
@@ -716,7 +741,6 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
         (mechanic['distance'] as num?)?.toStringAsFixed(1) ?? '--';
     final isActive = mechanic['isactive'] as bool? ?? false;
     final isEngaged = mechanic['isengaged'] as bool? ?? false;
-    final phone = mechanic['phonenumber'] as String? ?? '';
     final imgUrl = mechanic['mechanicimgurl'] as String?;
     final mechId = mechanic['id']?.toString() ?? '??';
 
@@ -734,12 +758,15 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     }
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: isDark ? Colors.grey[900] : Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-            color: (isSelected && !_isAutoMode) ? primaryColor : Colors.transparent, width: 2),
+            color: (isSelected && !_isAutoMode)
+                ? primaryColor
+                : (isDark ? Colors.grey.shade800 : Colors.grey.shade200),
+            width: 1.5),
         boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
       ),
       child: Column(
@@ -748,12 +775,12 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           Row(
             children: [
               CircleAvatar(
-                radius: 24,
+                radius: 20,
                 backgroundColor: Colors.grey.shade200,
                 backgroundImage:
                     imgUrl != null ? NetworkImage(imgUrl) : null,
                 child: imgUrl == null
-                    ? Icon(Icons.engineering, color: primaryColor, size: 22)
+                    ? Icon(Icons.engineering, color: primaryColor, size: 20)
                     : null,
               ),
               const SizedBox(width: 8),
@@ -761,82 +788,123 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.getFont('Bricolage Grotesque',
-                                fontWeight: FontWeight.w700,
-                                fontSize: 13),
-                          ),
-                        ),
-                        Text(
-                          "#$mechId",
-                          style: GoogleFonts.getFont('Bricolage Grotesque',
-                              fontSize: 10,
-                              color: primaryColor.withOpacity(0.7),
-                              fontWeight: FontWeight.w600),
-                        ),
-                      ],
+                    Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.getFont('Bricolage Grotesque',
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13),
                     ),
-                    const SizedBox(height: 1),
                     Text(
                       mechanic['mechanictype'] ?? 'Mechanical Specialist',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                           fontFamily: 'Bricolage Grotesque',
                           fontSize: 10,
                           color: Colors.grey.shade600,
                           fontWeight: FontWeight.w500),
                     ),
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        const Icon(Icons.star_rounded,
-                            size: 13, color: Colors.amber),
-                        const SizedBox(width: 2),
-                        Text(rating,
-                            style: const TextStyle(
-                                fontFamily: 'Bricolage Grotesque',
-                                fontSize: 10,
-                                fontWeight: FontWeight.w400)),
-                        const SizedBox(width: 6),
-                        Icon(Icons.work_history_outlined,
-                            size: 12, color: primaryColor.withOpacity(0.6)),
-                        const SizedBox(width: 2),
-                        Text("${mechanic['experience'] ?? '0'} yrs exp",
-                            style: const TextStyle(
-                                fontFamily: 'Bricolage Grotesque',
-                                fontSize: 10,
-                                fontWeight: FontWeight.w400)),
-                        const SizedBox(width: 6),
-                        Icon(Icons.location_on_outlined,
-                            size: 13, color: primaryColor),
-                        Text("$distance km",
-                            style: const TextStyle(
-                                fontFamily: 'Bricolage Grotesque',
-                                fontSize: 10,
-                                fontWeight: FontWeight.w400)),
-                      ],
-                    ),
                   ],
                 ),
               ),
-              // Status dot
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.star_rounded, size: 12, color: Colors.amber),
+                  const SizedBox(width: 2),
+                  Text(rating,
+                      style: const TextStyle(
+                          fontFamily: 'Bricolage Grotesque',
+                          fontSize: 10,
+                          fontWeight: FontWeight.w400)),
+                ],
+              ),
+              Row(
+                children: [
+                  Icon(Icons.work_history_outlined,
+                      size: 11, color: primaryColor.withOpacity(0.6)),
+                  const SizedBox(width: 2),
+                  Text("${mechanic['experience'] ?? '0'} yrs",
+                      style: const TextStyle(
+                          fontFamily: 'Bricolage Grotesque',
+                          fontSize: 10,
+                          fontWeight: FontWeight.w400)),
+                ],
+              ),
+              Row(
+                children: [
+                  Icon(Icons.location_on_outlined,
+                      size: 11, color: primaryColor),
+                  const SizedBox(width: 2),
+                  Text("$distance km",
+                      style: const TextStyle(
+                          fontFamily: 'Bricolage Grotesque',
+                          fontSize: 10,
+                          fontWeight: FontWeight.w400)),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              if (!_isAutoMode)
+                SizedBox(
+                  height: 28,
+                  child: ElevatedButton(
+                    onPressed: () => setState(() => selectedMechanic = mechanic),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: Text(isSelected ? "Selected" : "Select",
+                        style: const TextStyle(
+                            fontFamily: 'Bricolage Grotesque',
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white)),
+                  ),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Text(
+                    "Auto-Assign",
+                    style: TextStyle(
+                      fontFamily: 'Bricolage Grotesque',
+                      fontSize: 9,
+                      color: Colors.green,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
               Container(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                 decoration: BoxDecoration(
                   color: statusColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(6),
                 ),
                 child: Row(
                   children: [
                     Container(
-                      width: 6,
-                      height: 6,
+                      width: 5,
+                      height: 5,
                       decoration: BoxDecoration(
                           color: statusColor, shape: BoxShape.circle),
                     ),
@@ -844,63 +912,10 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                     Text(statusLabel,
                         style: TextStyle(
                             fontFamily: 'Bricolage Grotesque',
-                            fontSize: 10,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w500,
                             color: statusColor)),
                   ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              if (!_isAutoMode)
-                ElevatedButton(
-                  onPressed: () => setState(() => selectedMechanic = mechanic),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
-                  ),
-                  child: Text(isSelected ? "Selected" : "Select",
-                      style: const TextStyle(
-                          fontFamily: 'Bricolage Grotesque',
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.white)),
-                )
-              else
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Text(
-                    "Available for Auto-Assign",
-                    style: TextStyle(
-                      fontFamily: 'Bricolage Grotesque',
-                      fontSize: 10,
-                      color: Colors.green,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ElevatedButton.icon(
-                onPressed: phone.isNotEmpty ? () => _callMechanic(phone) : null,
-                icon: const Icon(Icons.call_outlined,
-                    size: 14, color: Colors.white),
-                label: const Text("Call",
-                    style: TextStyle(color: Colors.white, fontSize: 11)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.lightGreen,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
                 ),
               ),
             ],
@@ -1146,22 +1161,11 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
         ),
       );
 
-  void _callMechanic(String phone) async {
-    final Uri uri = Uri(scheme: 'tel', path: phone);
-    try {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } catch (e) {
-      debugPrint('Could not launch dialer: $e');
-      try {
-        await launchUrl(uri);
-      } catch (ex) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text("Cannot call mechanic")));
-      }
-    }
-  }
+
 
   Widget _dateTile(bool isDark) => ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+        horizontalTitleGap: 8,
         tileColor: isDark ? Colors.grey[900] : Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         leading: Icon(Icons.calendar_today_outlined, color: primaryColor),
@@ -1169,14 +1173,16 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           selectedDate == null
               ? "Choose Date"
               : "${selectedDate!.day}/${selectedDate!.month}/${selectedDate!.year}",
-          style: GoogleFonts.getFont('Bricolage Grotesque', fontSize: 14),
+          style: GoogleFonts.getFont('Bricolage Grotesque', fontSize: 13),
         ),
         onTap: () async {
+          final now = DateTime.now();
+          final today = DateTime(now.year, now.month, now.day);
           final date = await showDatePicker(
             context: context,
-            firstDate: DateTime.now(),
+            firstDate: today,
             lastDate: DateTime(2030),
-            initialDate: DateTime.now(),
+            initialDate: (selectedDate != null && !selectedDate!.isBefore(today)) ? selectedDate! : today,
             builder: (context, child) => Theme(
               data: Theme.of(context).copyWith(
                 colorScheme: ColorScheme.light(
@@ -1190,22 +1196,67 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
               child: child!,
             ),
           );
-          if (date != null) setState(() => selectedDate = date);
+          if (date != null) {
+            final isToday = date.year == now.year &&
+                date.month == now.month &&
+                date.day == now.day;
+            
+            if (selectedTime != null) {
+              if (selectedTime!.hour < 8 || selectedTime!.hour > 21 || (selectedTime!.hour == 21 && selectedTime!.minute > 0)) {
+                setState(() {
+                  selectedDate = date;
+                  selectedTime = null;
+                });
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Time has been reset because appointments are only between 8:00 AM and 9:00 PM")),
+                );
+                return;
+              }
+              if (isToday) {
+                if (selectedTime!.hour < now.hour || 
+                    (selectedTime!.hour == now.hour && selectedTime!.minute < now.minute)) {
+                  setState(() {
+                    selectedDate = date;
+                    selectedTime = null;
+                  });
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Time has been reset because it is in the past for today")),
+                  );
+                  return;
+                }
+              }
+            }
+            setState(() => selectedDate = date);
+          }
         },
       );
 
   Widget _timeTile(bool isDark) => ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+        horizontalTitleGap: 8,
         tileColor: isDark ? Colors.grey[900] : Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         leading: Icon(Icons.access_time_outlined, color: primaryColor),
         title: Text(
           selectedTime == null ? "Choose Time" : selectedTime!.format(context),
-          style: GoogleFonts.getFont('Bricolage Grotesque', fontSize: 14),
+          style: GoogleFonts.getFont('Bricolage Grotesque', fontSize: 13),
         ),
         onTap: () async {
+          final now = DateTime.now();
+          TimeOfDay initialTimeVal = TimeOfDay.now();
+          if (selectedTime != null) {
+            initialTimeVal = selectedTime!;
+          } else {
+            if (now.hour < 8) {
+              initialTimeVal = const TimeOfDay(hour: 8, minute: 0);
+            } else if (now.hour >= 21) {
+              initialTimeVal = const TimeOfDay(hour: 21, minute: 0);
+            }
+          }
+
           final time = await showTimePicker(
             context: context,
-            initialTime: TimeOfDay.now(),
+            initialTime: initialTimeVal,
             builder: (context, child) => Theme(
               data: Theme.of(context).copyWith(
                 colorScheme: ColorScheme.light(
@@ -1219,7 +1270,29 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
               child: child!,
             ),
           );
-          if (time != null) setState(() => selectedTime = time);
+          if (time != null) {
+            if (time.hour < 8 || time.hour > 21 || (time.hour == 21 && time.minute > 0)) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Appointments can only be booked between 8:00 AM and 9:00 PM")),
+              );
+              return;
+            }
+
+            final isToday = selectedDate != null &&
+                selectedDate!.year == now.year &&
+                selectedDate!.month == now.month &&
+                selectedDate!.day == now.day;
+
+            if (isToday) {
+              if (time.hour < now.hour || (time.hour == now.hour && time.minute < now.minute)) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Cannot select a time in the past for today")),
+                );
+                return;
+              }
+            }
+            setState(() => selectedTime = time);
+          }
         },
       );
 

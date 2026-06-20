@@ -21,8 +21,36 @@ class SettingsMenuBar extends StatefulWidget {
 class _SettingsMenuBarState extends State<SettingsMenuBar> {
   final Color primaryColor = const Color(0xFFFB3300);
 
-  String phoneNumber = "+92 3** ****45";
+  late String phoneNumber;
   String get languageCode => appLanguageController.value.languageCode;
+
+  @override
+  void initState() {
+    super.initState();
+    phoneNumber = UserSession().email ?? '';
+    _loadPhoneNumber();
+  }
+
+  Future<void> _loadPhoneNumber() async {
+    try {
+      final url = Uri.parse(
+        'https://mechanicapp-service-621632382478.asia-south1.run.app/api/user/dashboard',
+      );
+      final response = await http.get(url, headers: UserSession().getAuthHeader());
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final user = data['user'] ?? data;
+        if (user != null && user['phonenumber'] != null && user['phonenumber'].toString().isNotEmpty) {
+          setState(() {
+            phoneNumber = user['phonenumber'].toString();
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading phone number: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -70,12 +98,24 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
                 ),
                 body: Column(
                   children: [
-                    _tile(AppStrings.t('phoneNumber'), phoneNumber, _changePhoneBottomSheet),
+                    _tile(AppStrings.t('phoneNumber'), phoneNumber, null, showArrow: false),
                     _tile(AppStrings.t('language'), locale.languageCode == 'ur' ? AppStrings.t('urdu') : AppStrings.t('english'), _languageBottomSheet),
                     _tile(
-                      AppStrings.t('night'),
-                      isDark ? AppStrings.t('dark') : AppStrings.t('light'),
-                      _themeBottomSheet,
+                      'Theme',
+                      null,
+                      () {
+                        if (isDark) {
+                          themeNotifier.setLight();
+                        } else {
+                          themeNotifier.setDark();
+                        }
+                      },
+                      showArrow: false,
+                      trailing: Icon(
+                        isDark ? Icons.nights_stay : Icons.nights_stay_outlined,
+                        color: primaryColor,
+                        size: 20,
+                      ),
                     ),
                     const Divider(),
                     _tile(AppStrings.t('logout'), null, _logoutDialog, danger: true),
@@ -90,7 +130,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
     );
   }
 
-  Widget _tile(String title, String? sub, VoidCallback tap, {bool danger = false}) {
+  Widget _tile(String title, String? sub, VoidCallback? tap, {bool danger = false, bool showArrow = true, Widget? trailing}) {
     final isDark = themeNotifier.value == ThemeMode.dark;
     return ListTile(
       title: Text(
@@ -117,75 +157,8 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
               ),
             )
           : null,
-      trailing: Icon(Icons.arrow_forward_ios_rounded, color: primaryColor, size: 16),
+      trailing: trailing ?? (showArrow ? Icon(Icons.arrow_forward_ios_rounded, color: primaryColor, size: 16) : null),
       onTap: tap,
-    );
-  }
-
-  // ================= PHONE =================
-  void _changePhoneBottomSheet() {
-    final controller = TextEditingController();
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => SafeArea(
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            20,
-            20,
-            20,
-            MediaQuery.of(context).viewInsets.bottom + 20,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                AppStrings.t('changeNum'),
-                style: const TextStyle(fontFamily: 'Bricolage Grotesque', fontSize: 18, fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                AppStrings.t('changeSub'),
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontFamily: 'Bricolage Grotesque', fontSize: 13, fontWeight: FontWeight.w400),
-              ),
-              const SizedBox(height: 20),
-              TextField(
-                controller: controller,
-                keyboardType: TextInputType.phone,
-                decoration: InputDecoration(
-                  prefixText: "+92 ",
-                  prefixStyle: const TextStyle(fontFamily: 'Bricolage Grotesque', color: Colors.black, fontWeight: FontWeight.w400),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: primaryColor),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: primaryColor, width: 2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: primaryColor,
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size(double.infinity, 45),
-                ),
-                onPressed: () {
-                  setState(() {
-                    phoneNumber = "+92 ${controller.text}";
-                  });
-                  Navigator.pop(context);
-                },
-                child: Text(AppStrings.t('next')),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 
@@ -214,40 +187,6 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
                   : null,
               onTap: () {
                 appLanguageController.setUrdu();
-                Navigator.pop(context);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ================= THEME =================
-  void _themeBottomSheet() {
-    showModalBottomSheet(
-      context: context,
-      builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: Text(AppStrings.t('light')),
-              trailing: themeNotifier.value == ThemeMode.light
-                  ? Icon(Icons.check_rounded, color: primaryColor)
-                  : null,
-              onTap: () {
-                themeNotifier.setLight();
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              title: Text(AppStrings.t('dark')),
-              trailing: themeNotifier.value == ThemeMode.dark
-                  ? Icon(Icons.check, color: primaryColor)
-                  : null,
-              onTap: () {
-                themeNotifier.setDark();
                 Navigator.pop(context);
               },
             ),

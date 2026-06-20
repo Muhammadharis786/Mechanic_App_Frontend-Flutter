@@ -22,42 +22,6 @@ class _MechanicSettingsScreenState extends State<MechanicSettingsScreen> {
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  // 🔹 Theme Options
-  void _showThemeOptions() {
-    showModalBottomSheet(
-      context: context,
-      builder: (_) {
-        bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
-        return Container(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                title: Text(AppStrings.t('light')),
-                trailing: !isDarkMode ? const Icon(Icons.check, color: Colors.green) : null,
-                onTap: () {
-                  themeNotifier.setLight();
-                  Navigator.pop(context);
-                  setState(() {});
-                },
-              ),
-              ListTile(
-                title: Text(AppStrings.t('dark')),
-                trailing: isDarkMode ? const Icon(Icons.check, color: Colors.green) : null,
-                onTap: () {
-                  themeNotifier.setDark();
-                  Navigator.pop(context);
-                  setState(() {});
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   // 🔹 Language Options
   void _showLanguageOptions() {
     showModalBottomSheet(
@@ -156,14 +120,14 @@ class _MechanicSettingsScreenState extends State<MechanicSettingsScreen> {
     );
   }
 
-  Widget _buildTile(String title, String subtitle, Function() onTap, bool isDark) {
+  Widget _buildTile(String title, String? subtitle, Function() onTap, bool isDark, {bool showArrow = true, Widget? trailing}) {
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(vertical: 4),
       title: Text(title,
           style: GoogleFonts.poppins(
               fontSize: 16, fontWeight: FontWeight.w500, color: isDark ? Colors.white : Colors.black)),
-      subtitle: Text(subtitle, style: GoogleFonts.poppins(fontSize: 13, color: Colors.grey)),
-      trailing: Icon(Icons.arrow_forward_ios, size: 16, color: primaryColor),
+      subtitle: subtitle != null ? Text(subtitle, style: GoogleFonts.poppins(fontSize: 13, color: Colors.grey)) : null,
+      trailing: trailing ?? (showArrow ? Icon(Icons.arrow_forward_ios, size: 16, color: primaryColor) : null),
       onTap: onTap,
     );
   }
@@ -199,10 +163,23 @@ class _MechanicSettingsScreenState extends State<MechanicSettingsScreen> {
                     isDarkMode,
                   ),
                   _buildTile(
-                    AppStrings.t('night'),
-                    isDarkMode ? AppStrings.t('dark') : AppStrings.t('light'),
-                    _showThemeOptions,
+                    'Theme',
+                    null,
+                    () {
+                      if (isDarkMode) {
+                        themeNotifier.setLight();
+                      } else {
+                        themeNotifier.setDark();
+                      }
+                      setState(() {});
+                    },
                     isDarkMode,
+                    showArrow: false,
+                    trailing: Icon(
+                      isDarkMode ? Icons.nights_stay : Icons.nights_stay_outlined,
+                      color: primaryColor,
+                      size: 20,
+                    ),
                   ),
                   const SizedBox(height: 20),
                   const Divider(),

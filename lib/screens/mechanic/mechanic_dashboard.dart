@@ -1372,10 +1372,8 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
         color: isDark ? const Color(0xFF1E1E22) : Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: isDark 
-              ? Colors.white.withOpacity(0.06) 
-              : Colors.orange.withOpacity(0.15),
-          width: 1.5,
+          color: const Color(0xFFFB3300),
+          width: 0.8,
         ),
         boxShadow: [
           BoxShadow(
@@ -1527,8 +1525,8 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                     color: isDark ? const Color(0xFF1E1E22) : Colors.white,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: isDark ? Colors.white.withOpacity(0.06) : Colors.grey.withOpacity(0.12),
-                      width: 1.5,
+                      color: const Color(0xFFFB3300),
+                      width: 0.8,
                     ),
                     boxShadow: [
                       BoxShadow(
