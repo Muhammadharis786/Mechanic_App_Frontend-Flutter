@@ -120,7 +120,7 @@ class _SplashScreenState extends State<SplashScreen>
                 child: _buildContentLayer(
                   backgroundColor: Colors.white,
                   textColor: const Color(0xFFFB2A00),
-                  taglineColor: Colors.grey.withValues(alpha: 0.8),
+                  taglineColor: Colors.grey.withOpacity(0.8),
                 ),
               );
             },

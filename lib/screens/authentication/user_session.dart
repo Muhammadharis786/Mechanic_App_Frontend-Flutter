@@ -147,7 +147,9 @@ class UserSession {
         // Ignore network errors for logout
       }
     } finally {
-      // ✅ Full Cleanup: Clear memory
+      final prefs = await SharedPreferences.getInstance();
+
+      // 1. Clear memory fields for the active session
       email = null;
       password = null;
       userType = null;
@@ -156,16 +158,26 @@ class UserSession {
       longitude = null;
       locationName = null;
 
-      _cachedUserEmail = null;
-      _cachedUserPassword = null;
-      _cachedUserId = null;
-      _cachedMechPhone = null;
-      _cachedMechPassword = null;
-      _cachedMechId = null;
+      // 2. Clear role-specific persistent cache
+      if (activeType == 'USER') {
+        print("👤 Clearing USER specific cache...");
+        _cachedUserEmail = null;
+        _cachedUserPassword = null;
+        _cachedUserId = null;
+        await prefs.remove('cached_user_email');
+        await prefs.remove('cached_user_pass');
+        await prefs.remove('cached_user_numeric_id');
+      } else if (activeType == 'MECHANIC') {
+        print("🔧 Clearing MECHANIC specific cache...");
+        _cachedMechPhone = null;
+        _cachedMechPassword = null;
+        _cachedMechId = null;
+        await prefs.remove('cached_mech_id');
+        await prefs.remove('cached_mech_pass');
+        await prefs.remove('cached_mech_numeric_id');
+      }
 
-      final prefs = await SharedPreferences.getInstance();
-      
-      // ✅ Clear Active Session
+      // 3. Always clear the active session pointers in SharedPreferences
       await prefs.remove('email');
       await prefs.remove('password');
       await prefs.remove('userType');
@@ -174,15 +186,7 @@ class UserSession {
       await prefs.remove('user_lng');
       await prefs.remove('location_name');
 
-      // ✅ Clear ALL Cached Credentials (Force fresh login for both roles)
-      await prefs.remove('cached_user_email');
-      await prefs.remove('cached_user_pass');
-      await prefs.remove('cached_user_numeric_id');
-      await prefs.remove('cached_mech_id');
-      await prefs.remove('cached_mech_pass');
-      await prefs.remove('cached_mech_numeric_id');
-
-      print("✅ Full system logout: All credentials & caches cleared");
+      print("✅ Logout complete for $activeType. Other role session preserved if it existed.");
     }
   }
 
@@ -208,30 +212,6 @@ class UserSession {
         }
         return true;
       }
-
-      // ── FALLBACK: Use same credentials (mechanic phone/pass) as USER ──
-      // This lets a mechanic switch to customer without re-login
-      final fallbackEmail = _cachedMechPhone ?? email;
-      final fallbackPass  = _cachedMechPassword ?? password;
-      if (fallbackEmail != null && fallbackPass != null) {
-        email = fallbackEmail;
-        password = fallbackPass;
-        userType = 'USER';
-        _userId = null; // Will be resolved on first API call
-
-        await prefs.setString('email', email!);
-        await prefs.setString('password', password!);
-        await prefs.setString('userType', 'USER');
-        await prefs.remove('userId');
-
-        // Cache for future switches
-        _cachedUserEmail = fallbackEmail;
-        _cachedUserPassword = fallbackPass;
-        await prefs.setString('cached_user_email', fallbackEmail);
-        await prefs.setString('cached_user_pass', fallbackPass);
-        return true;
-      }
-
     } else if (targetType == 'MECHANIC') {
       // ── Try cached MECHANIC credentials first ──
       if (_cachedMechPhone != null && _cachedMechPassword != null) {

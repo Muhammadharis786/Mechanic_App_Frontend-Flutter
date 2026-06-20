@@ -371,12 +371,6 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
         leading: AppBackButton(
           onPressed: () => Navigator.pushReplacement(
               context, MaterialPageRoute(builder: (_) => HomeScreen())),
-          icon: const Icon(
-            Icons.arrow_back_ios_new_rounded,
-            color: Color(0xFFFB3300),
-            size: 18,
-          ),
-          splashRadius: 20,
         ),
         title: Text(
           "Book Appointment",

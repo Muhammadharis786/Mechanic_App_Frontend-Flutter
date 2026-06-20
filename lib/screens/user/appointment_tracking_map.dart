@@ -342,7 +342,6 @@ class _AppointmentTrackingMapState extends State<AppointmentTrackingMap> {
             backgroundColor: isDark ? Colors.black54 : Colors.white70,
             child: const AppBackButton(),
           ),
-          splashRadius: 20,
         ),
       ),
       body: GoogleMap(
