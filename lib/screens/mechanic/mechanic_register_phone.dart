@@ -118,19 +118,7 @@ class _MechanicRegisterPhoneScreenState
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-<<<<<<< Updated upstream
         leading: const AppBackButton(),
-=======
-        leading: IconButton(
-          onPressed: () => Navigator.pop(context),
-          icon: const Icon(
-            Icons.arrow_back_ios_rounded,
-            color: Color(0xFFFB3300),
-            size: 18,
-          ),
-          splashRadius: 20,
-        ),
->>>>>>> Stashed changes
         title: Text(
           "Mechanic Registration",
           style: GoogleFonts.poppins(color: theme.textTheme.titleLarge?.color),

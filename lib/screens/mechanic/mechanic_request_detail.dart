@@ -8,6 +8,7 @@ import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import '../../widgets/app_back_button.dart';
+import '../../utils/map_theme_helper.dart';
 
 class MechanicRequestDetailScreen extends StatefulWidget {
   final Map<String, dynamic> request;
@@ -28,6 +29,7 @@ class _MechanicRequestDetailScreenState
   Set<Polyline> _polylines = {};
   bool _isLoading = true;
   String? _actionTaken;
+  GoogleMapController? _mapController;
 
   @override
   void initState() {
@@ -284,6 +286,9 @@ class _MechanicRequestDetailScreenState
     // Camera target: show mechanic if available, else user
     final LatLng? cameraTarget = _mechanicLocation ?? _userLocation;
 
+    if (_mapController != null) {
+      MapThemeHelper.applyMapTheme(_mapController!, context);
+    }
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
@@ -314,6 +319,10 @@ class _MechanicRequestDetailScreenState
                         child: Text('Location unavailable',
                             style: GoogleFonts.poppins(color: Colors.grey)))
                     : GoogleMap(
+                        onMapCreated: (c) {
+                          _mapController = c;
+                          MapThemeHelper.applyMapTheme(c, context);
+                        },
                         initialCameraPosition: CameraPosition(
                           target: cameraTarget,
                           zoom: 14,

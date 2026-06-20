@@ -11,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'service_request_map_screen.dart';
 import 'service_request_notes_screen.dart';
 import '../../widgets/app_back_button.dart';
+import '../../utils/map_theme_helper.dart';
 
 class Mechanic {
   final String id;
@@ -209,6 +210,7 @@ class _MechanicDetailScreenState extends State<MechanicDetailScreen> {
         children: [
           Positioned.fill(
             child: GoogleMap(
+              onMapCreated: (c) => MapThemeHelper.applyMapTheme(c, context),
               key: ValueKey(widget.mechanic.id),
               initialCameraPosition: CameraPosition(
                 target: LatLng(widget.mechanic.lat, widget.mechanic.lng),
@@ -590,6 +592,7 @@ class FullScreenMapScreen extends StatelessWidget {
       body: Stack(
         children: [
           GoogleMap(
+            onMapCreated: (c) => MapThemeHelper.applyMapTheme(c, context),
             initialCameraPosition: CameraPosition(
               target: LatLng(mechanic.lat, mechanic.lng),
               zoom: 15,

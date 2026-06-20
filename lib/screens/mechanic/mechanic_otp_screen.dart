@@ -234,19 +234,7 @@ class _MechanicOtpScreenState extends State<MechanicOtpScreen> {
         ),
         backgroundColor: theme.appBarTheme.backgroundColor ?? theme.scaffoldBackgroundColor,
         elevation: 0,
-<<<<<<< Updated upstream
         leading: const AppBackButton(),
-=======
-        // ── CHANGE 2: Deep orange V-shape arrow ─────────────────────
-        leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios,
-            color: Color(0xFFFB3300),
-            size: 20,
-          ),
-          onPressed: () => Navigator.pop(context),
-        ),
->>>>>>> Stashed changes
         iconTheme: IconThemeData(color: isDark ? Colors.white : Colors.black),
       ),
       body: SafeArea(

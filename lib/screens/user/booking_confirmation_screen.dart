@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import '../../utils/map_theme_helper.dart';
 import 'package:mech_app/screens/homescreen.dart';
 import 'package:mech_app/widgets/app_back_button.dart';
 
@@ -503,6 +504,7 @@ class BookingConfirmationScreen extends StatelessWidget {
               borderRadius: BorderRadius.circular(20),
               child: IgnorePointer(
                 child: GoogleMap(
+                  onMapCreated: (c) => MapThemeHelper.applyMapTheme(c, context),
                   initialCameraPosition: CameraPosition(target: LatLng(lat, lng), zoom: 15),
                   markers: {Marker(markerId: const MarkerId('pos'), position: LatLng(lat, lng))},
                   myLocationButtonEnabled: false,
@@ -566,6 +568,7 @@ class FullScreenMapScreen extends StatelessWidget {
         leading: const AppBackButton(),
       ),
       body: GoogleMap(
+        onMapCreated: (c) => MapThemeHelper.applyMapTheme(c, context),
         initialCameraPosition: CameraPosition(target: LatLng(lat, lng), zoom: 16),
         markers: {
           Marker(

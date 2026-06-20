@@ -79,6 +79,7 @@ class _ServiceRequestNotesScreenState extends State<ServiceRequestNotesScreen> {
     final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(
@@ -93,133 +94,141 @@ class _ServiceRequestNotesScreenState extends State<ServiceRequestNotesScreen> {
         leading: const AppBackButton(),
         iconTheme: IconThemeData(color: isDark ? Colors.white : Colors.black),
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Requesting ${widget.serviceType}',
-                style: TextStyle(
-                  fontFamily:
-                      GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  color: primaryColor,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Describe your problem so the mechanic can help you.',
-                style: TextStyle(
-                  fontFamily:
-                      GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
-                  fontSize: 14,
-                  color: isDark ? Colors.white70 : Colors.black87,
-                ),
-              ),
-              const SizedBox(height: 24),
-              TextField(
-                controller: _notesController,
-                maxLines: 5,
-                decoration: InputDecoration(
-                  hintText:
-                      'e.g. My car is not starting, battery might be dead...',
-                  hintStyle: TextStyle(
+      body: GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 20,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Requesting ${widget.serviceType}',
+                  style: TextStyle(
                     fontFamily:
                         GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
-                    color: Colors.grey,
-                  ),
-                  filled: true,
-                  fillColor: isDark ? Colors.grey[850] : Colors.grey.shade100,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide.none,
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide(color: primaryColor, width: 1.5),
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: primaryColor,
                   ),
                 ),
-                style: TextStyle(
-                  fontFamily:
-                      GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
-                  color: isDark ? Colors.white : Colors.black,
+                const SizedBox(height: 12),
+                Text(
+                  'Describe your problem so the mechanic can help you.',
+                  style: TextStyle(
+                    fontFamily:
+                        GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                    fontSize: 14,
+                    color: isDark ? Colors.white70 : Colors.black87,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              Material(
-                color: isDark ? Colors.grey[850] : Colors.orange.shade50,
-                borderRadius: BorderRadius.circular(14),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(14),
-                  onTap: () {
-                    setState(() {
-                      _fixedChargeAccepted = !_fixedChargeAccepted;
-                    });
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
+                const SizedBox(height: 24),
+                TextField(
+                  controller: _notesController,
+                  maxLines: 5,
+                  decoration: InputDecoration(
+                    hintText:
+                        'e.g. My car is not starting, battery might be dead...',
+                    hintStyle: TextStyle(
+                      fontFamily:
+                          GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                      color: Colors.grey,
                     ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Checkbox(
-                          value: _fixedChargeAccepted,
-                          activeColor: primaryColor,
-                          onChanged: (value) {
-                            setState(() {
-                              _fixedChargeAccepted = value ?? false;
-                            });
-                          },
-                        ),
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.only(top: 12),
-                            child: Text(
-                              _fixedChargeCheckboxLabel,
-                              style: GoogleFonts.poppins(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: isDark ? Colors.white : Colors.black87,
+                    filled: true,
+                    fillColor: isDark ? Colors.grey[850] : Colors.grey.shade100,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide(color: primaryColor, width: 1.5),
+                    ),
+                  ),
+                  style: TextStyle(
+                    fontFamily:
+                        GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                    color: isDark ? Colors.white : Colors.black,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Material(
+                  color: isDark ? Colors.grey[850] : Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(14),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: () {
+                      setState(() {
+                        _fixedChargeAccepted = !_fixedChargeAccepted;
+                      });
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Checkbox(
+                            value: _fixedChargeAccepted,
+                            activeColor: primaryColor,
+                            onChanged: (value) {
+                              setState(() {
+                                _fixedChargeAccepted = value ?? false;
+                              });
+                            },
+                          ),
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.only(top: 12),
+                              child: Text(
+                                _fixedChargeCheckboxLabel,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: isDark ? Colors.white : Colors.black87,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const Spacer(),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _canProceed ? _onNext : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    disabledBackgroundColor: Colors.grey.shade400,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _canProceed ? _onNext : null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      disabledBackgroundColor: Colors.grey.shade400,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      elevation: 4,
                     ),
-                    elevation: 4,
-                  ),
-                  child: const Text(
-                    'Next',
-                    style: TextStyle(
-                      fontFamily: 'Bricolage Grotesque',
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
+                    child: const Text(
+                      'Next',
+                      style: TextStyle(
+                        fontFamily: 'Bricolage Grotesque',
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

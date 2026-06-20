@@ -166,20 +166,7 @@ Future<void> _resendOtp() async {
             fontWeight: FontWeight.w600,
           ),
         ),
-<<<<<<< Updated upstream
         leading: const AppBackButton(),
-=======
-        // ── SIRF YEH CHANGE HUA ─────────────────────────────────────
-        leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios,   // V-shape back arrow
-            color: Color(0xFFFB3300),   // Deep orange
-            size: 20,
-          ),
-          onPressed: () => Navigator.pop(context),
-        ),
-        // ─────────────────────────────────────────────────────────────
->>>>>>> Stashed changes
         iconTheme: const IconThemeData(color: Colors.black),
       ),
       body: Padding(
