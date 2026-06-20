@@ -41,7 +41,8 @@ class UserNotificationController {
     _userWebSocket = UserWebSocketService(
       onNotificationReceived: (data, type) {
         if (type == 'request_expired' || type == 'request_cancelled') {
-          ActiveServiceRequestTracking.clear();
+          final backendMsg = data['message']?.toString();
+          ActiveServiceRequestTracking.clear(message: backendMsg);
         }
         // 1. Show Global Overlay
         showNotificationOverlay(data, type);

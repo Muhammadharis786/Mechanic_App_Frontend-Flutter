@@ -8,6 +8,7 @@ import 'mechanic_location_screen.dart';
 import 'mechanic_under_review_screen.dart';
 import '../authentication/user_session.dart';
 import '../../services/fcm_notification_service.dart';
+import '../../widgets/app_back_button.dart';
 
 class MechanicLoginScreen extends StatefulWidget {
   const MechanicLoginScreen({super.key});
@@ -194,13 +195,21 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
             children: [
               const SizedBox(height: 40),
 
-              Text(
-                "Welcome Back 👋",
-                style: GoogleFonts.poppins(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: theme.textTheme.titleLarge?.color,
-                ),
+              Row(
+                children: [
+                   const AppBackButton(),
+                   const SizedBox(width: 8),
+                   Expanded(
+                     child: Text(
+                      "Welcome Back 👋",
+                      style: GoogleFonts.poppins(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: theme.textTheme.titleLarge?.color,
+                      ),
+                    ),
+                   ),
+                ],
               ),
 
               const SizedBox(height: 6),

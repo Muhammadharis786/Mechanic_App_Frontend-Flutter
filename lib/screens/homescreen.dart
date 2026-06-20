@@ -34,6 +34,7 @@ import 'mechanic_list_screen.dart';
 import 'role_selection_screen.dart';
 import '../services/fcm_notification_service.dart';
 import 'package:stomp_dart_client/stomp_dart_client.dart';
+import 'verify_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key} );
@@ -135,7 +136,7 @@ class _HomeScreenState extends State<HomeScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
+          MaterialPageRoute(builder: (_) => VerifyScreen()),
           (route) => false,
         );
       });
@@ -1263,7 +1264,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       if (context.mounted) {
                         Navigator.push(
                           context, 
-                          MaterialPageRoute(builder: (_) => const MechanicLoginScreen())
+                          MaterialPageRoute(builder: (_) => MechanicLoginScreen())
                         );
                       }
                     }

@@ -227,8 +227,13 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     final active = ActiveServiceRequestTracking.current.value;
     if (active == null && mounted && !_cancelExitHandled) {
       debugPrint('MapScreen: Active tracking cleared globally, exiting...');
+      
+      final backendMsg = ActiveServiceRequestTracking.lastExitMessage.value;
+      // Reset the message so it doesn't persist across different exits
+      ActiveServiceRequestTracking.lastExitMessage.value = null;
+
       _exitToUserHome(
-        snackMessage: 'Request expired or was completed.',
+        snackMessage: backendMsg ?? 'Request expired or was completed.',
         snackColor: Colors.orange,
       );
     }
@@ -1088,12 +1093,13 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       data['mechanicLongitude'] ?? data['longitude'] ?? data['lng'],
     );
 
-    if (requestId == null || mechanicId == null || lat == null || lng == null) {
-      debugPrint('Accepted mechanic payload missing route fields: $data');
+    if (requestId == null || mechanicId == null) {
+      debugPrint('Accepted mechanic payload missing identity fields: $data');
       return false;
     }
 
-    final position = LatLng(lat, lng);
+    final hasLocation = lat != null && lng != null;
+    final position = hasLocation ? LatLng(lat, lng) : null;
     final name = (data['mechanicName'] ?? data['name'] ?? 'Mechanic').toString();
     final distance = _toDouble(data['distance']);
     final eta = data['eta']?.toString();
@@ -1101,12 +1107,14 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     _trackingClient?.deactivate();
     _trackingClient = null;
 
-    _markerCurrentPositions
-      ..clear()
-      ..[mechanicId] = position;
-    _markerTargetPositions
-      ..clear()
-      ..[mechanicId] = position;
+    if (hasLocation) {
+      _markerCurrentPositions
+        ..clear()
+        ..[mechanicId] = position!;
+      _markerTargetPositions
+        ..clear()
+        ..[mechanicId] = position;
+    }
     _markerTitles
       ..clear()
       ..[mechanicId] = name;
@@ -1129,24 +1137,28 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       _userInteracting = false; // Reset interaction flag on new request accept
       _acceptedMechanic = acceptedData;
       _acceptedMechanicPosition = position;
-      _acceptedRouteTracker.reset(position);
+      if (position != null) {
+        _acceptedRouteTracker.reset(position);
+      }
       _acceptedBearing = 0;
       _acceptedDistanceText = distance == null
           ? data['distance']?.toString()
           : '${distance.toStringAsFixed(1)} km';
       _acceptedEta = eta;
-      _mechanicMarkers = {
-        Marker(
-          markerId: MarkerId('mechanic_$mechanicId'),
-          position: position,
-          icon: _mechanicTrackingIcon ??
-              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-          anchor: const Offset(0.5, 0.5),
-          flat: true,
-          rotation: _acceptedBearing,
-          infoWindow: InfoWindow(title: name),
-        ),
-      };
+      if (position != null) {
+        _mechanicMarkers = {
+          Marker(
+            markerId: MarkerId('mechanic_$mechanicId'),
+            position: position,
+            icon: _mechanicTrackingIcon ??
+                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+            anchor: const Offset(0.5, 0.5),
+            flat: true,
+            rotation: _acceptedBearing,
+            infoWindow: InfoWindow(title: name),
+          ),
+        };
+      }
     }
 
     if (updateState) {

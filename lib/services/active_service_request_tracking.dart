@@ -14,6 +14,9 @@ class ActiveServiceRequestTracking {
   static final ValueNotifier<Map<String, dynamic>?> current =
       ValueNotifier<Map<String, dynamic>?>(null);
 
+  static final ValueNotifier<String?> lastExitMessage =
+      ValueNotifier<String?>(null);
+
   static Future<void> load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -57,7 +60,10 @@ class ActiveServiceRequestTracking {
         backendType != 'APPOINTMENT_CANCELLED';
   }
 
-  static void clear() {
+  static void clear({String? message}) {
+    if (message != null) {
+      lastExitMessage.value = message;
+    }
     current.value = null;
     _removePersisted();
   }
@@ -74,14 +80,14 @@ class ActiveServiceRequestTracking {
   }
 
   /// Clears active tracking when [requestId] matches the stored request.
-  static void clearIfMatches(String? requestId) {
+  static void clearIfMatches(String? requestId, {String? message}) {
     if (requestId == null || requestId.isEmpty) return;
     final active = current.value;
     if (active == null) return;
     final activeId =
         active['requestId']?.toString() ?? active['requestid']?.toString();
     if (_idsMatch(activeId, requestId)) {
-      clear();
+      clear(message: message);
     }
   }
 
@@ -129,7 +135,8 @@ class ActiveServiceRequestTracking {
           status == 'COMPLETED' ||
           backendType == 'ROAD_REQUEST_CANCELLED' ||
           backendType == 'ROAD_REQUEST_EXPIRED') {
-        clear();
+        final backendMsg = decoded['message']?.toString();
+        clear(message: backendMsg);
         return;
       }
 

@@ -20,6 +20,8 @@ import 'package:http/http.dart' as http;
 import '../authentication/user_session.dart';
 import '../homescreen.dart';
 import '../role_selection_screen.dart';
+import '../verify_screen.dart';
+import 'mechanic_login.dart';
 import '../../services/mechanic_notification_controller.dart';
 import '../../services/mechanic_live_location_service.dart';
 import 'package:stomp_dart_client/stomp_dart_client.dart';
@@ -81,7 +83,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
       WidgetsBinding.instance.addPostFrameCallback((_) {
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
+          MaterialPageRoute(builder: (_) => MechanicLoginScreen()),
           (route) => false,
         );
       });
@@ -699,9 +701,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                                     borderRadius: BorderRadius.circular(20),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: primaryColor.withValues(
-                                          alpha: 0.3,
-                                        ),
+                                        color: primaryColor.withOpacity(0.3),
                                         blurRadius: 12,
                                         offset: const Offset(0, 6),
                                       ),
@@ -712,7 +712,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                                       Container(
                                         padding: const EdgeInsets.all(10),
                                         decoration: BoxDecoration(
-                                          color: Colors.white.withValues(alpha: 0.2),
+                                          color: Colors.white.withOpacity(0.2),
                                           borderRadius: BorderRadius.circular(14),
                                         ),
                                         child: const Icon(
@@ -751,7 +751,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                                                   ? 'Customer payment pending'
                                                   : 'Tap to resume tracking map',
                                               style: GoogleFonts.poppins(
-                                                color: Colors.white.withValues(alpha: 0.85),
+                                                color: Colors.white.withOpacity(0.85),
                                                 fontSize: 11,
                                                 fontWeight: FontWeight.w500,
                                               ),
@@ -782,7 +782,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                                           backgroundColor: Colors.white,
                                           foregroundColor: primaryColor,
                                           elevation: 4,
-                                          shadowColor: Colors.black.withValues(alpha: 0.15),
+                                          shadowColor: Colors.black.withOpacity(0.15),
                                           padding: const EdgeInsets.symmetric(
                                             horizontal: 14,
                                             vertical: 10,
@@ -914,7 +914,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
         borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: primaryColor.withValues(alpha: 0.35),
+            color: primaryColor.withOpacity(0.35),
             blurRadius: 16,
             offset: const Offset(0, 8),
           ),
@@ -933,7 +933,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                 height: 150,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.08),
+                  color: Colors.white.withOpacity(0.08),
                 ),
               ),
             ),
@@ -945,7 +945,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                 height: 120,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.05),
+                  color: Colors.white.withOpacity(0.05),
                 ),
               ),
             ),
@@ -965,12 +965,12 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.6),
+                                color: Colors.white.withOpacity(0.6),
                                 width: 2,
                               ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.1),
+                                  color: Colors.black.withOpacity(0.1),
                                   blurRadius: 8,
                                 ),
                               ],
@@ -1024,7 +1024,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                   decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.2),
+                                    color: Colors.white.withOpacity(0.2),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Row(
@@ -1053,13 +1053,13 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                   decoration: BoxDecoration(
                                     color: isOnline 
-                                        ? Colors.green.shade600.withValues(alpha: 0.3)
-                                        : Colors.white.withValues(alpha: 0.15),
+                                        ? Colors.green.shade600.withOpacity(0.3)
+                                        : Colors.white.withOpacity(0.15),
                                     borderRadius: BorderRadius.circular(8),
                                     border: Border.all(
                                       color: isOnline 
-                                          ? Colors.green.shade300.withValues(alpha: 0.5)
-                                          : Colors.white.withValues(alpha: 0.25),
+                                          ? Colors.green.shade300.withOpacity(0.5)
+                                          : Colors.white.withOpacity(0.25),
                                       width: 1,
                                     ),
                                   ),
@@ -1091,7 +1091,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                           child: Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.2),
+                              color: Colors.white.withOpacity(0.2),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: const Icon(
@@ -1110,10 +1110,10 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.12),
+                      color: Colors.white.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.15),
+                        color: Colors.white.withOpacity(0.15),
                         width: 1,
                       ),
                     ),
@@ -1126,7 +1126,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                               Text(
                                 "Today's Earnings",
                                 style: GoogleFonts.poppins(
-                                  color: Colors.white.withValues(alpha: 0.8),
+                                  color: Colors.white.withOpacity(0.8),
                                   fontSize: 11,
                                   fontWeight: FontWeight.w500,
                                 ),
@@ -1146,7 +1146,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                         Container(
                           width: 1,
                           height: 30,
-                          color: Colors.white.withValues(alpha: 0.2),
+                          color: Colors.white.withOpacity(0.2),
                         ),
                         Expanded(
                           child: Column(
@@ -1154,7 +1154,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                               Text(
                                 "Total Earnings",
                                 style: GoogleFonts.poppins(
-                                  color: Colors.white.withValues(alpha: 0.8),
+                                  color: Colors.white.withOpacity(0.8),
                                   fontSize: 11,
                                   fontWeight: FontWeight.w500,
                                 ),
@@ -1193,14 +1193,14 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: isOnline
-              ? Colors.green.withValues(alpha: 0.2)
-              : Colors.orange.withValues(alpha: 0.15),
+              ? Colors.green.withOpacity(0.2)
+              : Colors.orange.withOpacity(0.15),
           width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: (isOnline ? Colors.green : Colors.orange).withValues(
-              alpha: isDark ? 0.12 : 0.05,
+            color: (isOnline ? Colors.green : Colors.orange).withOpacity(
+              isDark ? 0.12 : 0.05,
             ),
             blurRadius: 16,
             offset: const Offset(0, 4),
@@ -1219,7 +1219,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                   height: 38,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Colors.green.withValues(alpha: 0.15),
+                    color: Colors.green.withOpacity(0.15),
                   ),
                 ),
               Container(
@@ -1227,8 +1227,8 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                 height: 30,
                 decoration: BoxDecoration(
                   color: isOnline
-                      ? Colors.green.withValues(alpha: 0.15)
-                      : Colors.orange.withValues(alpha: 0.12),
+                      ? Colors.green.withOpacity(0.15)
+                      : Colors.orange.withOpacity(0.12),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
@@ -1296,7 +1296,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
               : Switch(
                   value: isOnline,
                   activeThumbColor: Colors.green,
-                  activeTrackColor: Colors.green.withValues(alpha: 0.3),
+                  activeTrackColor: Colors.green.withOpacity(0.3),
                   inactiveThumbColor: Colors.grey.shade400,
                   inactiveTrackColor: Colors.grey.shade300,
                   onChanged: _toggleOnlineStatus,
@@ -1379,7 +1379,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+            color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -1403,7 +1403,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
+                      color: Colors.black.withOpacity(0.05),
                       blurRadius: 4,
                       offset: const Offset(0, 2),
                     ),
@@ -1417,7 +1417,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
               ),
               Icon(
                 icon,
-                color: (isDark ? Colors.white : primaryColor).withValues(alpha: 0.04),
+                color: (isDark ? Colors.white : primaryColor).withOpacity(0.04),
                 size: 36,
               ),
             ],
@@ -1519,8 +1519,8 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
               child: InkWell(
                 onTap: action['onTap'] as VoidCallback,
                 borderRadius: BorderRadius.circular(16),
-                splashColor: color.withValues(alpha: 0.1),
-                highlightColor: color.withValues(alpha: 0.05),
+                splashColor: color.withOpacity(0.1),
+                highlightColor: color.withOpacity(0.05),
                 child: Container(
                   padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
                   decoration: BoxDecoration(
@@ -1532,7 +1532,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.03),
+                        color: Colors.black.withOpacity(isDark ? 0.15 : 0.03),
                         blurRadius: 8,
                         offset: const Offset(0, 4),
                       ),
@@ -1552,7 +1552,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                               color: isDark ? const Color(0xFF2A2A30) : Colors.grey.shade50,
                               borderRadius: BorderRadius.circular(10),
                               border: Border.all(
-                                color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade200,
+                                color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey.shade200,
                                 width: 1,
                               ),
                             ),
@@ -1576,7 +1576,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                                   borderRadius: BorderRadius.circular(8),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: Colors.red.withValues(alpha: 0.3),
+                                      color: Colors.red.withOpacity(0.3),
                                       blurRadius: 4,
                                     ),
                                   ],
@@ -1599,7 +1599,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                         style: GoogleFonts.poppins(
                           fontSize: 9.0,
                           fontWeight: FontWeight.w500,
-                          color: isDark ? Colors.white.withValues(alpha: 0.9) : Colors.black87,
+                          color: isDark ? Colors.white.withOpacity(0.9) : Colors.black87,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -1626,13 +1626,13 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.03),
+              color: Colors.black.withOpacity(isDark ? 0.15 : 0.03),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
           ],
           border: Border.all(
-            color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.grey.withValues(alpha: 0.12),
+            color: isDark ? Colors.white.withOpacity(0.06) : Colors.grey.withOpacity(0.12),
             width: 1.5,
           ),
         ),
@@ -1642,7 +1642,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: primaryColor.withValues(alpha: 0.1),
+                  color: primaryColor.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
@@ -1680,13 +1680,13 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
         final job = entry.value;
         final isLast = i == _recentJobs.length - 1;
 
-        // API fields
+        // API fields mapping with fallbacks
         final String type = job['type']?.toString() ?? 'SERVICE_REQUEST';
         final bool isAppointment = type == 'APPOINTMENT';
-        final amount = job['amount']?.toString() ?? '--';
-        final username = job['username']?.toString() ?? 'Customer';
-        final serviceType = job['serviceType']?.toString() ?? 'Service';
-        final completedAt = job['completedAt']?.toString() ?? '';
+        final amount = job['amount']?.toString() ?? job['price']?.toString() ?? '--';
+        final username = job['username']?.toString() ?? job['name']?.toString() ?? job['userName']?.toString() ?? 'Customer';
+        final serviceType = job['serviceType']?.toString() ?? job['servicetype']?.toString() ?? 'Service';
+        final completedAt = job['completedAt']?.toString() ?? job['created_at']?.toString() ?? '';
         final displayDate = completedAt.length >= 10
             ? completedAt.substring(0, 10)
             : completedAt;
@@ -1698,138 +1698,130 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
             ? const Color(0xFF1E88E5)
             : primaryColor;
 
-        return IntrinsicHeight(
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Timeline vertical indicator
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Column(
-                  children: [
-                    Container(
-                      width: 16,
-                      height: 16,
-                      decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF0F0F10) : const Color(0xFFF8F9FA),
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: activityColor,
-                          width: 3,
-                        ),
+              Column(
+                children: [
+                  Container(
+                    width: 14,
+                    height: 14,
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF0F0F10) : Colors.white,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: activityColor,
+                        width: 3,
                       ),
                     ),
-                    if (!isLast)
-                      Expanded(
-                        child: Container(
-                          width: 2,
-                          color: activityColor.withValues(alpha: 0.3),
-                        ),
-                      )
-                    else
-                      const SizedBox(height: 12),
-                  ],
-                ),
+                  ),
+                  if (!isLast)
+                    Container(
+                      width: 2,
+                      height: 48,
+                      color: activityColor.withOpacity(0.3),
+                    ),
+                ],
               ),
               const SizedBox(width: 12),
               // Activity Card
               Expanded(
-                child: Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF1E1E22) : Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border(
-                      top: BorderSide(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade200),
-                      right: BorderSide(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade200),
-                      bottom: BorderSide(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade200),
-                      left: BorderSide(color: activityColor, width: 4),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: isDark ? 0.12 : 0.03),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(18),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: Border(
+                        left: BorderSide(color: activityColor, width: 4),
                       ),
-                    ],
-                  ),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: () {},
-                      borderRadius: BorderRadius.circular(18),
-                      child: Padding(
-                        padding: const EdgeInsets.all(14),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: activityColor.withValues(alpha: 0.08),
-                                shape: BoxShape.circle,
+                    ),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(isDark ? 0.2 : 0.05),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: InkWell(
+                        onTap: () {},
+                        borderRadius: BorderRadius.circular(18),
+                        child: Padding(
+                          padding: const EdgeInsets.all(14),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: activityColor.withOpacity(0.1),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  activityIcon,
+                                  color: activityColor,
+                                  size: 18,
+                                ),
                               ),
-                              child: Icon(
-                                activityIcon,
-                                color: activityColor,
-                                size: 18,
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      username,
+                                      style: GoogleFonts.poppins(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                        color: isDark ? Colors.white : Colors.black87,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      serviceType,
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 11,
+                                        color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment: MainAxisAlignment.center,
+                              const SizedBox(width: 8),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
                                   Text(
-                                    username,
+                                    amount == '--' ? 'Rs. --' : 'Rs. $amount',
                                     style: GoogleFonts.poppins(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 13,
-                                      color: isDark ? Colors.white : Colors.black87,
+                                      color: const Color(0xFF43A047),
                                     ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    serviceType,
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 11,
-                                      color: isDark ? Colors.grey.shade400 : Colors.grey.shade500,
+                                  if (displayDate.isNotEmpty) ...[
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      displayDate,
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 9,
+                                        color: isDark ? Colors.grey.shade500 : Colors.grey.shade600,
+                                        fontWeight: FontWeight.w500,
+                                      ),
                                     ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                                  ],
                                 ],
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  amount == '--' ? 'Rs. --' : 'Rs. $amount',
-                                  style: GoogleFonts.poppins(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 13,
-                                    color: const Color(0xFF4CAF50),
-                                  ),
-                                ),
-                                if (displayDate.isNotEmpty) ...[
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    displayDate,
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 9,
-                                      color: isDark ? Colors.grey.shade500 : Colors.grey.shade500,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -1858,8 +1850,8 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
         ? const Color(0xFFFF3B30)
         : (isDark ? Colors.white70 : Colors.black87);
     final Color selectedBgColor = isDark
-        ? primaryColor.withValues(alpha: 0.15)
-        : primaryColor.withValues(alpha: 0.08);
+        ? primaryColor.withOpacity(0.15)
+        : primaryColor.withOpacity(0.08);
     final Color selectedTextColor = primaryColor;
 
     return Container(
@@ -1938,7 +1930,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                     color: Colors.white,
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: primaryColor.withValues(alpha: 0.5),
+                      color: primaryColor.withOpacity(0.5),
                       width: 2,
                     ),
                   ),
@@ -2156,11 +2148,10 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                         (route) => false,
                       );
                     } else {
-                      nav.pushAndRemoveUntil(
+                      nav.push(
                         MaterialPageRoute(
-                          builder: (_) => const RoleSelectionScreen(),
+                          builder: (_) => VerifyScreen(),
                         ),
-                        (route) => false,
                       );
                     }
                   },
@@ -2169,13 +2160,13 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                     decoration: BoxDecoration(
                       color: isDark ? const Color(0xFF1E1E22) : Colors.white,
                       border: Border.all(
-                        color: primaryColor.withValues(alpha: 0.3),
+                        color: primaryColor.withOpacity(0.3),
                         width: 1.5,
                       ),
                       borderRadius: BorderRadius.circular(14),
                       boxShadow: [
                         BoxShadow(
-                          color: primaryColor.withValues(alpha: 0.05),
+                          color: primaryColor.withOpacity(0.05),
                           blurRadius: 10,
                           offset: const Offset(0, 4),
                         ),
