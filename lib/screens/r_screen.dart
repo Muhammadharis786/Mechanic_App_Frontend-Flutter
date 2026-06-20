@@ -98,7 +98,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
               // Back button
               Row(
                 children: [
+<<<<<<< Updated upstream
                   const AppBackButton(),
+=======
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(
+                      Icons.arrow_back_ios_rounded,
+                      color: Color(0xFFFB3300),
+                      size: 20,
+                    ),
+                    padding: const EdgeInsets.all(4),
+                    splashRadius: 20,
+                  ),
+>>>>>>> Stashed changes
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(

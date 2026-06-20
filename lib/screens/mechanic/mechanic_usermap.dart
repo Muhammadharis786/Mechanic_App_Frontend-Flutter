@@ -1682,11 +1682,15 @@ class _MechanicUserMapState extends State<MechanicUserMap>
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
                       ),
+<<<<<<< Updated upstream
                       child: const Icon(
                         Icons.arrow_back_ios_new_rounded,
                         color: Color(0xFFFB3300),
                         size: 20,
                       ),
+=======
+                      child: const Icon(Icons.arrow_back_ios, size: 20),
+>>>>>>> Stashed changes
                     ),
                   ),
                   const Spacer(),

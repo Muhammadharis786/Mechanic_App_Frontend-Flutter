@@ -409,11 +409,16 @@ class _MechanicMapSelectionScreenState extends State<MechanicMapSelectionScreen>
                   BoxShadow(color: Colors.black12, blurRadius: 6)
                 ],
               ),
+<<<<<<< Updated upstream
               child: const Icon(
                 Icons.arrow_back_ios_new_rounded,
                 color: Color(0xFFFB3300),
                 size: 20,
               ),
+=======
+              child: const Icon(Icons.arrow_back_ios,
+                  color: Colors.black87, size: 18),
+>>>>>>> Stashed changes
             ),
           ),
           const SizedBox(width: 8),

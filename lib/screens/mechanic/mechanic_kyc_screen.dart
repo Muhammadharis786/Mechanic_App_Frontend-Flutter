@@ -949,7 +949,14 @@ class _MechanicKycScreenState extends State<MechanicKycScreen> {
   }
 
   Widget _backButton() {
+<<<<<<< Updated upstream
     return AppBackButton(onPressed: () => setState(() => _step--));
+=======
+    return IconButton(
+      onPressed: () => setState(() => _step--),
+      icon: const Icon(Icons.arrow_back_ios_rounded),
+    );
+>>>>>>> Stashed changes
   }
 
   Widget _scrollablePage({required Key key, required Color color, required EdgeInsets padding, required Widget child}) {

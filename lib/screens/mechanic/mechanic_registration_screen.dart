@@ -391,7 +391,20 @@ class _MechanicRegistrationScreenState
               child: Row(
                 children: [
                   if (currentStep > 0)
+<<<<<<< Updated upstream
                     AppBackButton(onPressed: previousPage),
+=======
+                    IconButton(
+                      splashRadius: 20,
+                      onPressed: previousPage,
+                      icon: const Icon(
+                        Icons.arrow_back_ios_rounded,
+                        color: Color(0xFFFB3300),
+                        size: 18,
+                      ),
+                      padding: const EdgeInsets.all(4),
+                    ),
+>>>>>>> Stashed changes
                   Expanded(
                     child: Text(
                       _titles[currentStep],

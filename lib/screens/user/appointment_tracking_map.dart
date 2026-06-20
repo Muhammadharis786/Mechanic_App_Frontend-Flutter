@@ -340,7 +340,14 @@ class _AppointmentTrackingMapState extends State<AppointmentTrackingMap> {
           padding: const EdgeInsets.all(8.0),
           child: CircleAvatar(
             backgroundColor: isDark ? Colors.black54 : Colors.white70,
+<<<<<<< Updated upstream
             child: const AppBackButton(),
+=======
+            child: IconButton(
+              icon: Icon(Icons.arrow_back_ios, size: 18, color: isDark ? Colors.white : Colors.black),
+              onPressed: () => Navigator.pop(context),
+            ),
+>>>>>>> Stashed changes
           ),
         ),
       ),
