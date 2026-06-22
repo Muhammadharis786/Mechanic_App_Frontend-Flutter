@@ -214,7 +214,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     status == 'CANCELLED' ||
                     status == 'COMPLETED' ||
                     status == 'EXPIRED') {
-                  ActiveServiceRequestTracking.clearIfMatches(requestId);
+                  ActiveServiceRequestTracking.clearIfMatches(requestId, status: status);
                   _teardownActiveRequestSubscription();
                   if (mounted) setState(() {});
                 }

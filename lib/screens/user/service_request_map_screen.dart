@@ -226,13 +226,23 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       debugPrint('MapScreen: Active tracking cleared globally, exiting...');
       
       final backendMsg = ActiveServiceRequestTracking.lastExitMessage.value;
-      // Reset the message so it doesn't persist across different exits
+      final exitStatus = ActiveServiceRequestTracking.lastExitStatus.value;
+      
+      // Reset the message and status so they don't persist across different exits
       ActiveServiceRequestTracking.lastExitMessage.value = null;
+      ActiveServiceRequestTracking.lastExitStatus.value = null;
 
-      _exitToUserHome(
-        snackMessage: backendMsg ?? 'Request expired or was completed.',
-        snackColor: Colors.orange,
-      );
+      if (exitStatus == 'COMPLETED' || _workCompleted) {
+        _navigateToServiceReview(
+          requestId: _activeRequestId ?? '',
+          snackMessage: (backendMsg?.isNotEmpty == true) ? backendMsg! : 'Service completed! Please rate your experience.',
+        );
+      } else {
+        _exitToUserHome(
+          snackMessage: (backendMsg?.isNotEmpty == true) ? backendMsg! : 'Request no longer active.',
+          snackColor: Colors.orange,
+        );
+      }
     }
   }
 
@@ -479,6 +489,15 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
            );
            // Now fetch nearby mechanics
            await _fetchNearbyMechanics(mappedServiceType);
+
+           // Safety poll: check in 3 seconds to ensure acceptance isn't missed
+           if (_activeRequestId != null && !_isAccepted) {
+             Future.delayed(const Duration(seconds: 3), () {
+               if (mounted && !_isAccepted && _activeRequestId != null) {
+                 _pollMissedStatusUpdate(_activeRequestId!);
+               }
+             });
+           }
         }
       } else {
         if (mounted) {
@@ -563,6 +582,8 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
           if (_isAccepted) {
             _subscribeAcceptedLiveLocation(requestId);
           }
+          // Poll once to catch any events missed during WebSocket setup
+          _pollMissedStatusUpdate(requestId);
         },
         onDisconnect: (_) {
           _requestSocketConnected = false;
@@ -580,6 +601,51 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     _requestClient?.activate();
   }
 
+  /// One-time HTTP poll to catch any status updates (especially acceptance)
+  /// that may have arrived while the WebSocket was still connecting.
+  Future<void> _pollMissedStatusUpdate(String requestId) async {
+    // If already accepted, no need to poll
+    if (_isAccepted) return;
+
+    try {
+      final response = await http.get(
+        Uri.parse(
+          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/tracking/$requestId',
+        ),
+        headers: UserSession().getAuthHeader(),
+      ).timeout(const Duration(seconds: 8));
+
+      if (response.statusCode != 200 || response.body.isEmpty) return;
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map || !mounted) return;
+
+      // If already accepted by the time the HTTP response comes back skip.
+      if (_isAccepted) return;
+
+      final data = Map<String, dynamic>.from(decoded);
+      final status = _normalizeTrackingStatus(data);
+
+      if (status == 'CANCELLED' || status == 'REJECTED' || status == 'EXPIRED') {
+        ActiveServiceRequestTracking.clear();
+        return;
+      }
+
+      final hasAcceptedMechanic =
+          data['mechanicId'] != null || data['mechanicLatitude'] != null;
+      if (hasAcceptedMechanic) {
+        debugPrint('⚡ Caught missed acceptance via HTTP poll for request $requestId');
+        _handleAcceptedMechanic(data, requestId);
+        if (mounted) {
+          setState(() => _applyTrackingWorkflow(data));
+        }
+        _saveActiveTracking();
+      }
+    } catch (e) {
+      debugPrint('Poll missed status failed: $e');
+    }
+  }
+
   void _onRequestStatusUpdate(Map<String, dynamic> data, String requestId) {
     final backendType =
         (data['type'] ?? data['backendType'])?.toString().toUpperCase() ?? '';
@@ -592,6 +658,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       if (status == 'EXPIRED') {
         _exitToUserHome(
           snackMessage: data['message']?.toString() ??
+              data['msg']?.toString() ??
               'No mechanic was available. Please try again later.',
           snackColor: Colors.redAccent,
         );
@@ -775,10 +842,10 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     if (_cancelExitHandled) return;
 
     if (!_userInitiatedCancel) {
-      final message = data['message']?.toString();
+      final message = data['message']?.toString() ?? data['msg']?.toString();
       _exitToUserHome(
         snackMessage:
-            message?.isNotEmpty == true ? message! : 'Request cancelled',
+            message?.isNotEmpty == true ? message! : 'Request cancelled by system',
       );
       return;
     }
@@ -803,8 +870,16 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
+        String successMsg = 'Request cancelled successfully';
+        try {
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map && (decoded['message'] != null || decoded['msg'] != null)) {
+            successMsg = (decoded['message'] ?? decoded['msg']).toString();
+          }
+        } catch (_) {}
+        
         _exitToUserHome(
-          snackMessage: 'Request cancelled successfully',
+          snackMessage: successMsg,
         );
       } else {
         if (mounted) {
@@ -1798,17 +1873,63 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
               ),
             ),
 
-          // Waiting for Response card
+          // Draggable Bottom Sheet for Status (Waiting, Accepted, Price Approval)
           if (_isWaiting)
-            Positioned(
-              left: 16,
-              right: 16,
-              bottom: 32,
-              child: _isPriceReceived
-                  ? _buildPriceApprovalCard()
-                  : (_isAccepted
-                      ? _buildAcceptedMechanicCard()
-                      : _buildWaitingCard()),
+            DraggableScrollableSheet(
+              initialChildSize: _isAccepted ? 0.38 : 0.35,
+              minChildSize: 0.18,
+              maxChildSize: _isAccepted ? 0.75 : 0.5,
+              snap: true,
+              builder: (context, scrollController) {
+                final isDark = Theme.of(context).brightness == Brightness.dark;
+                return Container(
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(24),
+                      topRight: Radius.circular(24),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: isDark ? Colors.black54 : Colors.black26,
+                        blurRadius: 20,
+                        offset: const Offset(0, -5),
+                      ),
+                    ],
+                  ),
+                  child: SingleChildScrollView(
+                    controller: scrollController,
+                    physics: const ClampingScrollPhysics(),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Drag Handle
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          child: Container(
+                            width: 45,
+                            height: 5,
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.grey[700] : Colors.grey[300],
+                              borderRadius: BorderRadius.circular(2.5),
+                            ),
+                          ),
+                        ),
+                        
+                        // Content
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                          child: _isPriceReceived
+                              ? _buildPriceApprovalCard()
+                              : (_isAccepted
+                                  ? _buildAcceptedMechanicCard()
+                                  : _buildWaitingCard()),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
             ),
 
           // Back button in waiting mode
@@ -2498,22 +2619,9 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
 
   Widget _buildPriceApprovalCard() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: isDark ? Colors.black38 : Colors.black26,
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
           Container(
             width: 52,
             height: 52,
@@ -2624,18 +2732,20 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
             ],
           ),
         ],
-      ),
-    );
+      );
   }
 
   Widget _buildAcceptedMechanicCard() {
+    // ignore: unused_local_variable
     final mechanic = _acceptedMechanic ?? {};
     final name = (mechanic['mechanicName'] ?? 'Mechanic').toString();
+    // ignore: unused_local_variable
     final number = (mechanic['mechanicNumber'] ?? '').toString();
     final image = (mechanic['mechanicImage'] ?? '').toString();
     final type = (mechanic['mechanicType'] ?? 'Mechanic').toString();
     final shop = (mechanic['mechanicShopName'] ?? 'Shop location').toString();
     final experience = mechanic['mechanicExperience']?.toString() ?? '0';
+    // ignore: unused_local_variable
     final reviews = mechanic['mechanicTotalReviews']?.toString() ?? '0';
     final rating = _toDouble(mechanic['mechanicRating']);
     final distance = _acceptedDistanceText ??
@@ -2643,23 +2753,10 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     final eta = _acceptedEta ?? mechanic['eta']?.toString() ?? '--';
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: isDark ? Colors.black38 : Colors.black26,
-            blurRadius: 15,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               CircleAvatar(
@@ -2914,8 +3011,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
             ),
           ),
         ],
-      ),
-    );
+      );
   }
 
   Widget _trackingMetric(IconData icon, String label, String value) {
@@ -2960,30 +3056,17 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
 
   Widget _buildWaitingCard() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: isDark ? Colors.black38 : Colors.black26,
-            blurRadius: 15,
-            offset: const Offset(0, 5),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const SizedBox(
+          width: 36,
+          height: 36,
+          child: CircularProgressIndicator(
+            color: Color(0xFFFB3300),
+            strokeWidth: 3,
           ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(
-            width: 36,
-            height: 36,
-            child: CircularProgressIndicator(
-              color: Color(0xFFFB3300),
-              strokeWidth: 3,
-            ),
-          ),
+        ),
           const SizedBox(height: 16),
           Text(
             'Waiting for Response...',
@@ -3036,8 +3119,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
             ),
           ),
         ],
-      ),
-    );
+      );
   }
 }
 

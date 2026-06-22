@@ -93,6 +93,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
   // Navigation mode
   bool _navigationStarted = false; // true after mechanic taps "Start Navigation"
   bool _userInteracting = false;   // true while user is manually panning/zooming
+  bool _isProgrammaticCameraMove = false;
   
   // State
   bool _isLocatingMechanic = false;
@@ -488,7 +489,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
     final status = _normalizeStatus(data);
 
     if (backendType == 'ROAD_REQUEST_CANCELLED') {
-      _goToDashboardAfterCancellation();
+      _goToDashboardAfterCancellation(message: data['message']?.toString());
       return;
     }
 
@@ -606,7 +607,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
       final myReqId = widget.requestData['requestId']?.toString() ?? widget.requestData['requestid']?.toString();
       
       if (incomingReqId != null && myReqId != null && incomingReqId == myReqId) {
-        _goToDashboardAfterCancellation();
+        _goToDashboardAfterCancellation(message: data['message']?.toString());
       }
     }
   }
@@ -689,7 +690,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
     }
   }
 
-  void _goToDashboardAfterCancellation() {
+  void _goToDashboardAfterCancellation({String? message}) {
     if (_isClosingForCancellation) return;
     _isClosingForCancellation = true;
     ActiveServiceRequestTracking.clear();
@@ -697,8 +698,10 @@ class _MechanicUserMapState extends State<MechanicUserMap>
     _mapClient?.deactivate();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Customer has cancelled the request!'),
+      SnackBar(
+        content: Text(message?.isNotEmpty == true
+            ? message!
+            : 'Customer has cancelled the request!'),
         backgroundColor: Colors.red,
       ),
     );
@@ -965,33 +968,86 @@ class _MechanicUserMapState extends State<MechanicUserMap>
     }
     _lastCameraFollowAt = now;
 
-    _mapController?.animateCamera(
+    _animateMapCamera(
       CameraUpdate.newCameraPosition(
         CameraPosition(
           target: position,
-          zoom: 17.5,
-          tilt: 60,          // Deep 3D tilt like Google Maps navigation
+          zoom: 18,
+          tilt: 65,
           bearing: bearing,
         ),
       ),
     );
   }
 
+  Future<void> _animateMapCamera(CameraUpdate update) async {
+    final controller = _mapController;
+    if (controller == null) return;
+
+    _isProgrammaticCameraMove = true;
+    try {
+      await controller.animateCamera(update);
+    } finally {
+      Future<void>.delayed(const Duration(milliseconds: 120), () {
+        if (mounted) _isProgrammaticCameraMove = false;
+      });
+    }
+  }
+
+  void _toggleNavigation() {
+    if (_navigationStarted) {
+      _closeNavigation();
+    } else {
+      _startNavigation();
+    }
+  }
+
   void _startNavigation() {
-    setState(() => _navigationStarted = true);
-    // Immediately jump to 3D navigation view
+    setState(() {
+      _navigationStarted = true;
+      _userInteracting = false;
+    });
     if (_mechanicCurrentPos != null) {
-      _mapController?.animateCamera(
+      _animateMapCamera(
         CameraUpdate.newCameraPosition(
           CameraPosition(
             target: _mechanicCurrentPos!,
-            zoom: 17.5,
-            tilt: 60,
+            zoom: 18,
+            tilt: 65,
             bearing: _mechanicBearing,
           ),
         ),
       );
     }
+  }
+
+  void _closeNavigation() {
+    setState(() {
+      _navigationStarted = false;
+      _userInteracting = false;
+    });
+
+    if (_mechanicCurrentPos != null && _userLocation != null) {
+      final bounds = _boundsFor(_mechanicCurrentPos!, _userLocation!);
+      _animateMapCamera(CameraUpdate.newLatLngBounds(bounds, 72));
+    } else if (_userLocation != null) {
+      _animateMapCamera(CameraUpdate.newCameraPosition(
+        CameraPosition(target: _userLocation!, zoom: 14),
+      ));
+    }
+  }
+
+  LatLngBounds _boundsFor(LatLng a, LatLng b) {
+    return LatLngBounds(
+      southwest: LatLng(
+        math.min(a.latitude, b.latitude),
+        math.min(a.longitude, b.longitude),
+      ),
+      northeast: LatLng(
+        math.max(a.latitude, b.latitude),
+        math.max(a.longitude, b.longitude),
+      ),
+    );
   }
 
   double _bearingBetween(LatLng from, LatLng to) {
@@ -1557,7 +1613,9 @@ class _MechanicUserMapState extends State<MechanicUserMap>
                   tiltGesturesEnabled: true,     // Two-finger tilt enabled
                   onCameraMove: (_) {
                     // When user manually moves camera, pause auto-follow
-                    if (_navigationStarted && !_userInteracting) {
+                    if (_navigationStarted &&
+                        !_userInteracting &&
+                        !_isProgrammaticCameraMove) {
                       setState(() => _userInteracting = true);
                     }
                   },
@@ -1604,12 +1662,12 @@ class _MechanicUserMapState extends State<MechanicUserMap>
                     onTap: () {
                       setState(() => _userInteracting = false);
                       if (_mechanicCurrentPos != null) {
-                        _mapController?.animateCamera(
+                        _animateMapCamera(
                           CameraUpdate.newCameraPosition(
                             CameraPosition(
                               target: _mechanicCurrentPos!,
-                              zoom: 17.5,
-                              tilt: 60,
+                              zoom: 18,
+                              tilt: 65,
                               bearing: _mechanicBearing,
                             ),
                           ),
@@ -1664,6 +1722,85 @@ class _MechanicUserMapState extends State<MechanicUserMap>
                   ),
                 ),
               ],
+            ),
+          ),
+
+          Align(
+            alignment: Alignment.centerRight,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 16, bottom: 450),
+              child: Tooltip(
+                message: _navigationStarted
+                    ? 'Close navigation'
+                    : 'Start navigation',
+                child: GestureDetector(
+                  onTap: _toggleNavigation,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        width: 58,
+                        height: 58,
+                        decoration: BoxDecoration(
+                          color: _navigationStarted
+                              ? const Color(0xFF1A73E8)
+                              : Colors.white,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: _navigationStarted
+                                ? const Color(0xFF1A73E8)
+                                : Colors.white,
+                            width: 2,
+                          ),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Colors.black26,
+                              blurRadius: 10,
+                              offset: Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Icon(
+                          Icons.navigation_rounded,
+                          color: _navigationStarted
+                              ? Colors.white
+                              : const Color(0xFF1A73E8),
+                          size: 30,
+                        ),
+                      ),
+                      if (_navigationStarted)
+                        Positioned(
+                          right: -2,
+                          top: -2,
+                          child: Container(
+                            width: 20,
+                            height: 20,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: const Color(0xFF1A73E8),
+                                width: 1.5,
+                              ),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Colors.black26,
+                                  blurRadius: 4,
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              Icons.close_rounded,
+                              color: Color(0xFF1A73E8),
+                              size: 14,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ),
 
@@ -1872,401 +2009,389 @@ class _MechanicUserMapState extends State<MechanicUserMap>
               ),
             ),
 
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: Container(
-              margin: const EdgeInsets.all(16),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Colors.black26,
-                    blurRadius: 15,
-                    offset: Offset(0, 5),
+          // Draggable Bottom Sheet for Details
+          DraggableScrollableSheet(
+            initialChildSize: 0.38, // Initial height
+            minChildSize: 0.18,     // Collapsed height
+            maxChildSize: 0.75,     // Fully expanded height
+            snap: true,             // Snap to positions
+            builder: (context, scrollController) {
+              return Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(24),
+                    topRight: Radius.circular(24),
                   ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.15),
+                      blurRadius: 20,
+                      offset: const Offset(0, -5),
+                    ),
+                  ],
+                ),
+                child: SingleChildScrollView(
+                  controller: scrollController,
+                  physics: const ClampingScrollPhysics(),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Container(
-                        width: 50,
-                        height: 50,
-                        decoration: BoxDecoration(
-                          color: Colors.grey[100], 
-                          shape: BoxShape.circle,
-                          image: customerImg.isNotEmpty 
-                            ? DecorationImage(image: NetworkImage(customerImg), fit: BoxFit.cover)
-                            : null,
+                      // Drag Handle
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Container(
+                          width: 45,
+                          height: 5,
+                          decoration: BoxDecoration(
+                            color: Colors.grey[300],
+                            borderRadius: BorderRadius.circular(2.5),
+                          ),
                         ),
-                        child: customerImg.isEmpty ? Icon(Icons.person, color: _primary) : null,
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
+                      
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
-                              customerName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 16),
-                            ),
-                            Text(
-                              '$serviceType request',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey.shade600),
-                            ),
-                            Text(
-                              locationName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.poppins(fontSize: 11, color: Colors.grey.shade500),
-                            ),
-                            if (_paymentPending) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                'Confirm cash payment',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.green.shade700,
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  width: 58,
+                                  height: 58,
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[100], 
+                                    shape: BoxShape.circle,
+                                    image: customerImg.isNotEmpty 
+                                      ? DecorationImage(image: NetworkImage(customerImg), fit: BoxFit.cover)
+                                      : null,
+                                    border: Border.all(color: Colors.grey.shade200, width: 2),
+                                  ),
+                                  child: customerImg.isEmpty ? Icon(Icons.person, color: _primary, size: 30) : null,
                                 ),
-                              ),
-                            ] else if (_workCompleted) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                'Waiting for payment',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.blue.shade700,
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        customerName,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 18),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: _primary.withOpacity(0.1),
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: Text(
+                                              serviceType,
+                                              style: GoogleFonts.poppins(fontSize: 10, color: _primary, fontWeight: FontWeight.bold),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            'Requesting help',
+                                            style: GoogleFonts.poppins(fontSize: 10, color: Colors.grey.shade500),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        locationName,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey.shade500),
+                                      ),
+                                      if (_paymentPending) ...[
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          'Confirm cash payment',
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: Colors.green.shade700,
+                                          ),
+                                        ),
+                                      ] else if (_workCompleted) ...[
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          'Waiting for payment',
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: Colors.blue.shade700,
+                                          ),
+                                        ),
+                                      ] else if (_workStarted) ...[
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          'Customer approved charges',
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: Colors.green.shade700,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            ] else if (_workStarted) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                'Customer approved charges',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.green.shade700,
+                                if (_workStarted)
+                                  ServiceChargesPriceBadge(
+                                    inspectionPrice: _approvedFinalPrice ??
+                                        _extractFinalPrice(_localTrackingSnapshot()) ??
+                                        _extractFinalPrice(widget.requestData),
+                                    visitingPrice: _approvedArrivalPrice ??
+                                        _extractArrivalPrice(_localTrackingSnapshot()) ??
+                                        _extractArrivalPrice(widget.requestData) ??
+                                        _defaultArrivalPrice().toDouble(),
+                                    primaryColor: _primary,
+                                  )
+                                else if (customerPhone.isNotEmpty)
+                                  InkWell(
+                                    borderRadius: BorderRadius.circular(16),
+                                    onTap: () => launchUrl(Uri.parse('tel:$customerPhone')),
+                                    child: Container(
+                                      width: 52,
+                                      height: 52,
+                                      decoration: BoxDecoration(
+                                        color: _primary,
+                                        borderRadius: BorderRadius.circular(16),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: _primary.withOpacity(0.3),
+                                            blurRadius: 8,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ],
+                                      ),
+                                      child: const Icon(Icons.phone_rounded, color: Colors.white),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 20),
+                            Row(
+                              children: [
+                                Expanded(child: _trackingMetric(Icons.route_rounded, 'Distance', _currentDistance)),
+                                const SizedBox(width: 12),
+                                Expanded(child: _trackingMetric(Icons.schedule_rounded, 'ETA', _currentEta)),
+                              ],
+                            ),
+                            if (userNotes != 'No special notes') ...[
+                              const SizedBox(height: 16),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade50,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: Colors.grey.shade100),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Customer Notes',
+                                      style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey.shade600),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      userNotes,
+                                      style: GoogleFonts.poppins(fontSize: 13, color: Colors.black87),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
+                            const SizedBox(height: 24),
+                            if (_paymentPending)
+                              SizedBox(
+                                width: double.infinity,
+                                height: 54,
+                                child: ElevatedButton(
+                                  onPressed: _isConfirmingCashPayment
+                                      ? null
+                                      : _confirmCashPaymentReceived,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green.shade700,
+                                    elevation: 2,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                  ),
+                                  child: _isConfirmingCashPayment
+                                      ? const SizedBox(
+                                          width: 22,
+                                          height: 22,
+                                          child: CircularProgressIndicator(
+                                            color: Colors.white,
+                                            strokeWidth: 3,
+                                          ),
+                                        )
+                                      : Row(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            const Icon(Icons.verified_rounded, color: Colors.white, size: 22),
+                                            const SizedBox(width: 10),
+                                            Text(
+                                              'CONFIRM PAYMENT RECEIVED',
+                                              style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 14),
+                                            ),
+                                          ],
+                                        ),
+                                ),
+                              )
+                            else if (_workCompleted)
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(vertical: 24),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.shade50.withOpacity(0.5),
+                                  borderRadius: BorderRadius.circular(18),
+                                  border: Border.all(color: Colors.blue.shade100),
+                                ),
+                                child: Column(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        shape: BoxShape.circle,
+                                        boxShadow: [BoxShadow(color: Colors.blue.withOpacity(0.1), blurRadius: 10)],
+                                      ),
+                                      child: Icon(Icons.payments_rounded, color: Colors.blue.shade700, size: 28),
+                                    ),
+                                    const SizedBox(height: 14),
+                                    Text(
+                                      'Waiting for Payment',
+                                      style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 16, color: Colors.blue.shade800),
+                                    ),
+                                    Text(
+                                      'Customer will pay the approved charges',
+                                      style: GoogleFonts.poppins(fontSize: 12, color: Colors.blue.shade600),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            else if (_workStarted)
+                              SizedBox(
+                                width: double.infinity,
+                                height: 54,
+                                child: ElevatedButton(
+                                  onPressed: _isCompletingWork ? null : _onWorkCompleted,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green.shade600,
+                                    elevation: 2,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                  ),
+                                  child: _isCompletingWork
+                                      ? const SizedBox(
+                                          width: 22,
+                                          height: 22,
+                                          child: CircularProgressIndicator(
+                                            color: Colors.white,
+                                            strokeWidth: 3,
+                                          ),
+                                        )
+                                      : Row(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            const Icon(Icons.build_circle_rounded, color: Colors.white, size: 22),
+                                            const SizedBox(width: 10),
+                                            Text(
+                                              'WORK COMPLETED',
+                                              style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 14),
+                                            ),
+                                          ],
+                                        ),
+                                ),
+                              )
+                            else if (_hasSentPrice)
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(vertical: 24),
+                                decoration: BoxDecoration(
+                                  color: Colors.amber.shade50.withOpacity(0.5),
+                                  borderRadius: BorderRadius.circular(18),
+                                  border: Border.all(color: Colors.amber.shade100),
+                                ),
+                                child: Column(
+                                  children: [
+                                    const SizedBox(
+                                      width: 28,
+                                      height: 28,
+                                      child: CircularProgressIndicator(color: Color(0xFFFB3300), strokeWidth: 3.5),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      'Waiting for Approval',
+                                      style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 16, color: Colors.amber.shade900),
+                                    ),
+                                    Text(
+                                      'Customer is reviewing your charges',
+                                      style: GoogleFonts.poppins(fontSize: 12, color: Colors.amber.shade700),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            else
+                              SizedBox(
+                                width: double.infinity,
+                                height: 54,
+                                child: ElevatedButton(
+                                  onPressed: _hasArrived
+                                      ? (_isSendingPrice ? null : _showSendChargesDialog)
+                                      : (_isCheckingArrival ? null : _onHaveArrived),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: _primary,
+                                    elevation: 4,
+                                    shadowColor: _primary.withOpacity(0.3),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                  ),
+                                  child: _isSendingPrice || _isCheckingArrival
+                                      ? const SizedBox(
+                                          width: 22,
+                                          height: 22,
+                                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+                                        )
+                                      : Row(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Icon(
+                                              _hasArrived ? Icons.send_rounded : Icons.location_on_rounded,
+                                              color: Colors.white,
+                                              size: 22,
+                                            ),
+                                            const SizedBox(width: 10),
+                                            Text(
+                                              _hasArrived ? 'SEND CHARGES' : 'I HAVE ARRIVED',
+                                              style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 15),
+                                            ),
+                                          ],
+                                        ),
+                                ),
+                              ),
                           ],
                         ),
                       ),
-                      if (_workStarted)
-                        ServiceChargesPriceBadge(
-                          inspectionPrice: _approvedFinalPrice ??
-                              _extractFinalPrice(_localTrackingSnapshot()) ??
-                              _extractFinalPrice(widget.requestData),
-                          visitingPrice: _approvedArrivalPrice ??
-                              _extractArrivalPrice(_localTrackingSnapshot()) ??
-                              _extractArrivalPrice(widget.requestData) ??
-                              _defaultArrivalPrice().toDouble(),
-                          primaryColor: _primary,
-                        )
-                      else if (customerPhone.isNotEmpty)
-                        InkWell(
-                          borderRadius: BorderRadius.circular(14),
-                          onTap: () => launchUrl(Uri.parse('tel:$customerPhone')),
-                          child: Container(
-                            width: 48,
-                            height: 48,
-                            decoration: BoxDecoration(
-                              color: _primary,
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: const Icon(Icons.phone_rounded, color: Colors.white),
-                          ),
-                        ),
                     ],
                   ),
-                  const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      Expanded(child: _trackingMetric(Icons.route_rounded, 'Distance', _currentDistance)),
-                      const SizedBox(width: 10),
-                      Expanded(child: _trackingMetric(Icons.schedule_rounded, 'ETA', _currentEta)),
-                    ],
-                  ),
-                  if (userNotes != 'No special notes') ...[
-                    const SizedBox(height: 14),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Text(
-                        'Notes: $userNotes',
-                        style: GoogleFonts.poppins(fontSize: 12, color: Colors.black87),
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-                  if (_paymentPending)
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _isConfirmingCashPayment
-                            ? null
-                            : _confirmCashPaymentReceived,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green.shade700,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                        child: _isConfirmingCashPayment
-                            ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(
-                                  color: Colors.white,
-                                  strokeWidth: 2.5,
-                                ),
-                              )
-                            : Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(
-                                    Icons.verified_rounded,
-                                    color: Colors.white,
-                                    size: 22,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'CONFIRM PAYMENT RECEIVED',
-                                    style: GoogleFonts.poppins(
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                      ),
-                    )
-                  else if (_workCompleted)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 20),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.blue.shade50,
-                            Colors.indigo.shade50,
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.blue.shade200),
-                      ),
-                      child: Column(
-                        children: [
-                          Icon(
-                            Icons.payments_rounded,
-                            color: Colors.blue.shade700,
-                            size: 32,
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Waiting for Payment',
-                            style: GoogleFonts.poppins(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 15,
-                              color: Colors.blue.shade800,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Customer will pay the approved charges',
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              color: Colors.blue.shade600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  else if (_workStarted)
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed:
-                            _isCompletingWork ? null : _onWorkCompleted,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green.shade600,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                        child: _isCompletingWork
-                            ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(
-                                  color: Colors.white,
-                                  strokeWidth: 2.5,
-                                ),
-                              )
-                            : Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(
-                                    Icons.build_circle_rounded,
-                                    color: Colors.white,
-                                    size: 22,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'WORK COMPLETED',
-                                    style: GoogleFonts.poppins(
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                      ),
-                    )
-                  else if (_hasSentPrice)
-                    // Waiting for Approval state
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 20),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.amber.shade50,
-                            Colors.orange.shade50,
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.amber.shade200),
-                      ),
-                      child: Column(
-                        children: [
-                          SizedBox(
-                            width: 28,
-                            height: 28,
-                            child: CircularProgressIndicator(
-                              color: Colors.amber.shade700,
-                              strokeWidth: 3,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Waiting for Approval',
-                            style: GoogleFonts.poppins(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 15,
-                              color: Colors.amber.shade800,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Customer is reviewing your charges',
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              color: Colors.amber.shade600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  else if (!_navigationStarted)
-                    // START NAVIGATION button — shown right after accepting
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _startNavigation,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF1A73E8), // Google blue
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          elevation: 4,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.navigation_rounded, color: Colors.white, size: 22),
-                            const SizedBox(width: 8),
-                            Text(
-                              'START NAVIGATION',
-                              style: GoogleFonts.poppins(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                                fontSize: 15,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                  else
-                    // Navigation started: show I HAVE ARRIVED or SEND CHARGES
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _hasArrived
-                            ? (_isSendingPrice ? null : _showSendChargesDialog)
-                            : (_isCheckingArrival ? null : _onHaveArrived),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _primary,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                        child: _isSendingPrice || _isCheckingArrival
-                            ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(
-                                  color: Colors.white,
-                                  strokeWidth: 2.5,
-                                ),
-                              )
-                            : Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    _hasArrived
-                                        ? Icons.send_rounded
-                                        : Icons.location_on_rounded,
-                                    color: Colors.white,
-                                    size: 22,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    _hasArrived
-                                        ? 'SEND CHARGES'
-                                        : 'I HAVE ARRIVED',
-                                    style: GoogleFonts.poppins(
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
+                ),
+              );
+            },
           ),
         ],
       ),

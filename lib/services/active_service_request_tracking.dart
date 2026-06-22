@@ -17,6 +17,9 @@ class ActiveServiceRequestTracking {
   static final ValueNotifier<String?> lastExitMessage =
       ValueNotifier<String?>(null);
 
+  static final ValueNotifier<String?> lastExitStatus =
+      ValueNotifier<String?>(null);
+
   static Future<void> load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -57,13 +60,15 @@ class ActiveServiceRequestTracking {
         status != 'EXPIRED' &&
         backendType != 'ROAD_REQUEST_CANCELLED' &&
         backendType != 'ROAD_REQUEST_EXPIRED' &&
-        backendType != 'APPOINTMENT_CANCELLED';
+        backendType != 'APPOINTMENT_CANCELLED' &&
+        backendType != 'PAYMENT_DONE';
   }
 
-  static void clear({String? message}) {
+  static void clear({String? message, String? status}) {
     if (message != null) {
       lastExitMessage.value = message;
     }
+    lastExitStatus.value = status;
     current.value = null;
     _removePersisted();
   }
@@ -80,14 +85,14 @@ class ActiveServiceRequestTracking {
   }
 
   /// Clears active tracking when [requestId] matches the stored request.
-  static void clearIfMatches(String? requestId, {String? message}) {
+  static void clearIfMatches(String? requestId, {String? message, String? status}) {
     if (requestId == null || requestId.isEmpty) return;
     final active = current.value;
     if (active == null) return;
     final activeId =
         active['requestId']?.toString() ?? active['requestid']?.toString();
     if (_idsMatch(activeId, requestId)) {
-      clear(message: message);
+      clear(message: message, status: status);
     }
   }
 
@@ -114,7 +119,7 @@ class ActiveServiceRequestTracking {
       ).timeout(const Duration(seconds: 8));
 
       if (response.statusCode == 404) {
-        clear();
+        clear(status: 'NOT_FOUND');
         return;
       }
 
@@ -133,10 +138,13 @@ class ActiveServiceRequestTracking {
           status == 'REJECTED' ||
           status == 'EXPIRED' ||
           status == 'COMPLETED' ||
+          backendType == 'PAYMENT_DONE' ||
           backendType == 'ROAD_REQUEST_CANCELLED' ||
           backendType == 'ROAD_REQUEST_EXPIRED') {
         final backendMsg = decoded['message']?.toString();
-        clear(message: backendMsg);
+        // If it's specifically PAYMENT_DONE, prioritize 'COMPLETED' as status for UI navigation
+        final exitStatus = (backendType == 'PAYMENT_DONE') ? 'COMPLETED' : status;
+        clear(message: backendMsg, status: exitStatus);
         return;
       }
 

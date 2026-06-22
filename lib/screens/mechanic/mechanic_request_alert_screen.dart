@@ -108,7 +108,7 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
 
     if (data['type'] == 'ROAD_REQUEST_CANCELLED' ||
         data['backendType'] == 'ROAD_REQUEST_CANCELLED') {
-      _goToDashboardAfterCancellation();
+      _goToDashboardAfterCancellation(message: data['message']?.toString());
       return;
     }
 
@@ -118,15 +118,17 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
     }
   }
 
-  void _goToDashboardAfterCancellation() {
+  void _goToDashboardAfterCancellation({String? message}) {
     if (_isClosingForCancellation) return;
     _isClosingForCancellation = true;
     _timer?.cancel();
     ActiveServiceRequestTracking.clear();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Customer has cancelled the request!'),
+      SnackBar(
+        content: Text(message?.isNotEmpty == true
+            ? message!
+            : 'Customer has cancelled the request!'),
         backgroundColor: Colors.red,
       ),
     );

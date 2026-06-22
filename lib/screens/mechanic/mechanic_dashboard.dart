@@ -255,8 +255,8 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                   if (mounted) {
                     setState(() {});
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Customer cancelled the request'),
+                      SnackBar(
+                        content: Text(data['message']?.toString() ?? 'Customer cancelled the request'),
                         backgroundColor: Colors.orange,
                       ),
                     );
