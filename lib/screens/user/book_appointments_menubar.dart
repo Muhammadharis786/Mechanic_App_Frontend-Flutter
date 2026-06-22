@@ -1,3 +1,5 @@
+// ignore_for_file: unused_element
+
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -10,6 +12,9 @@ import 'package:mech_app/screens/user/mechanic_list_book_appointment.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:mech_app/widgets/app_back_button.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 
 const String _baseUrl =
     'https://mechanicapp-service-621632382478.asia-south1.run.app';
@@ -37,6 +42,8 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   double? _latitude;
   double? _longitude;
   String? _locationName;
+  bool _isFetchingCurrentLocation = false;
+  bool _isUsingCurrentLocation = false;
 
   // ── Form ─────────────────────────────────────────────────────────
   String selectedService = "All";
@@ -75,7 +82,10 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       _longitude = widget.initialLng;
       _locationName = widget.initialLocationName;
       addressController.text = widget.initialLocationName ?? '';
+      _saveLocationToPrefs(widget.initialLat!, widget.initialLng!, widget.initialLocationName, isCurrent: false);
       _fetchNearbyMechanics();
+    } else {
+      _loadSavedLocation();
     }
   }
 
@@ -86,6 +96,135 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     super.dispose();
   }
 
+  Future<void> _saveLocationToPrefs(double lat, double lng, String? name, {bool isCurrent = false}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble('book_lat', lat);
+      await prefs.setDouble('book_lng', lng);
+      if (name != null) {
+        await prefs.setString('book_loc_name', name);
+      } else {
+        await prefs.remove('book_loc_name');
+      }
+      await prefs.setBool('book_is_current', isCurrent);
+    } catch (e) {
+      debugPrint("Error saving location to prefs: $e");
+    }
+  }
+
+  Future<void> _loadSavedLocation() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lat = prefs.getDouble('book_lat');
+      final lng = prefs.getDouble('book_lng');
+      final locName = prefs.getString('book_loc_name');
+      final isCurrent = prefs.getBool('book_is_current') ?? false;
+
+      if (lat != null && lng != null) {
+        setState(() {
+          _latitude = lat;
+          _longitude = lng;
+          _locationName = locName;
+          addressController.text = locName ?? '';
+          _isUsingCurrentLocation = isCurrent;
+        });
+        _fetchNearbyMechanics();
+      }
+    } catch (e) {
+      debugPrint("Error loading saved location: $e");
+    }
+  }
+
+  Future<void> _getCurrentLocation() async {
+    if (_isFetchingCurrentLocation) return;
+    setState(() {
+      _isFetchingCurrentLocation = true;
+    });
+
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Location services are disabled. Please enable them.")),
+        );
+        setState(() => _isFetchingCurrentLocation = false);
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Location permissions are denied.")),
+          );
+          setState(() => _isFetchingCurrentLocation = false);
+          return;
+        }
+      }
+      if (permission == LocationPermission.deniedForever) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Location permissions are permanently denied.")),
+        );
+        setState(() => _isFetchingCurrentLocation = false);
+        return;
+      }
+
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      final placeMarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+
+      String finalLabel = "Karachi";
+      if (placeMarks.isNotEmpty) {
+        final p = placeMarks.first;
+        final label = [
+          p.subLocality,
+          p.locality,
+        ]
+            .where((item) => item != null && item.isNotEmpty)
+            .join(', ');
+
+        if (label.isNotEmpty) {
+          finalLabel = label;
+        } else if (p.name != null && p.name!.isNotEmpty) {
+          finalLabel = p.name!;
+        }
+      }
+
+      setState(() {
+        _latitude = position.latitude;
+        _longitude = position.longitude;
+        _locationName = finalLabel;
+        addressController.text = finalLabel;
+        _mechanics = [];
+        selectedMechanic = null;
+        _mechanicsError = null;
+        _isFetchingCurrentLocation = false;
+        _isUsingCurrentLocation = true;
+      });
+
+      await _saveLocationToPrefs(position.latitude, position.longitude, finalLabel, isCurrent: true);
+      _fetchNearbyMechanics();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Location updated to: $finalLabel")),
+      );
+    } catch (e) {
+      debugPrint("Error fetching current location: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Failed to fetch location: $e")),
+      );
+      setState(() {
+        _isFetchingCurrentLocation = false;
+      });
+    }
+  }
+
   // ── Open Map Picker ──────────────────────────────────────────────
   Future<void> _openLocationPicker() async {
     final result = await Navigator.push<Map<String, dynamic>?>(
@@ -93,15 +232,20 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       MaterialPageRoute(builder: (_) => const LocationPickerScreen()),
     );
     if (result != null) {
+      final lat = result['latitude'] as double;
+      final lng = result['longitude'] as double;
+      final locName = result['locationName'] as String?;
       setState(() {
-        _latitude = result['latitude'] as double;
-        _longitude = result['longitude'] as double;
-        _locationName = result['locationName'] as String?;
+        _latitude = lat;
+        _longitude = lng;
+        _locationName = locName;
         addressController.text = _locationName ?? '';
         _mechanics = [];
         selectedMechanic = null;
         _mechanicsError = null;
+        _isUsingCurrentLocation = false;
       });
+      await _saveLocationToPrefs(lat, lng, locName, isCurrent: false);
       _fetchNearbyMechanics();
     }
   }
@@ -430,8 +574,20 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
             children: [
               _buildModeToggle(isDark),
               const SizedBox(height: 20),
-              // ── Location map card ───────────────────────────────
-              _buildLocationCard(isDark),
+              // ── Location Section ─────────────────────────────────
+              Row(
+                children: [
+                  Expanded(
+                    flex: 5,
+                    child: _buildLocationCard(isDark),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 4,
+                    child: _buildCurrentLocationCard(isDark),
+                  ),
+                ],
+              ),
               const SizedBox(height: 20),
 
               // ── Service dropdown ────────────────────────────────
@@ -583,62 +739,123 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     return GestureDetector(
       onTap: _openLocationPicker,
       child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(14),
+        height: 76,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         decoration: BoxDecoration(
           color: isDark ? Colors.grey[900] : Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-              color: _latitude != null ? primaryColor : Colors.grey.shade300,
+              color: (_latitude != null && !_isUsingCurrentLocation) ? primaryColor : (isDark ? Colors.grey.shade800 : Colors.grey.shade300),
               width: 1.5),
           boxShadow: const [
-            BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2)),
+            BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 1)),
           ],
         ),
         child: Row(
           children: [
             Container(
-              width: 44,
-              height: 44,
+              width: 36,
+              height: 36,
               decoration: BoxDecoration(
                 color: primaryColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(Icons.location_pin, color: primaryColor, size: 24),
+              child: Icon(Icons.location_pin, color: primaryColor, size: 20),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 8),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    _latitude == null ? "Set Your Location" : "Your Location",
+                    _latitude == null ? "Set Location" : "Set Your Location",
                     style: GoogleFonts.getFont('Bricolage Grotesque',
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 1),
                   Text(
-                    _locationName ?? "Tap to pick on map",
+                    _locationName ?? "Tap to pick",
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.getFont('Bricolage Grotesque',
-                        fontSize: 12,
+                        fontSize: 10,
                         color: _latitude != null
-                            ? Colors.black87
+                            ? (isDark ? Colors.white70 : Colors.black87)
                             : Colors.grey.shade500),
                   ),
                 ],
               ),
             ),
+            const SizedBox(width: 4),
             Icon(
-              _latitude != null
+              (_latitude != null && !_isUsingCurrentLocation)
                   ? Icons.check_circle_rounded
                   : Icons.arrow_forward_ios_rounded,
-              color: _latitude != null ? primaryColor : Colors.grey.shade400,
-              size: 18,
+              color: (_latitude != null && !_isUsingCurrentLocation) ? primaryColor : Colors.grey.shade400,
+              size: 14,
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCurrentLocationCard(bool isDark) {
+    return Container(
+      height: 76,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.grey[900] : Colors.grey[100],
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: GestureDetector(
+        onTap: _getCurrentLocation,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          decoration: BoxDecoration(
+            color: (_isFetchingCurrentLocation || _isUsingCurrentLocation) ? primaryColor : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: (_isFetchingCurrentLocation || _isUsingCurrentLocation)
+                ? [BoxShadow(color: primaryColor.withOpacity(0.3), blurRadius: 8)]
+                : [],
+          ),
+          child: Center(
+            child: _isFetchingCurrentLocation
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  )
+                : Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.my_location,
+                        color: (_isFetchingCurrentLocation || _isUsingCurrentLocation)
+                            ? Colors.white
+                            : (isDark ? Colors.white70 : Colors.black54),
+                        size: 20,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        "Use Current Location",
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.getFont('Bricolage Grotesque',
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: (_isFetchingCurrentLocation || _isUsingCurrentLocation)
+                              ? Colors.white
+                              : (isDark ? Colors.white70 : Colors.black54),
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
         ),
       ),
     );
@@ -1231,6 +1448,16 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
         },
       );
 
+  String _formatTimeOfDay(TimeOfDay tod) {
+    final hour = tod.hour;
+    final minute = tod.minute;
+    final period = hour >= 12 ? 'PM' : 'AM';
+    var hour12 = hour % 12;
+    if (hour12 == 0) hour12 = 12;
+    final minuteStr = minute.toString().padLeft(2, '0');
+    return "$hour12:$minuteStr $period";
+  }
+
   Widget _timeTile(bool isDark) => ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 12),
         horizontalTitleGap: 8,
@@ -1238,63 +1465,145 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         leading: Icon(Icons.access_time_outlined, color: primaryColor),
         title: Text(
-          selectedTime == null ? "Choose Time" : selectedTime!.format(context),
+          selectedTime == null ? "Choose Time" : _formatTimeOfDay(selectedTime!),
           style: GoogleFonts.getFont('Bricolage Grotesque', fontSize: 13),
         ),
-        onTap: () async {
-          final now = DateTime.now();
-          TimeOfDay initialTimeVal = TimeOfDay.now();
-          if (selectedTime != null) {
-            initialTimeVal = selectedTime!;
-          } else {
-            if (now.hour < 8) {
-              initialTimeVal = const TimeOfDay(hour: 8, minute: 0);
-            } else if (now.hour >= 21) {
-              initialTimeVal = const TimeOfDay(hour: 21, minute: 0);
-            }
-          }
-
-          final time = await showTimePicker(
-            context: context,
-            initialTime: initialTimeVal,
-            builder: (context, child) => Theme(
-              data: Theme.of(context).copyWith(
-                colorScheme: ColorScheme.light(
-                  primary: primaryColor,
-                  onPrimary: Colors.white,
-                  onSurface: Colors.black,
-                ),
-                textButtonTheme: TextButtonThemeData(
-                    style: TextButton.styleFrom(foregroundColor: primaryColor)),
-              ),
-              child: child!,
-            ),
-          );
-          if (time != null) {
-            if (time.hour < 8 || time.hour > 21 || (time.hour == 21 && time.minute > 0)) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Appointments can only be booked between 8:00 AM and 9:00 PM")),
-              );
-              return;
-            }
-
-            final isToday = selectedDate != null &&
-                selectedDate!.year == now.year &&
-                selectedDate!.month == now.month &&
-                selectedDate!.day == now.day;
-
-            if (isToday) {
-              if (time.hour < now.hour || (time.hour == now.hour && time.minute < now.minute)) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Cannot select a time in the past for today")),
-                );
-                return;
-              }
-            }
-            setState(() => selectedTime = time);
-          }
-        },
+        onTap: () => _showCustomTimePickerDialog(context, isDark),
       );
+
+  Future<void> _showCustomTimePickerDialog(BuildContext context, bool isDark) async {
+    if (selectedDate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please select a date first")),
+      );
+      return;
+    }
+
+    final now = DateTime.now();
+    final isToday = selectedDate!.year == now.year &&
+        selectedDate!.month == now.month &&
+        selectedDate!.day == now.day;
+
+    final List<TimeOfDay> slots = [
+      const TimeOfDay(hour: 8, minute: 0),
+      const TimeOfDay(hour: 9, minute: 0),
+      const TimeOfDay(hour: 10, minute: 0),
+      const TimeOfDay(hour: 11, minute: 0),
+      const TimeOfDay(hour: 12, minute: 0),
+      const TimeOfDay(hour: 13, minute: 0),
+      const TimeOfDay(hour: 14, minute: 0),
+      const TimeOfDay(hour: 15, minute: 0),
+      const TimeOfDay(hour: 16, minute: 0),
+      const TimeOfDay(hour: 17, minute: 0),
+      const TimeOfDay(hour: 18, minute: 0),
+      const TimeOfDay(hour: 19, minute: 0),
+      const TimeOfDay(hour: 20, minute: 0),
+      const TimeOfDay(hour: 21, minute: 0),
+    ];
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        final dialogBg = isDark ? Colors.grey[900] : Colors.white;
+        final textColor = isDark ? Colors.white : Colors.black87;
+
+        return AlertDialog(
+          backgroundColor: dialogBg,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text(
+            "Select Appointment Time",
+            textAlign: TextAlign.center,
+            style: GoogleFonts.getFont('Bricolage Grotesque',
+                fontSize: 18, fontWeight: FontWeight.bold, color: textColor),
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  "You can book appointment between 8-AM till 9-PM",
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.getFont('Bricolage Grotesque',
+                      fontSize: 12, fontWeight: FontWeight.w600, color: primaryColor),
+                ),
+                const SizedBox(height: 20),
+                Flexible(
+                  child: GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      mainAxisSpacing: 10,
+                      crossAxisSpacing: 10,
+                      childAspectRatio: 2.1,
+                    ),
+                    itemCount: slots.length,
+                    itemBuilder: (context, index) {
+                      final slot = slots[index];
+                      final isValid = !isToday || slot.hour > now.hour;
+                      final isSelected = selectedTime != null &&
+                          selectedTime!.hour == slot.hour &&
+                          selectedTime!.minute == slot.minute;
+
+                      final hr = slot.hour;
+                      final period = hr >= 12 ? 'PM' : 'AM';
+                      var hr12 = hr % 12;
+                      if (hr12 == 0) hr12 = 12;
+                      final slotText = "$hr12:00 $period";
+
+                      return GestureDetector(
+                        onTap: isValid
+                            ? () {
+                                setState(() {
+                                  selectedTime = slot;
+                                });
+                                Navigator.pop(context);
+                              }
+                            : null,
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          decoration: BoxDecoration(
+                            color: isDark ? Colors.grey[850] : Colors.grey[100],
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: isSelected ? primaryColor : Colors.transparent,
+                              width: 2.0,
+                            ),
+                          ),
+                          alignment: Alignment.center,
+                          child: Opacity(
+                            opacity: isValid ? 1.0 : 0.35,
+                            child: Text(
+                              slotText,
+                              style: GoogleFonts.getFont('Bricolage Grotesque',
+                                  fontSize: 12,
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                  color: isSelected ? primaryColor : textColor),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                "Cancel",
+                style: GoogleFonts.getFont('Bricolage Grotesque',
+                    color: primaryColor, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   Widget _successDialog() => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),

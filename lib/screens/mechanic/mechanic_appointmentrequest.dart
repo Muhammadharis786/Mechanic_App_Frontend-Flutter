@@ -1442,10 +1442,17 @@ class _MechanicAppointmentCard extends StatelessWidget {
     if (dateStr.isEmpty || timeStr.isEmpty) return "Schedule Pending";
     try {
       DateTime date = DateTime.parse(dateStr);
-      DateFormat timeInputFormat = DateFormat("HH:mm:ss");
-      DateTime time = timeInputFormat.parse(timeStr);
       String formattedDate = DateFormat('d MMMM yyyy').format(date);
-      String formattedTime = DateFormat('h:mm a').format(time);
+      String formattedTime = timeStr;
+      final parts = timeStr.split(':');
+      if (parts.length >= 2) {
+        final hour = int.parse(parts[0]);
+        final minute = int.parse(parts[1]);
+        final period = hour >= 12 ? 'PM' : 'AM';
+        var hour12 = hour % 12;
+        if (hour12 == 0) hour12 = 12;
+        formattedTime = "$hour12:${minute.toString().padLeft(2, '0')} $period";
+      }
       return "$formattedDate, $formattedTime";
     } catch (e) {
       return "$dateStr • $timeStr";

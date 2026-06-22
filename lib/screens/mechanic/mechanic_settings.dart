@@ -184,6 +184,7 @@ class _MechanicSettingsScreenState extends State<MechanicSettingsScreen> {
                   const SizedBox(height: 20),
                   const Divider(),
                   ListTile(
+                    contentPadding: const EdgeInsets.symmetric(vertical: 4),
                     title: Text(
                       AppStrings.t('logout'),
                       style: GoogleFonts.poppins(color: Colors.red, fontWeight: FontWeight.w500),
@@ -192,6 +193,7 @@ class _MechanicSettingsScreenState extends State<MechanicSettingsScreen> {
                     onTap: _confirmLogout,
                   ),
                   ListTile(
+                    contentPadding: const EdgeInsets.symmetric(vertical: 4),
                     title: Text(
                       AppStrings.t('deleteAccount'),
                       style: GoogleFonts.poppins(color: Colors.red, fontWeight: FontWeight.w500),

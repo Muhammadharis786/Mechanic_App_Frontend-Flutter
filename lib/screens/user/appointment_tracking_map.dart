@@ -6,6 +6,7 @@ import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../../widgets/app_back_button.dart';
+import '../../utils/map_theme_helper.dart';
 
 class AppointmentTrackingMap extends StatefulWidget {
   final double userLat;
@@ -30,7 +31,7 @@ class AppointmentTrackingMap extends StatefulWidget {
 }
 
 class _AppointmentTrackingMapState extends State<AppointmentTrackingMap> {
-  late GoogleMapController _mapController;
+  GoogleMapController? _mapController;
   final Set<Marker> _markers = {};
   final Set<Polyline> _polylines = {};
   final Set<Circle> _circles = {};
@@ -303,7 +304,7 @@ class _AppointmentTrackingMapState extends State<AppointmentTrackingMap> {
 
   void _onMapCreated(GoogleMapController controller) {
     _mapController = controller;
-    _mapController.setMapStyle(_mapStyle);
+    MapThemeHelper.applyMapTheme(controller, context);
     _fitBounds();
   }
 
@@ -319,13 +320,16 @@ class _AppointmentTrackingMapState extends State<AppointmentTrackingMap> {
       widget.userLng > widget.mechLng! ? widget.userLng : widget.mechLng!,
     );
     
-    _mapController.animateCamera(CameraUpdate.newLatLngBounds(LatLngBounds(southwest: sw, northeast: ne), 80));
+    _mapController?.animateCamera(CameraUpdate.newLatLngBounds(LatLngBounds(southwest: sw, northeast: ne), 80));
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    if (_mapController != null) {
+      MapThemeHelper.applyMapTheme(_mapController!, context);
+    }
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(

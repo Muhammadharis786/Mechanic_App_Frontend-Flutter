@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import '../../utils/map_theme_helper.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
@@ -186,6 +187,9 @@ class _MechanicMapSelectionScreenState extends State<MechanicMapSelectionScreen>
   // ── Build ────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    if (_mapController != null) {
+      MapThemeHelper.applyMapTheme(_mapController!, context);
+    }
     return Scaffold(
       backgroundColor: Colors.white,
       body: Stack(
@@ -194,7 +198,7 @@ class _MechanicMapSelectionScreenState extends State<MechanicMapSelectionScreen>
           GoogleMap(
             onMapCreated: (c) {
               _mapController = c;
-              c.setMapStyle(_mapStyle);
+              MapThemeHelper.applyMapTheme(c, context);
             },
             initialCameraPosition: CameraPosition(
               target: _markerPos,

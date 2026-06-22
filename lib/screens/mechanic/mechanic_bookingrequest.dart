@@ -585,8 +585,17 @@ class _MechanicBookingRequestScreenState
       final date = DateTime.parse(dateStr);
       final formattedDate = DateFormat('d MMMM yyyy').format(date);
       if (timeStr.isEmpty) return formattedDate;
-      final time = DateFormat('HH:mm:ss').parse(timeStr);
-      return '$formattedDate, ${DateFormat('h:mm a').format(time)}';
+      String formattedTime = timeStr;
+      final parts = timeStr.split(':');
+      if (parts.length >= 2) {
+        final hour = int.parse(parts[0]);
+        final minute = int.parse(parts[1]);
+        final period = hour >= 12 ? 'PM' : 'AM';
+        var hour12 = hour % 12;
+        if (hour12 == 0) hour12 = 12;
+        formattedTime = "$hour12:${minute.toString().padLeft(2, '0')} $period";
+      }
+      return '$formattedDate, $formattedTime';
     } catch (_) {
       return '$dateStr • $timeStr';
     }

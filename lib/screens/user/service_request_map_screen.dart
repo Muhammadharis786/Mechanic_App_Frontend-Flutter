@@ -18,6 +18,7 @@ import '../../utils/map_marker_icon.dart';
 import '../../utils/smooth_route_tracker.dart';
 import '../../widgets/service_charges_price_badge.dart';
 import '../homescreen.dart';
+import '../../utils/map_theme_helper.dart';
 import 'service_review_screen.dart';
 
 const String _mapStyle = '''
@@ -80,8 +81,10 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
   StompClient? _trackingClient;
   StompClient? _requestClient;
   Timer? _acceptedLocationPollTimer;
+  Timer? _statusPollTimer; // Fallback polling when WebSocket is down
   bool _requestSocketConnected = false;
   bool _liveLocationSubscribed = false;
+  bool _userInteracting = false; // true when user manually interacts with tracking map
   bool _userInitiatedCancel = false;
   bool _cancelExitHandled = false;
   bool _isPriceReceived = false;
@@ -339,10 +342,98 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     _debounce?.cancel();
     _geocodeDebounce?.cancel();
     _acceptedLocationPollTimer?.cancel();
+    _statusPollTimer?.cancel();
     _trackingClient?.deactivate();
     _requestClient?.deactivate();
     _mapController?.dispose();
     super.dispose();
+  }
+
+  /// Starts a fallback HTTP polling timer that checks request status every 5s.
+  /// This is the backup when WebSocket (STOMP) fails due to DNS/network issues.
+  void _startStatusPolling(String requestId) {
+    _statusPollTimer?.cancel();
+    _statusPollTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
+      if (!mounted) {
+        _statusPollTimer?.cancel();
+        return;
+      }
+      // Stop polling once price is received or payment done
+      if (_paymentApproved || _workCompleted || _paymentPending) {
+        _statusPollTimer?.cancel();
+        return;
+      }
+      await _pollRequestStatus(requestId);
+    });
+  }
+
+  void _stopStatusPolling() {
+    _statusPollTimer?.cancel();
+    _statusPollTimer = null;
+  }
+
+  Future<void> _pollRequestStatus(String requestId) async {
+    try {
+      final response = await http.get(
+        Uri.parse(
+          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/tracking/$requestId',
+        ),
+        headers: UserSession().getAuthHeader(),
+      ).timeout(const Duration(seconds: 6));
+
+      if (response.statusCode != 200 || response.body.isEmpty || !mounted) return;
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) return;
+
+      final data = Map<String, dynamic>.from(decoded);
+      final type = (data['type'] ?? data['backendType'])?.toString().toUpperCase() ?? '';
+      final status = _normalizeTrackingStatus(data);
+
+      // Price received — show approval card
+      if (!_isPriceReceived && !_paymentApproved) {
+        final price = _pickPrice(data);
+        if (price != null && (type == 'FINAL_PRICE_SENT' ||
+            status == 'WAITING_USER_APPROVAL' ||
+            status == 'WAITING_FOR_USER_APPROVAL' ||
+            status.contains('WAITING'))) {
+          setState(() {
+            _isPriceReceived = true;
+            _finalPrice = price;
+            _paymentApproved = false;
+          });
+          return;
+        }
+      }
+
+      // Payment approved / work started
+      if (type == 'USER_APPROVED' ||
+          status == 'APPROVED_PAYMENT_REQUEST' ||
+          status == 'WORK_STARTED') {
+        setState(() => _applyApprovedPaymentPayload(data));
+        _saveActiveTracking();
+        _stopStatusPolling();
+        return;
+      }
+
+      // Work completed
+      if (type == 'WORK_COMPLETED' || _statusMeansWaitingForPayment(status)) {
+        setState(() => _applyWorkCompletedPayload(data));
+        _saveActiveTracking();
+        _stopStatusPolling();
+        return;
+      }
+
+      // Payment pending
+      if (type == 'PAYMENT_PENDING' || status == 'PAYMENT_PENDING') {
+        setState(() => _applyPaymentPendingPayload(data));
+        _saveActiveTracking();
+        _stopStatusPolling();
+        return;
+      }
+    } catch (_) {
+      // Silent — polling will retry next tick
+    }
   }
 
   Future<void> _getUserLocation() async {
@@ -729,6 +820,11 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       return;
     }
 
+    // Start fallback polling after mechanic accepts (WebSocket backup)
+    if (_activeRequestId != null) {
+      _startStatusPolling(_activeRequestId!);
+    }
+
     final mechanicName =
         (data['mechanicName'] ?? data['name'])?.toString();
     ScaffoldMessenger.of(context).showSnackBar(
@@ -746,6 +842,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
   void _teardownRequestConnections() {
     _acceptedLocationPollTimer?.cancel();
     _acceptedLocationPollTimer = null;
+    _stopStatusPolling();
     _requestClient?.deactivate();
     _trackingClient?.deactivate();
     _requestSocketConnected = false;
@@ -1112,6 +1209,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       _activeRequestId = requestId;
       _isWaiting = true;
       _isAccepted = true;
+      _userInteracting = false; // Reset interaction flag on new request accept
       _acceptedMechanic = acceptedData;
       _acceptedMechanicPosition = position;
       if (position != null) {
@@ -1475,23 +1573,29 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
   }
 
   void _followAcceptedMechanic(LatLng position, double bearing) {
+    if (_userInteracting) return;
+
     final now = DateTime.now();
     if (_lastCameraFollowAt != null &&
-        now.difference(_lastCameraFollowAt!).inMilliseconds < 280) {
+        now.difference(_lastCameraFollowAt!).inMilliseconds < 1500) {
       return;
     }
     _lastCameraFollowAt = now;
 
-    _mapController?.animateCamera(
-      CameraUpdate.newCameraPosition(
-        CameraPosition(
-          target: position,
-          zoom: 17,
-          tilt: 45,
-          bearing: bearing,
+    final distance = _distanceMeters(_markerPos, position);
+    if (distance > 150) {
+      _fitAcceptedBounds();
+    } else {
+      _mapController?.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: _markerPos,
+            zoom: 17,
+            tilt: 45,
+          ),
         ),
-      ),
-    );
+      );
+    }
   }
 
   void _fitAcceptedBounds() {
@@ -1729,6 +1833,9 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (_mapController != null) {
+      MapThemeHelper.applyMapTheme(_mapController!, context);
+    }
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       backgroundColor: isDark ? Colors.black : Colors.white,
@@ -1737,7 +1844,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
           GoogleMap(
             onMapCreated: (c) {
               _mapController = c;
-              c.setMapStyle(_mapStyle);
+              MapThemeHelper.applyMapTheme(c, context);
             },
             initialCameraPosition: CameraPosition(
               target: _markerPos,
@@ -1764,21 +1871,33 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
             zoomControlsEnabled: false,
             compassEnabled: false,
             mapToolbarEnabled: false,
-            onCameraMoveStarted: _isWaiting ? null : () {
-              setState(() {
-                _isDragging = true;
-                _locationLabel = null;
-              });
+            onCameraMoveStarted: () {
+              if (mounted) {
+                setState(() {
+                  _isDragging = true;
+                  if (_isWaiting && _isAccepted) {
+                    _userInteracting = true;
+                  } else if (!_isWaiting) {
+                    _locationLabel = null;
+                  }
+                });
+              }
             },
-            onCameraMove: _isWaiting ? null : (pos) {
-              setState(() => _markerPos = pos.target);
+            onCameraMove: (pos) {
+              if (!_isWaiting) {
+                setState(() => _markerPos = pos.target);
+              }
             },
-            onCameraIdle: _isWaiting ? null : () {
-              setState(() => _isDragging = false);
-              _geocodeDebounce?.cancel();
-              _geocodeDebounce = Timer(const Duration(milliseconds: 600), () {
-                _reverseGeocode(_markerPos);
-              });
+            onCameraIdle: () {
+              if (mounted) {
+                setState(() => _isDragging = false);
+              }
+              if (!_isWaiting) {
+                _geocodeDebounce?.cancel();
+                _geocodeDebounce = Timer(const Duration(milliseconds: 600), () {
+                  _reverseGeocode(_markerPos);
+                });
+              }
             },
           ),
 

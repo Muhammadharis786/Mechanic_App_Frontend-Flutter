@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import '../../utils/map_theme_helper.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -1575,6 +1576,9 @@ class _MechanicUserMapState extends State<MechanicUserMap>
 
   @override
   Widget build(BuildContext context) {
+    if (_mapController != null) {
+      MapThemeHelper.applyMapTheme(_mapController!, context);
+    }
     final Map<String, dynamic> data = widget.requestData;
     final String customerName = (data['username'] ?? 'Customer').toString();
     final String customerImg = (data['userimage'] ?? data['userimgurl'] ?? '').toString();
@@ -1597,7 +1601,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
               : GoogleMap(
                   onMapCreated: (c) {
                     _mapController = c;
-                    c.setMapStyle(_mechanicMapStyle);
+                    MapThemeHelper.applyMapTheme(c, context);
                   },
                   initialCameraPosition: CameraPosition(
                     target: _userLocation!,
@@ -1607,10 +1611,11 @@ class _MechanicUserMapState extends State<MechanicUserMap>
                   zoomControlsEnabled: false,    // We provide custom zoom buttons
                   compassEnabled: true,
                   mapToolbarEnabled: false,
+                  buildingsEnabled: false,       // No 3D buildings
                   zoomGesturesEnabled: true,     // Pinch-to-zoom enabled
                   scrollGesturesEnabled: true,   // Pan enabled
                   rotateGesturesEnabled: true,   // Two-finger rotate enabled
-                  tiltGesturesEnabled: true,     // Two-finger tilt enabled
+                  tiltGesturesEnabled: false,    // Disable tilt gestures — keep map flat
                   onCameraMove: (_) {
                     // When user manually moves camera, pause auto-follow
                     if (_navigationStarted &&
@@ -1653,7 +1658,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
           // Custom zoom controls (bottom-right)
           Positioned(
             right: 16,
-            bottom: 340,
+            bottom: 170,
             child: Column(
               children: [
                 // Re-center button (appears when user has panned away)
@@ -2397,6 +2402,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
       ),
     );
   }
+
 
   Widget _trackingMetric(IconData icon, String label, String value) {
     return Container(

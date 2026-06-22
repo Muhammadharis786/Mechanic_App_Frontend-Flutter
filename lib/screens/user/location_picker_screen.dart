@@ -8,6 +8,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'package:mech_app/screens/authentication/user_session.dart';
+import '../../utils/map_theme_helper.dart';
 
 const String _mapStyle = '''
 [
@@ -434,6 +435,9 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
   // ───────────────────────── UI ─────────────────────────
   @override
   Widget build(BuildContext context) {
+    if (_mapController != null) {
+      MapThemeHelper.applyMapTheme(_mapController!, context);
+    }
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       body: Stack(
@@ -444,7 +448,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
                 CameraPosition(target: _markerPos, zoom: 14),
             onMapCreated: (c) {
               _mapController = c;
-              c.setMapStyle(_mapStyle);
+              MapThemeHelper.applyMapTheme(c, context);
             },
             myLocationEnabled: true,
             myLocationButtonEnabled: false,

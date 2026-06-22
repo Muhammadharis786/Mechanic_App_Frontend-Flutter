@@ -13,6 +13,7 @@ import '../../services/mechanic_notification_controller.dart';
 import 'mechanic_usermap.dart';
 import 'mechanic_dashboard.dart';
 import '../authentication/user_session.dart';
+import '../../utils/map_theme_helper.dart';
 
 const String _mapStyle = '''
 [
@@ -177,9 +178,23 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
       } else {
         _timer?.cancel();
         ActiveServiceRequestTracking.clear();
-        // Time expired, pop screen
+        _cancelRequestOnServer(); // call asynchronously to update server state
+        EmergencyAlertService.instance.stopEffects();
         if (mounted) {
-          Navigator.of(context).pop();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Request expired'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          if (Navigator.of(context).canPop()) {
+            Navigator.of(context).pop();
+          } else {
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const MechanicDashboardScreen()),
+              (route) => false,
+            );
+          }
         }
       }
     });
@@ -259,6 +274,31 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
     Navigator.of(context).pop();
   }
 
+  Future<void> _cancelRequestOnServer() async {
+    final requestId =
+        widget.requestData['requestId']?.toString() ??
+        widget.requestData['requestid']?.toString() ??
+        widget.requestData['serviceRequestId']?.toString() ??
+        widget.requestData['servicerequestid']?.toString() ??
+        widget.requestData['roadRequestId']?.toString() ??
+        widget.requestData['roadrequestid']?.toString() ??
+        widget.requestData['request_id']?.toString();
+
+    if (requestId == null || requestId.isEmpty) return;
+
+    try {
+      await http.get(
+        Uri.parse(
+          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/cancel/$requestId',
+        ),
+        headers: UserSession().getAuthHeader(),
+      ).timeout(const Duration(seconds: 8));
+      debugPrint("✅ Request cancelled successfully on server: $requestId");
+    } catch (e) {
+      debugPrint("❌ Error canceling request on server: $e");
+    }
+  }
+
   Future<void> _rejectRequest() async {
     if (_isRejecting || _isAccepting) return;
     setState(() => _isRejecting = true);
@@ -267,14 +307,24 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
     _timer?.cancel();
     ActiveServiceRequestTracking.clear();
 
+    await _cancelRequestOnServer();
+
     if (!mounted) return;
+    setState(() => _isRejecting = false);
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Request declined'),
         backgroundColor: Colors.red,
       ),
     );
-    Navigator.of(context).pop();
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    } else {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const MechanicDashboardScreen()),
+        (route) => false,
+      );
+    }
   }
 
   Future<void> _acceptRequestFromBackend() async {
@@ -364,6 +414,9 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (_mapController != null) {
+      MapThemeHelper.applyMapTheme(_mapController!, context);
+    }
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
@@ -389,7 +442,7 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
           GoogleMap(
             onMapCreated: (c) {
               _mapController = c;
-              c.setMapStyle(_mapStyle);
+              MapThemeHelper.applyMapTheme(c, context);
             },
             initialCameraPosition: CameraPosition(target: _targetPos, zoom: 15),
             markers: {
@@ -464,9 +517,11 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
           // 3. Bottom Card Details
           Align(
             alignment: Alignment.bottomCenter,
-            child: Container(
-              margin: const EdgeInsets.all(16),
-              padding: const EdgeInsets.all(20),
+            child: SafeArea(
+              bottom: true,
+              child: Container(
+                margin: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 64),
+                padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 color: isDark ? Colors.grey[900] : Colors.white,
                 borderRadius: BorderRadius.circular(20),
@@ -665,6 +720,7 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
               ),
             ),
           ),
+        ),
         ],
       ),
     );
