@@ -29,6 +29,7 @@ import '../../utils/time_utils.dart';
 import 'mechanic_history.dart';
 import '../../services/fcm_notification_service.dart';
 import '../../services/mechanic_presence_service.dart';
+import 'package:intl/intl.dart';
 
 class MechanicDashboardScreen extends StatefulWidget {
   const MechanicDashboardScreen({super.key});
@@ -51,6 +52,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
 
   double totalEarnings = 0;
   double todaysEarnings = 0;
+  double monthlyIncome = 2500.00; // Hardcoded fallback until API is implemented
   int totalServices = 0;
   int todaysServices = 0;
   double mechanicRating = 0;
@@ -530,7 +532,23 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
 
     final rawDate = data['appointmentDate']?.toString() ?? '--';
     final rawTime = data['appointmentTime']?.toString() ?? '--';
-    final scheduled = '$rawDate | $rawTime';
+    String formattedTime = rawTime;
+    if (rawTime != '--' && rawTime.isNotEmpty) {
+      try {
+        final parts = rawTime.split(':');
+        if (parts.length >= 2) {
+          final hour = int.parse(parts[0]);
+          final minute = int.parse(parts[1]);
+          final period = hour >= 12 ? 'PM' : 'AM';
+          var hour12 = hour % 12;
+          if (hour12 == 0) hour12 = 12;
+          formattedTime = "$hour12:${minute.toString().padLeft(2, '0')} $period";
+        }
+      } catch (e) {
+        // fallback
+      }
+    }
+    final scheduled = '$rawDate | $formattedTime';
 
     final dynamic rawIsRead = data['read'] ?? data['isread'] ?? data['isRead'];
     final bool isRead = rawIsRead is bool
@@ -581,11 +599,17 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
         backgroundColor: isDark ? const Color(0xFF0F0F10) : const Color(0xFFF8F9FA),
         elevation: 0,
         iconTheme: IconThemeData(color: isDark ? Colors.white : Colors.black87),
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu_rounded, color: Color(0xFFFB3300)),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
+        ),
         centerTitle: false,
         title: Text(
-          'Dashboard',
+          'Welcome, ${mechanicName.trim().split(' ').first}',
           style: GoogleFonts.poppins(
-            fontSize: 20,
+            fontSize: 18,
             fontWeight: FontWeight.bold,
             color: isDark ? Colors.white : Colors.black87,
           ),
@@ -598,9 +622,9 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                 onPressed: () => _openNotificationCenter(
                   initialTabIndex: _appointmentUnreadCount > 0 ? 1 : 0,
                 ),
-                icon: Icon(
-                  Icons.notifications_none_rounded,
-                  color: isDark ? Colors.white : Colors.black87,
+                icon: const Icon(
+                  Icons.notifications_outlined,
+                  color: Color(0xFFFB3300),
                   size: 26,
                 ),
               ),
@@ -1008,7 +1032,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Hello, $mechanicName 👋',
+                              mechanicName,
                               style: GoogleFonts.poppins(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -1108,63 +1132,63 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                   // Earnings Summary bottom glassmorphic bar
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: Colors.white.withOpacity(0.15),
-                        width: 1,
+                        color: Colors.white.withOpacity(0.35),
+                        width: 1.5,
                       ),
                     ),
                     child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
+                        // Left side: Monthly Income and Amount
                         Expanded(
+                          flex: 11,
                           child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                "Today's Earnings",
+                                "Monthly Income",
                                 style: GoogleFonts.poppins(
                                   color: Colors.white.withOpacity(0.8),
                                   fontSize: 11,
-                                  fontWeight: FontWeight.w500,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
-                              const SizedBox(height: 2),
+                              const SizedBox(height: 4),
                               Text(
-                                'Rs. ${todaysEarnings.toStringAsFixed(0)}',
+                                'Rs. ${monthlyIncome.toStringAsFixed(2).replaceAllMapped(RegExp(r"(\d{1,3})(?=(\d{3})+(?!\d))"), (Match m) => "${m[1]},")}',
                                 style: GoogleFonts.poppins(
                                   color: Colors.white,
-                                  fontSize: 16,
+                                  fontSize: 20,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
                             ],
                           ),
                         ),
+                        // Thin vertical divider line
                         Container(
-                          width: 1,
-                          height: 30,
-                          color: Colors.white.withOpacity(0.2),
+                          height: 32,
+                          width: 1.0,
+                          color: Colors.white.withOpacity(0.25),
                         ),
+                        const SizedBox(width: 20),
+                        // Right side: Month Earning (e.g. June's Earning)
                         Expanded(
+                          flex: 10,
                           child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                "Total Earnings",
+                                "${DateFormat('MMMM').format(DateTime.now())}'s Earning",
                                 style: GoogleFonts.poppins(
-                                  color: Colors.white.withOpacity(0.8),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                'Rs. ${totalEarnings.toStringAsFixed(0)}',
-                                style: GoogleFonts.poppins(
-                                  color: Colors.white,
-                                  fontSize: 16,
+                                  color: Colors.white.withOpacity(0.95),
+                                  fontSize: 13,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),

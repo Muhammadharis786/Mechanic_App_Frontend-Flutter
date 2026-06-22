@@ -480,16 +480,19 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
       body: Column(
         children: [
           // Category Selectors
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              children: [
-                _categoryChip("Upcoming", isDark),
-                const SizedBox(width: 10),
-                _categoryChip("Completed", isDark),
-                const SizedBox(width: 10),
-                _categoryChip("Cancelled", isDark),
-              ],
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                  _categoryChip("Upcoming", isDark),
+                  const SizedBox(width: 10),
+                  _categoryChip("Completed", isDark),
+                  const SizedBox(width: 10),
+                  _categoryChip("Cancelled", isDark),
+                ],
+              ),
             ),
           ),
 
@@ -539,7 +542,7 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
     return GestureDetector(
       onTap: () => setState(() => _selectedCategory = title),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: isSelected
               ? primaryColor
@@ -996,10 +999,17 @@ class AppointmentCard extends StatelessWidget {
     if (dateStr.isEmpty || timeStr.isEmpty) return "Schedule Pending";
     try {
       DateTime date = DateTime.parse(dateStr);
-      DateFormat timeInputFormat = DateFormat("HH:mm:ss");
-      DateTime time = timeInputFormat.parse(timeStr);
       String formattedDate = DateFormat('d MMMM yyyy').format(date);
-      String formattedTime = DateFormat('h:mm a').format(time);
+      String formattedTime = timeStr;
+      final parts = timeStr.split(':');
+      if (parts.length >= 2) {
+        final hour = int.parse(parts[0]);
+        final minute = int.parse(parts[1]);
+        final period = hour >= 12 ? 'PM' : 'AM';
+        var hour12 = hour % 12;
+        if (hour12 == 0) hour12 = 12;
+        formattedTime = "$hour12:${minute.toString().padLeft(2, '0')} $period";
+      }
       return "$formattedDate, $formattedTime";
     } catch (e) {
       return "$dateStr • $timeStr";

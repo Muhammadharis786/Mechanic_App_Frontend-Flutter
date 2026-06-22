@@ -20,7 +20,25 @@ class BookingConfirmationScreen extends StatelessWidget {
     final bookingId = bookingData['appointmentId'] ?? '--';
     final serviceType = bookingData['serviceType'] ?? 'General Service';
     final appDate = bookingData['appointmentDate'] ?? '--';
-    final appTime = bookingData['appointmentTime'] ?? '--';
+    final rawTime = bookingData['appointmentTime'] ?? '--';
+    String appTime = '--';
+    if (rawTime != '--' && rawTime.toString().isNotEmpty) {
+      try {
+        final parts = rawTime.toString().split(':');
+        if (parts.length >= 2) {
+          final hour = int.parse(parts[0]);
+          final minute = int.parse(parts[1]);
+          final period = hour >= 12 ? 'PM' : 'AM';
+          var hour12 = hour % 12;
+          if (hour12 == 0) hour12 = 12;
+          appTime = "$hour12:${minute.toString().padLeft(2, '0')} $period";
+        } else {
+          appTime = rawTime.toString();
+        }
+      } catch (e) {
+        appTime = rawTime.toString();
+      }
+    }
     final address = bookingData['address'] ?? 'Specified Location';
     final note = bookingData['problemDescription'] ?? 'No special instructions';
     
