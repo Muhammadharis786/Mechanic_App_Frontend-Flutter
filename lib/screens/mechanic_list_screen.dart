@@ -121,11 +121,11 @@ class _NearbyMechanicCardVertical extends StatelessWidget {
                       children: [
                         const Icon(Icons.star_outline_rounded,
                             size: 14, color: Colors.amber),
-                        Text("${mechanic['averagerating']}"),
+                        Text((mechanic['averagerating'] as num).toDouble().toStringAsFixed(1)),
                         const SizedBox(width: 8),
                         Icon(Icons.location_on_outlined,
                             size: 14, color: primaryColor),
-                        Text("${mechanic['distance']} km"),
+                        Text("${(mechanic['distance'] as num).toDouble().toStringAsFixed(1)} km"),
                       ],
                     ),
                   ],

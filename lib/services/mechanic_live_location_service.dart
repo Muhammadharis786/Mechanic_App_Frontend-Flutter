@@ -20,7 +20,7 @@ class MechanicLiveLocationService {
 
   StompClient? _client;
   StreamSubscription<Position>? _positionSub;
-  Timer? _testMovementTimer;
+  
   Timer? _heartbeatTimer;
   double? _testLat;
   double? _testLng;
@@ -62,7 +62,7 @@ class MechanicLiveLocationService {
       } else {
         _connectSocket();
       }
-      _startDebugMovementFromLastLocation();
+   
       return;
     }
 
@@ -184,8 +184,7 @@ class MechanicLiveLocationService {
   Future<void> stop() async {
     _heartbeatTimer?.cancel();
     _heartbeatTimer = null;
-    _testMovementTimer?.cancel();
-    _testMovementTimer = null;
+
     _testLat = null;
     _testLng = null;
     _testStep = 0;
@@ -241,7 +240,6 @@ class MechanicLiveLocationService {
               bearing: 0.0,
               speed: 0.0,
             );
-            _startDebugMovement(_lastLat!, _lastLng!);
           }
         },
         onDisconnect: (_) {
@@ -320,43 +318,9 @@ class MechanicLiveLocationService {
     }
   }
 
-  void _startDebugMovement(double lat, double lng) {
-    if (!kDebugMode || _testMovementTimer != null) return;
+ 
 
-    _testLat = lat;
-    _testLng = lng;
-    _testMovementTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (_testLat == null || _testLng == null) return;
-
-      final angle = (_testStep % 24) * 15 * math.pi / 180;
-      const meters = 5.0;
-      final latDelta = (math.cos(angle) * meters) / 111320;
-      final lngDelta = (math.sin(angle) * meters) /
-          (111320 * math.cos(_testLat! * math.pi / 180));
-
-      _testLat = _testLat! + latDelta;
-      _testLng = _testLng! + lngDelta;
-      _testStep++;
-
-      _sendLocation(
-        latitude: _testLat!,
-        longitude: _testLng!,
-        bearing: (angle * 180 / math.pi) % 360,
-        speed: 1.0,
-      );
-      debugPrint('🔧 Debug movement simulated: $_testLat, $_testLng');
-    });
-  }
-
-  void _startDebugMovementFromLastLocation() {
-    if (_lastLat == null || _lastLng == null) {
-      debugPrint('Debug movement skipped: last mechanic location missing');
-      return;
-    }
-
-    debugPrint('Debug movement resumed from last mechanic location');
-    _startDebugMovement(_lastLat!, _lastLng!);
-  }
+ 
 
   Future<bool> _ensureLocationPermission() async {
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();

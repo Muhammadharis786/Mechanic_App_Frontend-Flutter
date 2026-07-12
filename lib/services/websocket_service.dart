@@ -43,6 +43,10 @@ class WebSocketService {
     _subscribeToTopic('/topic/appointment/expired/$mechanicId', 'expired');
     _subscribeToTopic('/topic/mechanic/requests/$mechanicId', 'serviceRequest');
     _subscribeToTopic(
+      '/topic/mechanic/slectedmechanic/requests/$mechanicId',
+      'serviceRequest',
+    );
+    _subscribeToTopic(
       '/topic/appointment/appointmentdone/$mechanicId',
       'appointment_done',
     );

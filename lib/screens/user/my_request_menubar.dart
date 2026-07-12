@@ -407,10 +407,14 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
   Future<void> _cancelAppointment(
       String appointmentId, String reason) async {
     try {
-      final response = await http.get(
+      final response = await http.post(
         Uri.parse(
             '$_baseUrl/api/user/appointment/cancelappointment/$appointmentId'),
-        headers: UserSession().getAuthHeader(),
+        headers: {
+          ...UserSession().getAuthHeader(),
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({"reason": reason}),
       );
       if (response.statusCode == 200) {
         if (mounted) {

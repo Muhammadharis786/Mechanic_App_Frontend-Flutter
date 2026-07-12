@@ -64,6 +64,15 @@ class _HomeScreenState extends State<HomeScreen> {
   String _selectedFilter = "All";
   final List<String> _filterOptions = ["All", "Puncher", "Bike Mechanic", "Car Mechanic"];
 
+  /// Normalize backend MechanicType to standard display label
+  static String _normalizeMechanicType(String raw) {
+    final lower = raw.toLowerCase().trim();
+    if (lower.contains('bike')) return 'Bike Mechanic';
+    if (lower.contains('car')) return 'Car Mechanic';
+    if (lower.contains('punch')) return 'Puncher';
+    return raw.isEmpty ? 'N/A' : raw;
+  }
+
   List<Map<String, dynamic>> get _filteredMechanics {
     if (_selectedFilter == "All") return nearbyMechanics;
     return nearbyMechanics
@@ -211,7 +220,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     '';
 
                 if (backendType == 'ROAD_REQUEST_CANCELLED' ||
+                    backendType == 'ROAD_REQUEST_EXPIRED' ||
+                    backendType == 'ROAD_REQUEST_REJECTED' ||
+                    backendType == 'ROAD_REQUEST_COMPLETED' ||
+                    backendType == 'PAYMENT_DONE' ||
+                    backendType == 'PAYMENT_SUCCESS' ||
+                    backendType == 'PAYMENT_COMPLETED' ||
                     status == 'CANCELLED' ||
+                    status == 'REJECTED' ||
                     status == 'COMPLETED' ||
                     status == 'EXPIRED') {
                   ActiveServiceRequestTracking.clearIfMatches(requestId, status: status);
@@ -380,7 +396,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   "isactive": m['isactive'] ?? false, 
                   "mechanicimgurl": m['mechanicimgurl'] ?? "assets/images/m1.jpg",
                   "phonenumber": m['phonenumber'] ?? "",
-                  "MechanicType": m['MechanicType'] ?? "N/A",
+                  "MechanicType": _normalizeMechanicType(m['MechanicType']?.toString() ?? ''),
                   "experience": m['experience'] ?? 0,
                   "isengaged": m['isengaged'] ?? false,
                   "mechaniclocname": m['mechaniclocname'] ?? "",
@@ -658,12 +674,47 @@ class _HomeScreenState extends State<HomeScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text("Nearby Mechanics",
-                            style: TextStyle(
-                                fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
-                                fontSize: 20, 
-                                fontWeight: FontWeight.w800,
-                                color: isDark ? Colors.white : Colors.black)),
+                        Row(
+                          children: [
+                            Text("Nearby Mechanics",
+                                style: TextStyle(
+                                    fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w800,
+                                    color: isDark ? Colors.white : Colors.black)),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 6,
+                                    height: 6,
+                                    decoration: const BoxDecoration(
+                                      color: Colors.green,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    "Online",
+                                    style: TextStyle(
+                                      fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.green,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                         if (_mechanicsMessage == null)
                           InkWell(
                             onTap: () {
@@ -1467,7 +1518,7 @@ class _NearbyMechanicCompactCard extends StatelessWidget {
                             fontSize: 14,
                             color: isDark ? Colors.white : Colors.black)),
                     const SizedBox(height: 2),
-                    Text(mechanic['MechanicType'],
+                    Text(mechanic['MechanicType'].toString().toUpperCase(),
                         style: TextStyle(
                             fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
                             color: isDark ? Colors.white70 : Colors.grey.shade600, 
@@ -1477,7 +1528,7 @@ class _NearbyMechanicCompactCard extends StatelessWidget {
                     Row(
                       children: [
                         const Icon(Icons.star_outline_rounded, size: 14, color: Colors.amber),
-                        Text("${mechanic['averagerating']}",
+                        Text((mechanic['averagerating'] as num).toDouble().toStringAsFixed(1),
                             style: TextStyle(
                                 fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
                                 fontSize: 12,
@@ -1485,7 +1536,7 @@ class _NearbyMechanicCompactCard extends StatelessWidget {
                                 color: isDark ? Colors.white : Colors.black)),
                         const SizedBox(width: 8),
                         Icon(Icons.location_on_outlined, size: 14, color: primaryColor),
-                        Text("${mechanic['distance']} km",
+                        Text("${(mechanic['distance'] as num).toDouble().toStringAsFixed(1)} km",
                             style: TextStyle(
                                 fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
                                 fontSize: 12,
@@ -1510,20 +1561,36 @@ class _NearbyMechanicCompactCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _actionButton(Icons.call_rounded, "Call", Colors.green, () async {
-                final phone = mechanic['phonenumber'] as String?;
-                if (phone != null && phone.isNotEmpty) {
-                  final Uri launchUri = Uri(scheme: 'tel', path: phone);
-                  try {
-                    await launchUrl(launchUri, mode: LaunchMode.externalApplication);
-                  } catch (e) {
-                    debugPrint('Could not launch dialer: $e');
-                    try {
-                      await launchUrl(launchUri);
-                    } catch (_) {}
-                  }
-                }
-              }),
+              InkWell(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ServiceRequestNotesScreen(
+                        serviceType: mechanic['MechanicType'] ?? 'Bike Mechanic',
+                        selectedMechanicId: mechanic['id']?.toString(),
+                      ),
+                    ),
+                  );
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    "Request",
+                    style: TextStyle(
+                      fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                      color: Colors.green,
+                      fontWeight: FontWeight.w500,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ),
               _actionButton(Icons.remove_red_eye_rounded, "View", primaryColor, () {
                  Navigator.push(
                   context,

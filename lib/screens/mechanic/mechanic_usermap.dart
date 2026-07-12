@@ -75,6 +75,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
   BitmapDescriptor? _mechanicTrackingIcon;
   BitmapDescriptor? _userTrackingIcon;
   StompClient? _mapClient;
+  Timer? _workflowPollTimer;
   bool _isClosingForCancellation = false;
   bool _isCheckingArrival = false;
   bool _hasArrived = false;
@@ -125,6 +126,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refreshWorkflowFromServer();
     });
+    _startWorkflowPolling();
     _loadTrackingMarkerIcons();
 
     // Add a global fallback listener just in case backend routes the cancellation to the global mechanic topic
@@ -368,6 +370,26 @@ class _MechanicUserMapState extends State<MechanicUserMap>
     });
   }
 
+  void _startWorkflowPolling() {
+    final requestId = widget.requestData['requestId']?.toString() ??
+        widget.requestData['requestid']?.toString();
+    if (requestId == null || requestId.isEmpty) return;
+
+    _workflowPollTimer?.cancel();
+    _workflowPollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!mounted || _isClosingForCancellation || _showJobCompletedBanner) {
+        _workflowPollTimer?.cancel();
+        return;
+      }
+      _refreshWorkflowFromServer();
+    });
+  }
+
+  void _stopWorkflowPolling() {
+    _workflowPollTimer?.cancel();
+    _workflowPollTimer = null;
+  }
+
   Future<void> _onWorkCompleted() async {
     if (_isCompletingWork || _workCompleted) return;
 
@@ -468,11 +490,42 @@ class _MechanicUserMapState extends State<MechanicUserMap>
 
       final serverData = Map<String, dynamic>.from(decoded);
       final status = _normalizeStatus(serverData);
+      final backendType =
+          (serverData['type'] ?? serverData['backendType'])
+                  ?.toString()
+                  .toUpperCase() ??
+              '';
 
       if (status == 'CANCELLED' ||
           status == 'REJECTED' ||
           status == 'EXPIRED' ||
-          status == 'COMPLETED') {
+          backendType == 'ROAD_REQUEST_CANCELLED' ||
+          backendType == 'ROAD_REQUEST_EXPIRED') {
+        _goToDashboardAfterCancellation(
+          message: serverData['message']?.toString(),
+        );
+        return;
+      }
+
+      if (status == 'COMPLETED' || backendType == 'PAYMENT_DONE') {
+        _stopWorkflowPolling();
+        ActiveServiceRequestTracking.clear();
+        if (!mounted) return;
+        setState(() {
+          _showJobCompletedBanner = true;
+          _paymentPending = false;
+          _workCompleted = false;
+          _workStarted = false;
+        });
+        _jobDoneController.forward(from: 0);
+        Future.delayed(const Duration(milliseconds: 1100), () {
+          if (!mounted) return;
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => const MechanicDashboardScreen()),
+            (route) => false,
+          );
+        });
         return;
       }
 
@@ -489,7 +542,11 @@ class _MechanicUserMapState extends State<MechanicUserMap>
         (data['type'] ?? data['backendType'])?.toString().toUpperCase() ?? '';
     final status = _normalizeStatus(data);
 
-    if (backendType == 'ROAD_REQUEST_CANCELLED') {
+    if (backendType == 'ROAD_REQUEST_CANCELLED' ||
+        backendType == 'ROAD_REQUEST_EXPIRED' ||
+        status == 'CANCELLED' ||
+        status == 'REJECTED' ||
+        status == 'EXPIRED') {
       _goToDashboardAfterCancellation(message: data['message']?.toString());
       return;
     }
@@ -526,6 +583,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
 
     if (backendType == 'PAYMENT_DONE' || status == 'COMPLETED') {
       if (!mounted) return;
+      _stopWorkflowPolling();
       ActiveServiceRequestTracking.clear();
       setState(() {
         _showJobCompletedBanner = true;
@@ -648,13 +706,13 @@ class _MechanicUserMapState extends State<MechanicUserMap>
     try {
       final response = await http.get(
         Uri.parse(
-          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/cancel/$requestId',
+          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/mechanic/cancel/$requestId',
         ),
         headers: UserSession().getAuthHeader(),
-      ).timeout(const Duration(seconds: 15));
+      );
 
       if (response.statusCode == 200) {
-        ActiveServiceRequestTracking.clear();
+        ActiveServiceRequestTracking.clear(status: 'CANCELLED');
         if (mounted) {
           Navigator.pushAndRemoveUntil(
             context,
@@ -663,20 +721,9 @@ class _MechanicUserMapState extends State<MechanicUserMap>
           );
         }
       } else {
-        String errMsg = 'Failed to cancel: ${response.body}';
-        try {
-          final decoded = jsonDecode(response.body);
-          if (decoded is Map && decoded['message'] != null) {
-            errMsg = decoded['message'].toString();
-          }
-        } catch (_) {}
-
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(errMsg),
-              backgroundColor: Colors.red,
-            ),
+            SnackBar(content: Text('Cancel failed: ${response.body}')),
           );
         }
       }
@@ -694,6 +741,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
   void _goToDashboardAfterCancellation({String? message}) {
     if (_isClosingForCancellation) return;
     _isClosingForCancellation = true;
+    _stopWorkflowPolling();
     ActiveServiceRequestTracking.clear();
     _positionSub?.cancel();
     _mapClient?.deactivate();
@@ -1443,6 +1491,10 @@ class _MechanicUserMapState extends State<MechanicUserMap>
   }
 
   void _leaveMap() {
+    if (_showJobCompletedBanner || _isClosingForCancellation) {
+      Navigator.pop(context);
+      return;
+    }
     _persistWorkflowState(finalPrice: _approvedFinalPrice);
     Navigator.pop(context);
   }
@@ -1465,9 +1517,14 @@ class _MechanicUserMapState extends State<MechanicUserMap>
       if (!mounted) return;
 
       if (response.statusCode == 200) {
+        _stopWorkflowPolling();
         ActiveServiceRequestTracking.clear();
         setState(() {
           _showJobCompletedBanner = true;
+          _paymentPending = false;
+          _workCompleted = false;
+          _workStarted = false;
+          _hasSentPrice = false;
         });
         _jobDoneController.forward(from: 0);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1504,9 +1561,12 @@ class _MechanicUserMapState extends State<MechanicUserMap>
 
   @override
   void dispose() {
-    if (_hasArrived || _hasSentPrice || _workStarted) {
+    if (!_showJobCompletedBanner &&
+        !_isClosingForCancellation &&
+        (_hasArrived || _hasSentPrice || _workStarted)) {
       _persistWorkflowState(finalPrice: _approvedFinalPrice);
     }
+    _stopWorkflowPolling();
     _priceController.dispose();
     MechanicNotificationController().removeListener(_onGlobalFallbackNotification);
     _animTicker.dispose();
@@ -1529,7 +1589,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
         stompConnectHeaders: UserSession().getAuthHeader(),
         webSocketConnectHeaders: UserSession().getAuthHeader(),
         onConnect: (frame) {
-          // Listen for status changes (like Cancellation)
+          // Listen for status changes (like user cancellation)
           _mapClient?.subscribe(
             destination: '/topic/request/$requestId',
             callback: (message) {
@@ -1544,6 +1604,25 @@ class _MechanicUserMapState extends State<MechanicUserMap>
               } catch (_) {}
             },
           );
+
+          // Listen on mechanic-specific topic — user cancel hone pe backend yahan bhejta hai
+          final mechanicId = UserSession().userId;
+          if (mechanicId != null) {
+            _mapClient?.subscribe(
+              destination: '/topic/mechanic/requests/$mechanicId',
+              callback: (message) {
+                if (message.body == null || !mounted) return;
+                try {
+                  final data = jsonDecode(message.body!);
+                  if (data is Map) {
+                    _applyRequestTopicUpdate(
+                      Map<String, dynamic>.from(data),
+                    );
+                  }
+                } catch (_) {}
+              },
+            );
+          }
 
           // Listen for Live Location updates from Backend
           _mapClient?.subscribe(

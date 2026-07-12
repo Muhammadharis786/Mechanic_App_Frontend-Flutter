@@ -150,6 +150,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
         final requestId = widget.resumedTracking!['requestId']?.toString();
         if (requestId != null && requestId.isNotEmpty) {
           _connectRequestStatus(requestId);
+          _startStatusPolling(requestId);
           _refreshResumedTracking(requestId);
         }
       });
@@ -358,13 +359,13 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
         _statusPollTimer?.cancel();
         return;
       }
-      // Stop polling once price is received or payment done
-      if (_paymentApproved || _workCompleted || _paymentPending) {
+      if (_cancelExitHandled) {
         _statusPollTimer?.cancel();
         return;
       }
       await _pollRequestStatus(requestId);
     });
+    _pollRequestStatus(requestId);
   }
 
   void _stopStatusPolling() {
@@ -390,6 +391,44 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       final type = (data['type'] ?? data['backendType'])?.toString().toUpperCase() ?? '';
       final status = _normalizeTrackingStatus(data);
 
+      if (type == 'ROAD_REQUEST_CANCELLED' ||
+          type == 'ROAD_REQUEST_EXPIRED' ||
+          status == 'CANCELLED' ||
+          status == 'REJECTED' ||
+          status == 'EXPIRED') {
+        if (type == 'ROAD_REQUEST_EXPIRED' || status == 'EXPIRED') {
+          _exitToUserHome(
+            snackMessage: data['message']?.toString() ??
+                data['msg']?.toString() ??
+                'No mechanic was available. Please try again later.',
+            snackColor: Colors.redAccent,
+          );
+        } else {
+          _handleRequestCancelledBySocket(data);
+        }
+        return;
+      }
+
+      if (type == 'PAYMENT_DONE' || status == 'COMPLETED') {
+        _navigateToServiceReview(
+          requestId: data['requestId']?.toString() ?? requestId,
+          snackMessage:
+              data['message']?.toString() ?? 'Payment received successfully',
+        );
+        return;
+      }
+
+      final hasAcceptedMechanic =
+          data['mechanicId'] != null || data['mechanicLatitude'] != null;
+      if (!_isAccepted && hasAcceptedMechanic) {
+        _handleAcceptedMechanic(data, requestId);
+      }
+
+      if (mounted) {
+        setState(() => _applyTrackingWorkflow(data));
+        _saveActiveTracking();
+      }
+
       // Price received — show approval card
       if (!_isPriceReceived && !_paymentApproved) {
         final price = _pickPrice(data);
@@ -412,7 +451,6 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
           status == 'WORK_STARTED') {
         setState(() => _applyApprovedPaymentPayload(data));
         _saveActiveTracking();
-        _stopStatusPolling();
         return;
       }
 
@@ -420,7 +458,6 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       if (type == 'WORK_COMPLETED' || _statusMeansWaitingForPayment(status)) {
         setState(() => _applyWorkCompletedPayload(data));
         _saveActiveTracking();
-        _stopStatusPolling();
         return;
       }
 
@@ -428,7 +465,6 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       if (type == 'PAYMENT_PENDING' || status == 'PAYMENT_PENDING') {
         setState(() => _applyPaymentPendingPayload(data));
         _saveActiveTracking();
-        _stopStatusPolling();
         return;
       }
     } catch (_) {
@@ -570,6 +606,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
         if (_activeRequestId != null) {
           _saveActiveTracking();
           _connectRequestStatus(_activeRequestId!);
+          _startStatusPolling(_activeRequestId!);
         }
         if (mounted) {
            ScaffoldMessenger.of(context).showSnackBar(
@@ -579,8 +616,11 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
              ),
            );
            // Now fetch nearby mechanics
-           await _fetchNearbyMechanics(mappedServiceType);
-
+           if (widget.selectedMechanicId != null && _activeRequestId != null) {
+             await _fetchSelectedMechanicLocation(mappedServiceType, _activeRequestId!);
+           } else {
+             await _fetchNearbyMechanics(mappedServiceType);
+           }
            // Safety poll: check in 3 seconds to ensure acceptance isn't missed
            if (_activeRequestId != null && !_isAccepted) {
              Future.delayed(const Duration(seconds: 3), () {
@@ -670,6 +710,35 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
               }
             },
           );
+          // Subscribe to user-specific topic — mechanic cancel hone pe yahan message aayega
+          final userId = UserSession().userId;
+          if (userId != null) {
+            _requestClient?.subscribe(
+              destination: '/topic/user/requests/$userId',
+              callback: (frame) {
+                if (frame.body == null || !mounted) return;
+                try {
+                  final decoded = jsonDecode(frame.body!);
+                  if (decoded is! Map) return;
+                  _onRequestStatusUpdate(
+                    Map<String, dynamic>.from(decoded),
+                    requestId,
+                  );
+                } catch (e) {
+                  debugPrint('User topic decode error: $e');
+                }
+              },
+            );
+          }
+          // Subscribe to selected mechanic topic so mechanic receives the request
+          if (widget.selectedMechanicId != null) {
+            _requestClient?.subscribe(
+              destination: '/topic/mechanic/slectedmechanic/requests/${widget.selectedMechanicId}',
+              callback: (frame) {
+                debugPrint('Selected mechanic topic msg: ${frame.body}');
+              },
+            );
+          }
           if (_isAccepted) {
             _subscribeAcceptedLiveLocation(requestId);
           }
@@ -716,9 +785,27 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
 
       final data = Map<String, dynamic>.from(decoded);
       final status = _normalizeTrackingStatus(data);
+      final type =
+          (data['type'] ?? data['backendType'])?.toString().toUpperCase() ?? '';
 
-      if (status == 'CANCELLED' || status == 'REJECTED' || status == 'EXPIRED') {
-        ActiveServiceRequestTracking.clear();
+      if (type == 'ROAD_REQUEST_CANCELLED' ||
+          type == 'ROAD_REQUEST_EXPIRED' ||
+          status == 'CANCELLED' ||
+          status == 'REJECTED' ||
+          status == 'EXPIRED') {
+        ActiveServiceRequestTracking.clear(status: status);
+        return;
+      }
+
+      if (type == 'PAYMENT_DONE' ||
+          type == 'PAYMENT_SUCCESS' ||
+          type == 'PAYMENT_COMPLETED' ||
+          status == 'COMPLETED') {
+        _navigateToServiceReview(
+          requestId: data['requestId']?.toString() ?? requestId,
+          snackMessage:
+              data['message']?.toString() ?? 'Payment received successfully',
+        );
         return;
       }
 
@@ -956,40 +1043,93 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
 
     _userInitiatedCancel = true;
     setState(() => _isLoading = true);
-    
-    try {
-      final response = await http.post(
-        Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/cancel/$_activeRequestId"),
-        headers: {
-          'Content-Type': 'application/json',
-          ...UserSession().getAuthHeader(),
-        },
-      );
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        String successMsg = 'Request cancelled successfully';
+    try {
+      final response = await http.get(
+        Uri.parse(
+          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/user/cancel/$_activeRequestId',
+        ),
+        headers: UserSession().getAuthHeader(),
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        String msg = 'Request cancelled';
         try {
           final decoded = jsonDecode(response.body);
-          if (decoded is Map && (decoded['message'] != null || decoded['msg'] != null)) {
-            successMsg = (decoded['message'] ?? decoded['msg']).toString();
+          if (decoded is Map) {
+            msg = decoded['message']?.toString() ?? decoded['msg']?.toString() ?? msg;
+          } else if (decoded is String && decoded.isNotEmpty) {
+            msg = decoded;
           }
-        } catch (_) {}
-        
-        _exitToUserHome(
-          snackMessage: successMsg,
-        );
-      } else {
+        } catch (_) {
+          if (response.body.isNotEmpty) msg = response.body.trim();
+        }
+        // Pehle _cancelExitHandled set karo taake _onGlobalTrackingChanged double navigate na kare
+        _cancelExitHandled = true;
+        ActiveServiceRequestTracking.lastExitMessage.value = msg;
+        ActiveServiceRequestTracking.lastExitStatus.value = 'CANCELLED';
+        ActiveServiceRequestTracking.clear(status: 'CANCELLED');
+        // Directly teardown and navigate (don't use _exitToUserHome as it checks _cancelExitHandled)
+        _teardownRequestConnections();
         if (mounted) {
-           ScaffoldMessenger.of(context).showSnackBar(
-             SnackBar(content: Text('Cancel failed: ${response.body}')),
-           );
+          setState(() {
+            _isWaiting = false;
+            _isAccepted = false;
+            _acceptedMechanic = null;
+            _acceptedMechanicPosition = null;
+            _acceptedDistanceText = null;
+            _acceptedEta = null;
+            _mechanicMarkers = {};
+            _polylines = {};
+            _activeRequestId = null;
+            _workCompleted = false;
+            _paymentApproved = false;
+            _isPriceReceived = false;
+            _isLoading = false;
+          });
+          _goToUserDashboard(snackMessage: msg);
+        }
+      } else {
+        // Non-200 response — still show backend message and go home
+        String errorMsg = 'Cancel failed';
+        try {
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map) {
+            errorMsg = decoded['message']?.toString() ?? decoded['msg']?.toString() ?? errorMsg;
+          } else if (decoded is String && decoded.isNotEmpty) {
+            errorMsg = decoded;
+          }
+        } catch (_) {
+          if (response.body.isNotEmpty) errorMsg = response.body.trim();
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(errorMsg)),
+          );
         }
       }
-    } catch(e) {
+    } catch (e) {
+      // Timeout ya network error pe bhi cancel karke bahar niklo
+      _cancelExitHandled = true;
+      ActiveServiceRequestTracking.clear(status: 'CANCELLED');
+      _teardownRequestConnections();
       if (mounted) {
-         ScaffoldMessenger.of(context).showSnackBar(
-           SnackBar(content: Text('Cancel error: $e')),
-         );
+        setState(() {
+          _isWaiting = false;
+          _isAccepted = false;
+          _acceptedMechanic = null;
+          _acceptedMechanicPosition = null;
+          _acceptedDistanceText = null;
+          _acceptedEta = null;
+          _mechanicMarkers = {};
+          _polylines = {};
+          _activeRequestId = null;
+          _workCompleted = false;
+          _paymentApproved = false;
+          _isPriceReceived = false;
+          _isLoading = false;
+        });
+        _goToUserDashboard(snackMessage: 'Request cancelled');
       }
     } finally {
       _userInitiatedCancel = false;
@@ -1109,9 +1249,30 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
           ? {...local, ...data}
           : data;
       final status = _normalizeTrackingStatus(merged);
-      if (status == 'CANCELLED' || status == 'REJECTED' || status == 'EXPIRED') {
-        ActiveServiceRequestTracking.clear();
+      final type =
+          (merged['type'] ?? merged['backendType'])
+                  ?.toString()
+                  .toUpperCase() ??
+              '';
+      if (type == 'ROAD_REQUEST_CANCELLED' ||
+          type == 'ROAD_REQUEST_EXPIRED' ||
+          status == 'CANCELLED' ||
+          status == 'REJECTED' ||
+          status == 'EXPIRED') {
+        ActiveServiceRequestTracking.clear(status: status);
         _goToUserDashboard();
+        return;
+      }
+
+      if (type == 'PAYMENT_DONE' ||
+          type == 'PAYMENT_SUCCESS' ||
+          type == 'PAYMENT_COMPLETED' ||
+          status == 'COMPLETED') {
+        _navigateToServiceReview(
+          requestId: merged['requestId']?.toString() ?? requestId,
+          snackMessage:
+              merged['message']?.toString() ?? 'Payment received successfully',
+        );
         return;
       }
 
@@ -1616,6 +1777,84 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
         80,
       ),
     );
+  }
+
+  Future<void> _fetchSelectedMechanicLocation(String serviceType, String requestId) async {
+    try {
+      final nearbyPayload = {
+        "latitude": _markerPos.latitude,
+        "longitude": _markerPos.longitude,
+        "serviceType": serviceType,
+      };
+
+      final res = await http.post(
+        Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/selectedmechanic/map/$requestId"),
+        headers: {
+          'Content-Type': 'application/json',
+          ...UserSession().getAuthHeader(),
+        },
+        body: jsonEncode(nearbyPayload),
+      );
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final String sessionId = data['mapSessionId'] ?? '';
+        final List mechanics = data['mechanics'] ?? [];
+
+        final Set<Marker> markers = {};
+        for (final m in mechanics) {
+          final double lat = (m['latitude'] is num)
+              ? (m['latitude'] as num).toDouble()
+              : double.tryParse(m['latitude'].toString()) ?? 0;
+          final double lng = (m['longitude'] is num)
+              ? (m['longitude'] as num).toDouble()
+              : double.tryParse(m['longitude'].toString()) ?? 0;
+          final int id = m['mechanicId'] ?? 0;
+          final String mid = id.toString();
+          final pos = LatLng(lat, lng);
+
+          // Initialize animation state for loaded mechanics
+          _markerCurrentPositions[mid] = pos;
+          _markerTargetPositions[mid] = pos;
+          _markerTitles[mid] = 'Mechanic #$id';
+
+          markers.add(
+            Marker(
+              markerId: MarkerId('mechanic_$id'),
+              position: pos,
+              icon: _mechanicTrackingIcon ??
+                  BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+              infoWindow: InfoWindow(title: 'Mechanic #$id'),
+            ),
+          );
+        }
+
+        if (mounted) {
+          setState(() {
+            _mechanicMarkers = markers;
+            _isWaiting = true;
+          });
+          _connectNearbyMechanicTracking(sessionId);
+
+          // Zoom the map to fit both user and mechanic
+          if (markers.isNotEmpty) {
+            _fitMapBounds(markers);
+          }
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to load mechanic location: ${res.body}')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error finding mechanic location: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _fetchNearbyMechanics(String serviceType) async {

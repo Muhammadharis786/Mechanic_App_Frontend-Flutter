@@ -166,7 +166,12 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
         (request['type'] ?? request['backendType'])?.toString() ?? '';
 
     if (backendType == 'ROAD_REQUEST_EXPIRED' ||
-        backendType == 'ROAD_REQUEST_CANCELLED') {
+        backendType == 'ROAD_REQUEST_CANCELLED' ||
+        backendType == 'ROAD_REQUEST_REJECTED' ||
+        backendType == 'ROAD_REQUEST_COMPLETED' ||
+        backendType == 'PAYMENT_DONE' ||
+        backendType == 'PAYMENT_SUCCESS' ||
+        backendType == 'PAYMENT_COMPLETED') {
       final eventId =
           request['requestId']?.toString() ?? request['requestid']?.toString();
       ActiveServiceRequestTracking.clearIfMatches(eventId);
@@ -253,8 +258,20 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                     '';
 
                 if (backendType == 'ROAD_REQUEST_CANCELLED' ||
-                    status == 'CANCELLED') {
-                  ActiveServiceRequestTracking.clearIfMatches(requestId);
+                    backendType == 'ROAD_REQUEST_EXPIRED' ||
+                    backendType == 'ROAD_REQUEST_REJECTED' ||
+                    backendType == 'ROAD_REQUEST_COMPLETED' ||
+                    backendType == 'PAYMENT_DONE' ||
+                    backendType == 'PAYMENT_SUCCESS' ||
+                    backendType == 'PAYMENT_COMPLETED' ||
+                    status == 'CANCELLED' ||
+                    status == 'REJECTED' ||
+                    status == 'COMPLETED' ||
+                    status == 'EXPIRED') {
+                  ActiveServiceRequestTracking.clearIfMatches(
+                    requestId,
+                    status: status,
+                  );
                   _teardownActiveRequestSubscription();
                   if (mounted) {
                     setState(() {});

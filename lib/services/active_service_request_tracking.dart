@@ -54,14 +54,33 @@ class ActiveServiceRequestTracking {
         ?.toString()
         .toUpperCase();
 
-    return status != 'CANCELLED' &&
-        status != 'COMPLETED' &&
-        status != 'REJECTED' &&
-        status != 'EXPIRED' &&
-        backendType != 'ROAD_REQUEST_CANCELLED' &&
-        backendType != 'ROAD_REQUEST_EXPIRED' &&
-        backendType != 'APPOINTMENT_CANCELLED' &&
-        backendType != 'PAYMENT_DONE';
+    return !_isTerminalStatus(status, backendType);
+  }
+
+  static bool _isTerminalStatus(String? status, String? backendType) {
+    final terminalStatuses = {
+      'CANCELLED',
+      'COMPLETED',
+      'REJECTED',
+      'EXPIRED',
+    };
+    final terminalTypes = {
+      'ROAD_REQUEST_CANCELLED',
+      'ROAD_REQUEST_EXPIRED',
+      'ROAD_REQUEST_REJECTED',
+      'ROAD_REQUEST_COMPLETED',
+      'APPOINTMENT_CANCELLED',
+      'APPOINTMENT_EXPIRED',
+      'APPOINTMENT_REJECTED',
+      'APPOINTMENT_COMPLETED',
+      'REQUEST_EXPIRED',
+      'PAYMENT_DONE',
+      'PAYMENT_SUCCESS',
+      'PAYMENT_COMPLETED',
+    };
+
+    return terminalStatuses.contains(status) ||
+        terminalTypes.contains(backendType);
   }
 
   static void clear({String? message, String? status}) {
@@ -134,16 +153,14 @@ class ActiveServiceRequestTracking {
       final backendType =
           (decoded['type'] ?? decoded['backendType'] ?? '').toString().toUpperCase();
 
-      if (status == 'CANCELLED' ||
-          status == 'REJECTED' ||
-          status == 'EXPIRED' ||
-          status == 'COMPLETED' ||
-          backendType == 'PAYMENT_DONE' ||
-          backendType == 'ROAD_REQUEST_CANCELLED' ||
-          backendType == 'ROAD_REQUEST_EXPIRED') {
+      if (_isTerminalStatus(status, backendType)) {
         final backendMsg = decoded['message']?.toString();
         // If it's specifically PAYMENT_DONE, prioritize 'COMPLETED' as status for UI navigation
-        final exitStatus = (backendType == 'PAYMENT_DONE') ? 'COMPLETED' : status;
+        final exitStatus = (backendType == 'PAYMENT_DONE' ||
+                backendType == 'PAYMENT_SUCCESS' ||
+                backendType == 'PAYMENT_COMPLETED')
+            ? 'COMPLETED'
+            : status;
         clear(message: backendMsg, status: exitStatus);
         return;
       }

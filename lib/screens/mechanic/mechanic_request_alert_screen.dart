@@ -275,28 +275,8 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
   }
 
   Future<void> _cancelRequestOnServer() async {
-    final requestId =
-        widget.requestData['requestId']?.toString() ??
-        widget.requestData['requestid']?.toString() ??
-        widget.requestData['serviceRequestId']?.toString() ??
-        widget.requestData['servicerequestid']?.toString() ??
-        widget.requestData['roadRequestId']?.toString() ??
-        widget.requestData['roadrequestid']?.toString() ??
-        widget.requestData['request_id']?.toString();
-
-    if (requestId == null || requestId.isEmpty) return;
-
-    try {
-      await http.get(
-        Uri.parse(
-          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/cancel/$requestId',
-        ),
-        headers: UserSession().getAuthHeader(),
-      ).timeout(const Duration(seconds: 8));
-      debugPrint("✅ Request cancelled successfully on server: $requestId");
-    } catch (e) {
-      debugPrint("❌ Error canceling request on server: $e");
-    }
+    // API removed — no longer used
+    debugPrint("Cancel API removed");
   }
 
   Future<void> _rejectRequest() async {
