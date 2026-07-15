@@ -284,7 +284,28 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
             map['id'] = map['id'] ?? map['userid'] ?? map['mechanicid'] ?? 0;
             return map;
           }).toList();
+
+          // Ensure sorting by Subscription Tier: Ultra Premium > Premium > Free
+          _mechanics.sort((a, b) {
+            int getPlanWeight(Map<String, dynamic> mech) {
+               final plan = (mech['subscriptionplan'] ?? 'FREE').toString().toUpperCase();
+               if (plan == 'ULTRA_PREMIUM') return 3;
+               if (plan == 'PREMIUM') return 2;
+               return 1;
+            }
+            final wA = getPlanWeight(a);
+            final wB = getPlanWeight(b);
+            if (wA != wB) return wB.compareTo(wA);
+            return 0;
+          });
+
           _loadingMechanics = false;
+
+          // 🔍 DEBUG: Print each mechanic's subscription plan
+          for (final m in _mechanics) {
+            debugPrint('🔧 Mechanic: ${m['name']} | subscriptionplan: ${m['subscriptionplan']}');
+          }
+
           // Pre-select first mechanic if manual booking flow was intended or let user pick
           if (_mechanics.isNotEmpty && selectedMechanic == null) {
             // we don't auto-select here, let user choose
@@ -974,6 +995,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       statusLabel = 'Available';
     }
 
+    final isPremium = (mechanic['subscriptionplan']?.toString().toUpperCase() == 'PREMIUM');
+    final isUltra = (mechanic['subscriptionplan']?.toString().toUpperCase() == 'ULTRA_PREMIUM');
+
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -1005,14 +1029,48 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.getFont('Bricolage Grotesque',
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.getFont('Bricolage Grotesque',
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13),
+                          ),
+                        ),
+                        if (isUltra) ...[
+                          const SizedBox(width: 4),
+                          const Tooltip(
+                            message: "Verified Pro",
+                            triggerMode: TooltipTriggerMode.tap,
+                            child: Icon(Icons.verified, color: Colors.blue, size: 14),
+                          ),
+                        ],
+                      ],
                     ),
+                    if (isPremium || isUltra) ...[
+                      const SizedBox(height: 2),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFB3300).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: const Color(0xFFFB3300).withOpacity(0.3)),
+                        ),
+                        child: Text(
+                          "RECOMMENDED",
+                          style: GoogleFonts.getFont('Bricolage Grotesque',
+                            fontSize: 7,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFFFB3300),
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 2),
                     Text(
                       mechanic['mechanictype'] ?? 'Mechanical Specialist',
                       maxLines: 1,

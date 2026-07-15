@@ -402,8 +402,28 @@ class _HomeScreenState extends State<HomeScreen> {
                   "mechaniclocname": m['mechaniclocname'] ?? "",
                   "latitude": (m['latitude'] is String) ? double.tryParse(m['latitude']) ?? 0.0 : (m['latitude'] as num?)?.toDouble() ?? 0.0,
                   "longitude": (m['longitude'] is String) ? double.tryParse(m['longitude']) ?? 0.0 : (m['longitude'] as num?)?.toDouble() ?? 0.0,
+                  "subscriptionPlan": m['subscriptionPlan'] ?? m['subscriptionplan'] ?? "FREE",
                 })
               );
+
+              // Ensure sorting by Subscription Tier: Ultra Premium > Premium > Free
+              nearbyMechanics.sort((a, b) {
+                int getPlanWeight(Map<String, dynamic> mech) {
+                   final plan = (mech['subscriptionPlan'] ?? 'FREE').toString().toUpperCase();
+                   if (plan == 'ULTRA_PREMIUM') return 3;
+                   if (plan == 'PREMIUM') return 2;
+                   return 1;
+                }
+                final wA = getPlanWeight(a);
+                final wB = getPlanWeight(b);
+                if (wA != wB) return wB.compareTo(wA);
+                return 0;
+              });
+
+              // 🔍 DEBUG: Print each mechanic's subscription plan on the Dashboard
+              for (final m in nearbyMechanics) {
+                debugPrint('🔧 Dashboard Mechanic: ${m['name']} | subscriptionPlan: ${m['subscriptionPlan']}');
+              }
             }
           }
           _isLoading = false;
@@ -1511,12 +1531,48 @@ class _NearbyMechanicCompactCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(mechanic['name'],
-                        style: TextStyle(
-                            fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
-                            fontWeight: FontWeight.w700, 
-                            fontSize: 14,
-                            color: isDark ? Colors.white : Colors.black)),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(mechanic['name'],
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  fontFamily: GoogleFonts.getFont('Bricolage Grotesque').fontFamily,
+                                  fontWeight: FontWeight.w700, 
+                                  fontSize: 14,
+                                  color: isDark ? Colors.white : Colors.black)),
+                        ),
+                        if (mechanic['subscriptionPlan']?.toString().toUpperCase() == 'ULTRA_PREMIUM') ...[
+                          const SizedBox(width: 4),
+                          Tooltip(
+                            message: "Verified Pro",
+                            triggerMode: TooltipTriggerMode.tap,
+                            child: Icon(Icons.verified, color: Colors.blue, size: 14),
+                          ),
+                        ],
+                      ],
+                    ),
+                    if (mechanic['subscriptionPlan']?.toString().toUpperCase() == 'PREMIUM' ||
+                        mechanic['subscriptionPlan']?.toString().toUpperCase() == 'ULTRA_PREMIUM') ...[
+                      const SizedBox(height: 2),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: primaryColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: primaryColor.withOpacity(0.3)),
+                        ),
+                        child: Text(
+                          "RECOMMENDED",
+                          style: GoogleFonts.getFont('Bricolage Grotesque',
+                            fontSize: 7,
+                            fontWeight: FontWeight.bold,
+                            color: primaryColor,
+                          ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 2),
                     Text(mechanic['MechanicType'].toString().toUpperCase(),
                         style: TextStyle(

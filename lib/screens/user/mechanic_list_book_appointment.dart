@@ -106,6 +106,9 @@ class MechanicListScreenn extends StatelessWidget {
       statusLabel = 'Available';
     }
 
+    final isPremium = (mechanic['subscriptionplan']?.toString().toUpperCase() == 'PREMIUM');
+    final isUltra = (mechanic['subscriptionplan']?.toString().toUpperCase() == 'ULTRA_PREMIUM');
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(14),
@@ -134,11 +137,47 @@ class MechanicListScreenn extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(name,
-                        style: const TextStyle(
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontFamily: 'Bricolage Grotesque',
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 14)),
+                        ),
+                        if (isUltra) ...[
+                          const SizedBox(width: 4),
+                          Tooltip(
+                            message: "Verified Pro",
+                            triggerMode: TooltipTriggerMode.tap,
+                            child: Icon(Icons.verified, color: Colors.blue, size: 16),
+                          ),
+                        ],
+                      ],
+                    ),
+                    if (isPremium || isUltra) ...[
+                      const SizedBox(height: 2),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: primaryColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: primaryColor.withOpacity(0.3)),
+                        ),
+                        child: Text(
+                          "RECOMMENDED",
+                          style: TextStyle(
                             fontFamily: 'Bricolage Grotesque',
-                            fontWeight: FontWeight.w500,
-                            fontSize: 14)),
+                            fontSize: 8,
+                            fontWeight: FontWeight.bold,
+                            color: primaryColor,
+                          ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 2),
                     if (mechanicType != null)
                       Text(mechanicType,

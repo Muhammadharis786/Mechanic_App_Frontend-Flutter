@@ -420,7 +420,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
 
       final hasAcceptedMechanic =
           data['mechanicId'] != null || data['mechanicLatitude'] != null;
-      if (!_isAccepted && hasAcceptedMechanic) {
+      if (!_isAccepted && hasAcceptedMechanic && status != 'PENDING') {
         _handleAcceptedMechanic(data, requestId);
       }
 
@@ -811,7 +811,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
 
       final hasAcceptedMechanic =
           data['mechanicId'] != null || data['mechanicLatitude'] != null;
-      if (hasAcceptedMechanic) {
+      if (hasAcceptedMechanic && status != 'PENDING') {
         debugPrint('⚡ Caught missed acceptance via HTTP poll for request $requestId');
         _handleAcceptedMechanic(data, requestId);
         if (mounted) {

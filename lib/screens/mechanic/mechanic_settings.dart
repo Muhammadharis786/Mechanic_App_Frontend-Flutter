@@ -8,6 +8,7 @@ import '../role_selection_screen.dart';
 import '../../widgets/app_back_button.dart';
 import '../../services/app_state.dart';
 import '../../l10n/app_strings.dart';
+import 'mechanic_subscription_screen.dart';
 
 class MechanicSettingsScreen extends StatefulWidget {
   const MechanicSettingsScreen({super.key});
@@ -161,6 +162,20 @@ class _MechanicSettingsScreenState extends State<MechanicSettingsScreen> {
                     locale.languageCode == 'ur' ? AppStrings.t('urdu') : AppStrings.t('english'),
                     _showLanguageOptions,
                     isDarkMode,
+                  ),
+                  _buildTile(
+                    'Subscription Plan',
+                    'Free Tier', // You can fetch this dynamically in future
+                    () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const MechanicSubscriptionScreen(),
+                        ),
+                      );
+                    },
+                    isDarkMode,
+                    trailing: const Icon(Icons.workspace_premium, color: Color(0xFFFB3300), size: 24),
                   ),
                   _buildTile(
                     'Theme',

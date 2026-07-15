@@ -12,12 +12,20 @@ class WebSocketService {
   WebSocketService({required this.onNotificationReceived});
 
   void connect(int mechanicId) {
+    // mechanicId ko STOMP CONNECT frame ke custom header may bhejo — backend
+    // isay use karega taake session disconnect hone pe pata chal sake
+    // yeh konsa mechanic tha (crash/force-kill safety net ke liye).
+    final connectHeaders = <String, String>{
+      ...UserSession().getAuthHeader(),
+      'mechanicId': mechanicId.toString(),
+    };
+
     client = StompClient(
       config: StompConfig(
         url:
             'wss://mechanicapp-service-621632382478.asia-south1.run.app/ws-notifications/websocket',
-        stompConnectHeaders: UserSession().getAuthHeader(),
-        webSocketConnectHeaders: UserSession().getAuthHeader(),
+        stompConnectHeaders: connectHeaders,
+        webSocketConnectHeaders: connectHeaders,
         onConnect: (StompFrame frame) {
           debugPrint('Connected to WebSocket');
           _subscribe(mechanicId);

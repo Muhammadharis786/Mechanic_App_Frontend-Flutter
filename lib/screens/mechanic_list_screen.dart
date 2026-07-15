@@ -37,6 +37,22 @@ class _MechanicListScreenState extends State<MechanicListScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // Ensure sorting by Subscription Tier: Ultra Premium > Premium > Free
+    final sortedMechanics = List<Map<String, dynamic>>.from(widget.mechanics);
+    sortedMechanics.sort((a, b) {
+      int getPlanWeight(Map<String, dynamic> mech) {
+         final plan = (mech['subscriptionPlan'] ?? mech['subscriptionplan'] ?? 'FREE').toString().toUpperCase();
+         if (plan == 'ULTRA_PREMIUM') return 3;
+         if (plan == 'PREMIUM') return 2;
+         return 1;
+      }
+      final wA = getPlanWeight(a);
+      final wB = getPlanWeight(b);
+      if (wA != wB) return wB.compareTo(wA);
+      return 0;
+    });
+
     return Scaffold(
       backgroundColor: isDark ? Colors.black : Colors.white,
       appBar: AppBar(
@@ -57,16 +73,16 @@ class _MechanicListScreenState extends State<MechanicListScreen> {
         ),
       ),
 
-      // 🔥 SAME CARDS – JUST VERTICAL
+      // Same cards – just vertical
       body: RefreshIndicator(
         onRefresh: _refresh,
         color: primaryColor,
         child: ListView.builder(
           padding: const EdgeInsets.all(16),
-          itemCount: widget.mechanics.length,
+          itemCount: sortedMechanics.length,
           itemBuilder: (context, index) {
             return _NearbyMechanicCardVertical(
-              mechanic: widget.mechanics[index],
+              mechanic: sortedMechanics[index],
               primaryColor: primaryColor,
             );
           },
@@ -114,9 +130,49 @@ class _NearbyMechanicCardVertical extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(mechanic['name'],
-                        style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w600, fontSize: 15)),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(mechanic['name'],
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.poppins(
+                                  fontWeight: FontWeight.w600, fontSize: 15)),
+                        ),
+                        if (mechanic['subscriptionPlan']?.toString().toUpperCase() == 'ULTRA_PREMIUM' ||
+                            mechanic['subscriptionplan']?.toString().toUpperCase() == 'ULTRA_PREMIUM') ...[
+                          const SizedBox(width: 4),
+                          Tooltip(
+                            message: "Verified Pro",
+                            triggerMode: TooltipTriggerMode.tap,
+                            child: Icon(Icons.verified, color: Colors.blue, size: 16),
+                          ),
+                        ],
+                      ],
+                    ),
+                    if (mechanic['subscriptionPlan']?.toString().toUpperCase() == 'PREMIUM' ||
+                        mechanic['subscriptionplan']?.toString().toUpperCase() == 'PREMIUM' ||
+                        mechanic['subscriptionPlan']?.toString().toUpperCase() == 'ULTRA_PREMIUM' ||
+                        mechanic['subscriptionplan']?.toString().toUpperCase() == 'ULTRA_PREMIUM') ...[
+                      const SizedBox(height: 2),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: primaryColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: primaryColor.withOpacity(0.3)),
+                        ),
+                        child: Text(
+                          "RECOMMENDED",
+                          style: GoogleFonts.poppins(
+                            fontSize: 8,
+                            fontWeight: FontWeight.bold,
+                            color: primaryColor,
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 2),
                     Row(
                       children: [
                         const Icon(Icons.star_outline_rounded,

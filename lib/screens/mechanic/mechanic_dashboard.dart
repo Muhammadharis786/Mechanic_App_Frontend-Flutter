@@ -25,6 +25,10 @@ import 'mechanic_login.dart';
 import '../../services/mechanic_notification_controller.dart';
 import '../../services/mechanic_live_location_service.dart';
 import 'package:stomp_dart_client/stomp_dart_client.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'mechanic_subscription_screen.dart';
+import '../../services/mechanic_live_location_service.dart';
+import 'package:stomp_dart_client/stomp_dart_client.dart';
 import '../../utils/time_utils.dart';
 import 'mechanic_history.dart';
 import '../../services/fcm_notification_service.dart';
@@ -47,7 +51,6 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
   bool _isLoading = true;
   bool _isToggleLoading = false;
   bool isOnline = false;
-  bool _restoreOnlineOnResume = false;
   bool _lifecycleOfflineUpdateInProgress = false;
 
   double totalEarnings = 0;
@@ -76,6 +79,138 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
   int get _appointmentUnreadCount =>
       _appointmentRequests.where((e) => e['isRead'] == false).length;
   int get _notificationCount => _dailyUnreadCount + _appointmentUnreadCount;
+
+  bool _isBannerDismissed = false;
+
+  // API Subscription Fields
+  String _subscriptionPlan = 'FREE';
+  int _totalMonthlyJobCount = 0;
+  String? _planEndDateStr;
+
+  void _checkSubscriptionPopups() {
+    bool shouldShowPopup = false;
+    String popupHeading = "";
+    String popupMessage = "";
+    
+    if (_subscriptionPlan == 'FREE' && _totalMonthlyJobCount >= 4) {
+      shouldShowPopup = true;
+      popupHeading = "Monthly Limit Reached";
+      popupMessage = "You have reached your limit of 4 service requests on the Free Plan. Upgrade for unlimited requests and better visibility.";
+    } else if ((_subscriptionPlan == 'PREMIUM' || _subscriptionPlan == 'ULTRA_PREMIUM') && _planEndDateStr != null) {
+      try {
+        DateTime endDate = DateTime.parse(_planEndDateStr!);
+        DateTime now = DateTime.now();
+        if (now.isAfter(endDate)) {
+          shouldShowPopup = true;
+          popupHeading = "Subscription Expired";
+          popupMessage = "Your $_subscriptionPlan plan has expired. Please renew your plan to continue receiving premium benefits.";
+        }
+      } catch (e) {
+        debugPrint('Error parsing plan_endDate: $e');
+      }
+    }
+
+    if (shouldShowPopup) {
+      if (mounted) {
+        _showSubscriptionModal(popupHeading, popupMessage);
+      }
+    }
+  }
+
+  void _showSubscriptionModal(String heading, String message) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark ? Colors.grey[900] : Colors.white;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 24),
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const Icon(Icons.workspace_premium, color: Color(0xFFFB3300), size: 48),
+              const SizedBox(height: 16),
+              Text(
+                heading,
+                style: GoogleFonts.poppins(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  color: isDark ? Colors.white70 : Colors.black54,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 32),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFB3300),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const MechanicSubscriptionScreen(),
+                      ),
+                    );
+                  },
+                  child: Text(
+                    "Explore Plans",
+                    style: GoogleFonts.poppins(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(
+                  "Maybe Later",
+                  style: GoogleFonts.poppins(
+                    color: isDark ? Colors.white54 : Colors.black54,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 
   @override
   void initState() {
@@ -122,21 +257,19 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
 
+    // Background/minimize (paused, hidden) => do NOT touch online status.
+    // Mechanic stays online while the app is backgrounded — matches
+    // WhatsApp-style presence: only manual toggle or a full app close
+    // changes the status.
     if (state == AppLifecycleState.resumed) {
-      if (_restoreOnlineOnResume) {
-        _restoreOnlineOnResume = false;
-        unawaited(_toggleOnlineStatus(true, showSnack: false));
-      }
+      // Nothing to restore anymore since we never go offline on background.
       return;
     }
 
-    final shouldGoOffline =
-        state == AppLifecycleState.hidden ||
-        state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached;
+    // Only a full app close/kill should mark the mechanic offline.
+    final shouldGoOffline = state == AppLifecycleState.detached;
 
     if (shouldGoOffline && isOnline && !_lifecycleOfflineUpdateInProgress) {
-      _restoreOnlineOnResume = true;
       _lifecycleOfflineUpdateInProgress = true;
       _toggleOnlineStatus(false, showSnack: false);
     }
@@ -346,6 +479,11 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
           todaysServices =
               (data['todaysServices'] as num?)?.toInt() ?? todaysServices;
 
+          // Parse new Subscription API fields
+          _subscriptionPlan = (data['plan'] ?? 'FREE').toString().toUpperCase();
+          _totalMonthlyJobCount = (data['totalmonthlyjobcount'] as num?)?.toInt() ?? 0;
+          _planEndDateStr = data['plan_endDate']?.toString();
+
           if (data['isonline'] != null) {
             final onlineStatus = data['isonline'];
             isOnline = onlineStatus is bool
@@ -356,6 +494,9 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
 
           _isLoading = false;
         });
+        
+        // Trigger generic popup logic check when variables have loaded
+        _checkSubscriptionPopups();
 
         _fadeController.forward();
 
@@ -701,6 +842,8 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const SizedBox(height: 12),
+                            // ── SUBSCRIPTION / PLAN BANNER ──
+                            _buildSubscriptionBanner(isDark),
 
                             // ── ACTIVE REQUEST BANNER ──
                             ValueListenableBuilder<Map<String, dynamic>?>(
@@ -1048,15 +1191,51 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            // Plan name display (above the name)
                             Text(
-                              mechanicName,
+                              _subscriptionPlan == 'ULTRA_PREMIUM'
+                                  ? 'Ultra Premium'
+                                  : _subscriptionPlan == 'PREMIUM'
+                                  ? 'Premium'
+                                  : 'Free',
                               style: GoogleFonts.poppins(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.white.withOpacity(0.85),
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            // Name with blue tick for Ultra Premium
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    mechanicName,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (_subscriptionPlan == 'ULTRA_PREMIUM') ...[
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.all(2),
+                                    decoration: const BoxDecoration(
+                                      color: Colors.blue,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.check,
+                                      color: Colors.white,
+                                      size: 12,
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                             const SizedBox(height: 4),
                             Row(
@@ -1215,6 +1394,85 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                       ],
                     ),
                   ),
+                  // ── FREE TIER: Compact usage bar inside header ──
+                  if (_subscriptionPlan == 'FREE') ...[
+                    const SizedBox(height: 10),
+                    GestureDetector(
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const MechanicSubscriptionScreen()),
+                      ),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.25),
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        "$_totalMonthlyJobCount / 4 jobs used",
+                                        style: GoogleFonts.poppins(
+                                          color: Colors.white,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      Text(
+                                        "resets ${DateFormat('MM').format(DateTime(DateTime.now().year, DateTime.now().month + 1, 1))}/01",
+                                        style: GoogleFonts.poppins(
+                                          color: Colors.white.withOpacity(0.6),
+                                          fontSize: 10,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: LinearProgressIndicator(
+                                      value: (_totalMonthlyJobCount.clamp(0, 4)) / 4,
+                                      backgroundColor: Colors.white.withOpacity(0.15),
+                                      color: Colors.white,
+                                      minHeight: 5,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                "Upgrade",
+                                style: GoogleFonts.poppins(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -1877,6 +2135,123 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
   }
 
   // ── DRAWER ITEM ──
+  Widget _buildSubscriptionBanner(bool isDark) {
+    if (_isBannerDismissed) return const SizedBox.shrink();
+    
+    // FREE TIER UI
+    // FREE TIER UI is now inside the profile header card
+    if (_subscriptionPlan == 'FREE') {
+      return const SizedBox.shrink();
+    }
+    
+    // PREMIUM / ULTRA PREMIUM TIER UI
+    if (_planEndDateStr != null) {
+      try {
+        DateTime endDate = DateTime.parse(_planEndDateStr!);
+        DateTime now = DateTime.now();
+        int remainingDays = endDate.difference(now).inDays;
+        
+        bool isExpiringSoon = remainingDays >= 0 && remainingDays <= 5;
+        bool isExpired = remainingDays < 0;
+
+        String formattedDate = DateFormat('dd MMMM yyyy').format(endDate);
+        String displayText = isExpired 
+            ? "Your subscription expired on $formattedDate"
+            : isExpiringSoon 
+                ? "$remainingDays days remaining" 
+                : "Valid until $formattedDate";
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isExpired || isExpiringSoon ? Colors.redAccent.withOpacity(0.5) : primaryColor.withOpacity(0.3),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: isDark ? Colors.black26 : Colors.black12,
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.workspace_premium,
+                color: isExpired ? Colors.redAccent : primaryColor,
+                size: 32,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "$_subscriptionPlan Plan",
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
+                    ),
+                    Text(
+                      displayText,
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: isExpired || isExpiringSoon ? Colors.redAccent : Colors.grey,
+                        fontWeight: isExpiringSoon ? FontWeight.w600 : FontWeight.w400,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (isExpired || isExpiringSoon)
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.redAccent,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    minimumSize: const Size(0, 36),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const MechanicSubscriptionScreen(),
+                      ),
+                    );
+                  },
+                  child: Text(
+                    "Renew",
+                    style: GoogleFonts.poppins(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                )
+              else
+                IconButton(
+                  icon: Icon(Icons.close, color: isDark ? Colors.white54 : Colors.black54, size: 18),
+                  onPressed: () => setState(() => _isBannerDismissed = true),
+                ),
+            ],
+          ),
+        );
+      } catch (e) {
+        debugPrint('Error parsing plan_endDate for banner: $e');
+      }
+    }
+    
+    return const SizedBox.shrink();
+  }
+
   Widget _drawerItem(
     IconData icon,
     String title,
