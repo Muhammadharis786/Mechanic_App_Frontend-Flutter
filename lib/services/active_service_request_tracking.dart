@@ -135,7 +135,7 @@ class ActiveServiceRequestTracking {
           'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/tracking/$requestId',
         ),
         headers: headers,
-      ).timeout(const Duration(seconds: 8));
+      ).timeout(const Duration(seconds: 15)); // Increased from 8 to 15 seconds
 
       if (response.statusCode == 404) {
         clear(status: 'NOT_FOUND');
@@ -171,6 +171,62 @@ class ActiveServiceRequestTracking {
       });
     } catch (e) {
       debugPrint('Active tracking sync failed: $e');
+    }
+  }
+
+  /// Checks if the current active request is CANCELLED or EXPIRED via backend
+  static Future<void> validateAndClearIfTerminal() async {
+    final active = current.value;
+    if (active == null) {
+      debugPrint('🔵 validateAndClearIfTerminal: No active tracking, skipping API call');
+      return;
+    }
+
+    final requestId =
+        active['requestId']?.toString() ?? active['requestid']?.toString();
+    if (requestId == null || requestId.isEmpty) {
+      debugPrint('🔵 validateAndClearIfTerminal: RequestId null/empty, clearing');
+      clear();
+      return;
+    }
+
+    final headers = UserSession().getAuthHeader();
+    if (headers.isEmpty) {
+      debugPrint('🔵 validateAndClearIfTerminal: No auth headers, skipping');
+      return;
+    }
+
+    debugPrint('🔵 validateAndClearIfTerminal: Calling /checkrequest/$requestId');
+
+    try {
+      final response = await http.get(
+        Uri.parse(
+          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/checkrequest/$requestId',
+        ),
+        headers: headers,
+      ).timeout(const Duration(seconds: 5));
+
+      debugPrint('🔵 checkrequest response: ${response.statusCode} - ${response.body}');
+
+      if (response.statusCode == 404) {
+        clear(status: 'NOT_FOUND');
+        return;
+      }
+
+      if (response.statusCode != 200 || response.body.isEmpty) return;
+
+      // Backend plain string return kar raha hai: "CANCELLED", "EXPIRED", etc.
+      final status = response.body.trim().replaceAll('"', '').toUpperCase();
+
+      debugPrint('🔵 checkrequest status: $status');
+
+      // Agar CANCELLED ya EXPIRED hai toh clear kar do
+      if (status == 'CANCELLED' || status == 'EXPIRED') {
+        debugPrint('🔵 Status is $status, clearing tracking');
+        clear(status: status);
+      }
+    } catch (e) {
+      debugPrint('🔵 Request validation failed: $e');
     }
   }
 

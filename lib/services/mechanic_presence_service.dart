@@ -51,22 +51,36 @@ class MechanicPresenceService {
     bool value, {
     String? activeRequestId,
   }) async {
+    debugPrint('🌐 API CALL START: updateOnlineStatus(value=$value, activeRequestId=$activeRequestId)');
+    
     final headers = UserSession().getAuthHeader();
-    if (headers.isEmpty) return false;
+    if (headers.isEmpty) {
+      debugPrint('❌ API CALL FAILED: No auth headers');
+      return false;
+    }
 
     try {
+      final url = Uri.parse(_isActiveUrl);
+      final body = jsonEncode({'isonline': value ? 'true' : 'false'});
+      
+      debugPrint('🌐 API CALL: POST $_isActiveUrl');
+      debugPrint('🌐 API BODY: $body');
+      
       final response = await http
           .post(
-            Uri.parse(_isActiveUrl),
+            url,
             headers: {
               ...headers,
               'Content-Type': 'application/json',
             },
-            body: jsonEncode({'isonline': value ? 'true' : 'false'}),
+            body: body,
           )
           .timeout(const Duration(seconds: 8));
 
+      debugPrint('🌐 API RESPONSE: Status=${response.statusCode}, Body=${response.body}');
+
       if (response.statusCode == 200 || response.statusCode == 201) {
+        debugPrint('✅ API SUCCESS: Status updated to $value');
         await setLocalOnlineFlag(value);
         if (value) {
           await _setAndroidPresenceGuard(true);
@@ -78,9 +92,11 @@ class MechanicPresenceService {
           await MechanicLiveLocationService.instance.stop();
         }
         return true;
+      } else {
+        debugPrint('❌ API FAILED: Unexpected status code ${response.statusCode}');
       }
     } catch (e) {
-      debugPrint('Mechanic presence update failed: $e');
+      debugPrint('❌ API ERROR: $e');
     }
     return false;
   }

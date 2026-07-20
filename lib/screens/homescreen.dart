@@ -129,7 +129,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       debugPrint("Error fetching home location: $e");
-      if (_locationName == "Loading location...") {
+      if (mounted && _locationName == "Loading location...") {
         setState(() {
           _locationName = "Location not available";
         });
@@ -155,6 +155,7 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await ActiveServiceRequestTracking.load();
       await ActiveServiceRequestTracking.syncWithServer();
+      await ActiveServiceRequestTracking.validateAndClearIfTerminal();
       if (mounted) setState(() {});
       _subscribeActiveRequestTopic();
     });

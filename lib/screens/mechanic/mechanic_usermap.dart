@@ -373,10 +373,14 @@ class _MechanicUserMapState extends State<MechanicUserMap>
   void _startWorkflowPolling() {
     final requestId = widget.requestData['requestId']?.toString() ??
         widget.requestData['requestid']?.toString();
-    if (requestId == null || requestId.isEmpty) return;
+    if (requestId == null || requestId.isEmpty) {
+      debugPrint('🔴 MECHANIC: Cannot start polling - requestId is null/empty');
+      return;
+    }
 
+    debugPrint('🟢 MECHANIC: Starting workflow polling for requestId=$requestId');
     _workflowPollTimer?.cancel();
-    _workflowPollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    _workflowPollTimer = Timer.periodic(const Duration(seconds: 3), (_) {
       if (!mounted || _isClosingForCancellation || _showJobCompletedBanner) {
         _workflowPollTimer?.cancel();
         return;
@@ -469,10 +473,22 @@ class _MechanicUserMapState extends State<MechanicUserMap>
   }
 
   Future<void> _refreshWorkflowFromServer() async {
+    // ✅ CRITICAL: Check if widget is still mounted BEFORE making API call
+    if (!mounted || _isClosingForCancellation || _showJobCompletedBanner) {
+      debugPrint('🔴 MECHANIC: Skipping poll - widget disposed or job completed');
+      _workflowPollTimer?.cancel();
+      return;
+    }
+
     final requestId = widget.requestData['requestId']?.toString() ??
         widget.requestData['requestid']?.toString();
-    if (requestId == null || requestId.isEmpty) return;
+    if (requestId == null || requestId.isEmpty) {
+      debugPrint('🔴 MECHANIC: refreshWorkflow - requestId is null/empty');
+      return;
+    }
 
+    debugPrint('🔵 MECHANIC: Polling API for requestId=$requestId...');
+    
     try {
       final response = await http.get(
         Uri.parse(
@@ -482,11 +498,15 @@ class _MechanicUserMapState extends State<MechanicUserMap>
       );
 
       if (!mounted || response.statusCode != 200 || response.body.isEmpty) {
+        debugPrint('🔴 MECHANIC: API failed - status=${response.statusCode}, mounted=$mounted');
         return;
       }
 
       final decoded = jsonDecode(response.body);
-      if (decoded is! Map) return;
+      if (decoded is! Map) {
+        debugPrint('🔴 MECHANIC: Response is not a Map');
+        return;
+      }
 
       final serverData = Map<String, dynamic>.from(decoded);
       final status = _normalizeStatus(serverData);
@@ -530,10 +550,13 @@ class _MechanicUserMapState extends State<MechanicUserMap>
       }
 
       final merged = _mergeWorkflowData(_localTrackingSnapshot(), serverData);
+      debugPrint('🔵 MECHANIC POLL: status=$status, type=$backendType');
+      debugPrint('🔵 MECHANIC STATE: hasSentPrice=$_hasSentPrice, workStarted=$_workStarted, paymentPending=$_paymentPending, workCompleted=$_workCompleted');
+      debugPrint('🔵 MECHANIC MERGED: hasSentPrice=${merged['hasSentPrice']}, workStarted=${merged['workStarted']}, finalPrice=${merged['finalPrice']}');
       setState(() => _restoreWorkflowStateFrom(merged));
       _persistWorkflowState(finalPrice: _approvedFinalPrice);
     } catch (e) {
-      debugPrint('Mechanic workflow refresh failed: $e');
+      debugPrint('🔴 MECHANIC: Workflow refresh failed: $e');
     }
   }
 

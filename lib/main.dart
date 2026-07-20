@@ -10,6 +10,7 @@ import 'services/app_state.dart';
 final themeNotifier = appThemeController;
 final languageNotifier = appLanguageController;
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,6 +36,7 @@ class MechConnectApp extends StatelessWidget {
             final isUrdu = currentLocale.languageCode == 'ur';
             return MaterialApp(
               navigatorKey: navigatorKey,
+              navigatorObservers: [routeObserver],
               debugShowCheckedModeBanner: false,
               title: 'OnFix',
               locale: currentLocale,

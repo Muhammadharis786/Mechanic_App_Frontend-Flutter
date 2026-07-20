@@ -8,8 +8,14 @@ import '../screens/authentication/user_session.dart';
 class WebSocketService {
   StompClient? client;
   final Function(dynamic data, String type) onNotificationReceived;
+  final VoidCallback? onConnected;
+  final VoidCallback? onDisconnected;
 
-  WebSocketService({required this.onNotificationReceived});
+  WebSocketService({
+    required this.onNotificationReceived,
+    this.onConnected,
+    this.onDisconnected,
+  });
 
   void connect(int mechanicId) {
     // mechanicId ko STOMP CONNECT frame ke custom header may bhejo — backend
@@ -27,15 +33,45 @@ class WebSocketService {
         stompConnectHeaders: connectHeaders,
         webSocketConnectHeaders: connectHeaders,
         onConnect: (StompFrame frame) {
-          debugPrint('Connected to WebSocket');
+          debugPrint('✅ Connected to WebSocket for mechanic ID: $mechanicId');
           _subscribe(mechanicId);
+          onConnected?.call();
         },
-        onStompError: (frame) => debugPrint('STOMP Error: ${frame.body}'),
-        onWebSocketError: (error) => debugPrint('WebSocket Error: $error'),
-        onDisconnect: (frame) => debugPrint('Disconnected from WebSocket'),
+        onStompError: (frame) => debugPrint('❌ STOMP Error: ${frame.body}'),
+        onWebSocketError: (error) => debugPrint('❌ WebSocket Error: $error'),
+        onDisconnect: (frame) {
+          debugPrint('💔 Disconnected from WebSocket');
+          onDisconnected?.call();
+        },
       ),
     );
     client?.activate();
+  }
+
+  /// Send message to backend (for heartbeat, etc.)
+  void sendMessage({required String destination, required String body}) {
+    if (client == null || !client!.connected) {
+      debugPrint('❌ Cannot send message - WebSocket not connected');
+      throw Exception('WebSocket not connected');
+    }
+    
+    try {
+      client!.send(
+        destination: destination,
+        body: body,
+      );
+    } catch (e) {
+      debugPrint('❌ Error sending message to $destination: $e');
+      rethrow;
+    }
+  }
+
+  /// Ensure WebSocket is connected, reconnect if needed
+  void ensureConnected(int mechanicId) {
+    if (client == null || !client!.connected) {
+      debugPrint('🔄 Reconnecting WebSocket for mechanic ID: $mechanicId');
+      connect(mechanicId);
+    }
   }
 
   void _subscribe(int mechanicId) {

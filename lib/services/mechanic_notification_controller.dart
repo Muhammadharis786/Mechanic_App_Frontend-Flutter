@@ -19,6 +19,10 @@ class MechanicNotificationController {
 
   WebSocketService? _webSocketService;
   OverlayEntry? _overlayEntry;
+  Timer? _heartbeatTimer;
+  int? _mechanicId;
+  bool _isDisposed = false; // ✅ Track if disposed
+  bool _isOnline = false; // ✅ Track if mechanic is online (to control heartbeat)
 
   // Callbacks for live UI updates (e.g. on Dashboard)
   final List<Function(Map<String, dynamic> data, String type)> _listeners = [];
@@ -33,14 +37,32 @@ class MechanicNotificationController {
     _listeners.remove(callback);
   }
 
+  /// Ensure WebSocket is connected (call after disconnect or app resume)
+  void ensureConnected() {
+    if (_webSocketService != null && _mechanicId != null) {
+      debugPrint("🔄 Ensuring WebSocket connection for mechanic ID: $_mechanicId");
+      _webSocketService!.ensureConnected(_mechanicId!);
+    } else {
+      debugPrint("⚠️ Cannot ensure connection - WebSocket or mechanicId is null");
+    }
+  }
+
   void init() {
-    if (_webSocketService != null) return; // Already initialized
+    if (_webSocketService != null) {
+      debugPrint("⚠️ MechanicNotificationController: Already initialized");
+      return; // Already initialized
+    }
 
     final int? mechId = UserSession().userId;
     if (mechId == null) {
       debugPrint("❌ MechanicNotificationController: User ID is null");
       return;
     }
+
+    debugPrint("🚀 MechanicNotificationController: Initializing for mechanic ID: $mechId");
+    _mechanicId = mechId;
+    _isDisposed = false; // ✅ Reset disposed flag
+    // DON'T set _isOnline here - let caller control it via startHeartbeatIfOnline()
 
     _webSocketService = WebSocketService(
       onNotificationReceived: (data, type) {
@@ -116,6 +138,19 @@ class MechanicNotificationController {
           listener(request, type);
         }
       },
+      onConnected: () {
+        debugPrint("🔗 WebSocket connected");
+        // ✅ Start heartbeat ONLY if mechanic is online
+        if (_isOnline) {
+          debugPrint("🔗 WebSocket connected & mechanic is ONLINE - starting heartbeat");
+          _startHeartbeat();
+        }
+      },
+      onDisconnected: () {
+        debugPrint("🔌 WebSocket disconnected");
+        // ✅ Stop heartbeat if it was running
+        _stopHeartbeat();
+      },
     );
 
     _webSocketService!.connect(mechId);
@@ -124,10 +159,160 @@ class MechanicNotificationController {
     );
   }
 
+  /// Start sending heartbeat every 10 seconds
+  void _startHeartbeat() {
+    // ✅ CRITICAL: Check session userType
+    final sessionUserType = UserSession().userType?.toUpperCase();
+    if (sessionUserType != 'MECHANIC') {
+      debugPrint("🚫 Cannot start heartbeat - session userType is $sessionUserType (not MECHANIC)");
+      return;
+    }
+    
+    // ✅ CRITICAL: Don't start if disposed
+    if (_isDisposed) {
+      debugPrint("🚫 Cannot start heartbeat - controller is disposed");
+      return;
+    }
+    
+    _stopHeartbeat(); // Clear any existing timer
+    
+    if (_mechanicId == null) return;
+    
+    // ✅ Mark as online
+    _isOnline = true;
+    
+    debugPrint("💓 Starting heartbeat for mechanic ID: $_mechanicId");
+    
+    // ✅ Timer runs continuously, even when app is backgrounded
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+      // ✅ CRITICAL: Check session on every tick
+      final currentUserType = UserSession().userType?.toUpperCase();
+      if (currentUserType != 'MECHANIC') {
+        debugPrint("⏹️ Heartbeat stopping - session switched to $currentUserType");
+        timer.cancel();
+        _heartbeatTimer = null;
+        return;
+      }
+      
+      // ✅ CRITICAL: Check if mechanic is still online
+      if (!_isOnline) {
+        debugPrint("⏹️ Heartbeat stopping - mechanic went offline");
+        timer.cancel();
+        _heartbeatTimer = null;
+        return;
+      }
+      
+      // Check if still valid
+      if (_isDisposed || _mechanicId == null || _webSocketService == null) {
+        debugPrint("⏹️ Heartbeat stopping - disposed=$_isDisposed, mechId=$_mechanicId");
+        timer.cancel();
+        _heartbeatTimer = null;
+        return;
+      }
+      
+      _sendHeartbeat();
+    });
+    
+    // ✅ Send initial heartbeat ONLY if WebSocket is already connected
+    // If not connected yet, onConnected callback will handle it
+    if (_webSocketService != null && (_webSocketService!.client?.connected ?? false)) {
+      debugPrint("💓 WebSocket already connected - sending initial heartbeat");
+      _sendHeartbeat();
+    } else {
+      debugPrint("⏳ WebSocket connecting... heartbeat will start after connection");
+    }
+  }
+
+  /// Stop heartbeat timer
+  void _stopHeartbeat() {
+    if (_heartbeatTimer != null) {
+      debugPrint("💔 Stopping heartbeat for mechanic ID: $_mechanicId");
+      _heartbeatTimer?.cancel();
+      _heartbeatTimer = null;
+    }
+  }
+
+  /// Send heartbeat message to backend
+  void _sendHeartbeat() {
+    // ✅ Check session first
+    final sessionUserType = UserSession().userType?.toUpperCase();
+    if (sessionUserType != 'MECHANIC') {
+      debugPrint("⚠️ Cannot send heartbeat - session is $sessionUserType (not MECHANIC)");
+      _stopHeartbeat(); // Stop the timer
+      return;
+    }
+    
+    // Triple check before sending
+    if (_isDisposed || _webSocketService == null || _mechanicId == null) {
+      debugPrint("⚠️ Cannot send heartbeat - disposed=$_isDisposed, mechId=$_mechanicId");
+      return;
+    }
+    
+    try {
+      _webSocketService!.sendMessage(
+        destination: '/app/heartbeat',
+        body: jsonEncode({'mechanicId': _mechanicId}),
+      );
+      debugPrint("💚 Heartbeat sent for mechanic ID: $_mechanicId");
+    } catch (e) {
+      debugPrint("⚠️ Heartbeat send skipped - WebSocket not ready yet: $e");
+      // Don't stop timer - it will retry on next tick when WebSocket is connected
+    }
+  }
+
+  /// Call this when app comes to foreground - ensure WebSocket is connected
+  /// BUT only if mechanic is online
+  void resumeHeartbeat() {
+    debugPrint("▶️ App foregrounded - checking if should reconnect");
+    
+    // ✅ ONLY reconnect if mechanic is online
+    if (!_isOnline) {
+      debugPrint("⏸️ Mechanic is OFFLINE - skipping WebSocket reconnect");
+      return;
+    }
+    
+    debugPrint("🔄 Mechanic is ONLINE - ensuring WebSocket connection");
+    
+    // Reconnect WebSocket if disconnected
+    if (_webSocketService != null && _mechanicId != null) {
+      _webSocketService!.ensureConnected(_mechanicId!);
+    }
+  }
+
+  /// Start heartbeat when mechanic goes ONLINE
+  void startHeartbeatIfOnline() {
+    debugPrint("💓 startHeartbeatIfOnline called");
+    // ✅ Set flag FIRST so onConnected callback knows to start heartbeat
+    _isOnline = true;
+    // If WebSocket already connected, start heartbeat immediately
+    // If not connected yet, onConnected callback will start it
+    _startHeartbeat();
+  }
+
+  /// Stop heartbeat only - WebSocket stays connected to receive requests
+  void stopHeartbeatOnly() {
+    debugPrint("⏸️ stopHeartbeatOnly - Stopping heartbeat timer only");
+    _stopHeartbeat();
+  }
+  
+  /// Stop heartbeat AND disconnect WebSocket (for offline mode)
+  void disconnectCompletely() {
+    debugPrint("🔴 disconnectCompletely - Stopping heartbeat & disconnecting WebSocket");
+    _isOnline = false; // ✅ Mark as offline FIRST (stops timer on next tick)
+    _stopHeartbeat();
+    _webSocketService?.disconnect();
+    // Don't nullify _webSocketService so we can reconnect later
+  }
+
   void dispose() {
+    debugPrint("🧹 MechanicNotificationController: Disposing");
+    _isDisposed = true; // ✅ Mark as disposed FIRST
+    _stopHeartbeat();
     _webSocketService?.disconnect();
     _webSocketService = null;
     _removeOverlay();
+    _mechanicId = null;
+    _listeners.clear();
   }
 
   void _removeOverlay() {

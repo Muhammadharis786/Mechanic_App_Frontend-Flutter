@@ -34,6 +34,7 @@ import 'mechanic_history.dart';
 import '../../services/fcm_notification_service.dart';
 import '../../services/mechanic_presence_service.dart';
 import 'package:intl/intl.dart';
+import '../../main.dart'; // Import for routeObserver
 
 class MechanicDashboardScreen extends StatefulWidget {
   const MechanicDashboardScreen({super.key});
@@ -44,7 +45,7 @@ class MechanicDashboardScreen extends StatefulWidget {
 }
 
 class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver, RouteAware {
   final Color primaryColor = const Color(0xFFE64A19);
   final Color accentOrange = const Color(0xFFFF6D00);
 
@@ -52,6 +53,10 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
   bool _isToggleLoading = false;
   bool isOnline = false;
   bool _lifecycleOfflineUpdateInProgress = false;
+  
+  // Online/Offline Toggle
+  bool _isOnline = false;
+  bool _isTogglingOnlineStatus = false;
 
   double totalEarnings = 0;
   double todaysEarnings = 0;
@@ -86,8 +91,12 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
   String _subscriptionPlan = 'FREE';
   int _totalMonthlyJobCount = 0;
   String? _planEndDateStr;
+  bool _hasShownSubscriptionPopupThisSession = false; // Track if popup shown
 
   void _checkSubscriptionPopups() {
+    // Only show popup once per session on initial load
+    if (_hasShownSubscriptionPopupThisSession) return;
+    
     bool shouldShowPopup = false;
     String popupHeading = "";
     String popupMessage = "";
@@ -111,6 +120,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
     }
 
     if (shouldShowPopup) {
+      _hasShownSubscriptionPopupThisSession = true; // Mark as shown
       if (mounted) {
         _showSubscriptionModal(popupHeading, popupMessage);
       }
@@ -238,13 +248,15 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await ActiveServiceRequestTracking.load();
       await ActiveServiceRequestTracking.syncWithServer();
+      await ActiveServiceRequestTracking.validateAndClearIfTerminal();
       if (mounted) setState(() {});
       _subscribeActiveRequestTopic();
     });
     _fetchDashboardData();
     _fetchAppointmentNotifications();
     _fetchRecentJobs();
-    _initWebSocket();
+    // ⚠️ DO NOT call _initWebSocket() here - userId may be null at this point
+    // It's called inside _fetchDashboardData() after userId is confirmed
     FcmNotificationService.instance.syncTokenWithBackend();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -254,15 +266,22 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Subscribe to route changes
+    final route = ModalRoute.of(context);
+    if (route is PageRoute) {
+      routeObserver.subscribe(this, route);
+    }
+  }
+
+  @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
 
-    // Background/minimize (paused, hidden) => do NOT touch online status.
-    // Mechanic stays online while the app is backgrounded — matches
-    // WhatsApp-style presence: only manual toggle or a full app close
-    // changes the status.
     if (state == AppLifecycleState.resumed) {
-      // Nothing to restore anymore since we never go offline on background.
+      // App came to foreground - ensure WebSocket reconnected
+      MechanicNotificationController().resumeHeartbeat();
       return;
     }
 
@@ -271,12 +290,13 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
 
     if (shouldGoOffline && isOnline && !_lifecycleOfflineUpdateInProgress) {
       _lifecycleOfflineUpdateInProgress = true;
-      _toggleOnlineStatus(false, showSnack: false);
+      _updateOnlineStatus(false, showSnack: false);
     }
   }
 
   @override
   void dispose() {
+    routeObserver.unsubscribe(this);
     WidgetsBinding.instance.removeObserver(this);
     MechanicNotificationController().removeListener(_onGlobalNotificationReceived);
     ActiveServiceRequestTracking.current.removeListener(_onActiveTrackingChanged);
@@ -284,6 +304,33 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
     _fadeController.dispose();
     _activeRequestClient?.deactivate();
     super.dispose();
+  }
+
+  // RouteAware callbacks
+  @override
+  void didPopNext() {
+    // Called when returning to this screen from another screen
+    debugPrint('🔄 Dashboard: Returned from another screen - refreshing');
+    setState(() => _isLoading = true);
+    _refreshDashboard();
+  }
+
+  @override
+  void didPush() {
+    // Called when this screen is pushed
+    debugPrint('🔄 Dashboard: Screen pushed');
+  }
+
+  @override
+  void didPop() {
+    // Called when this screen is popped
+    debugPrint('🔄 Dashboard: Screen popped');
+  }
+
+  @override
+  void didPushNext() {
+    // Called when a new screen is pushed on top
+    debugPrint('🔄 Dashboard: New screen pushed on top');
   }
 
   void _initWebSocket() {
@@ -486,9 +533,13 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
 
           if (data['isonline'] != null) {
             final onlineStatus = data['isonline'];
-            isOnline = onlineStatus is bool
+            final backendIsOnline = onlineStatus is bool
                 ? onlineStatus
                 : onlineStatus.toString().toLowerCase() == 'true';
+            
+            isOnline = backendIsOnline;
+            // Sync AppBar button state
+            _isOnline = isOnline;
           }
           unawaited(MechanicPresenceService.instance.setLocalOnlineFlag(isOnline));
 
@@ -509,6 +560,12 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
             requestId: activeRequestId,
           );
           unawaited(MechanicPresenceService.instance.ensureAndroidPresenceGuard());
+          
+          // ✅ Init WebSocket & start heartbeat ONLY if mechanic is ONLINE
+          _initWebSocket();
+          MechanicNotificationController().startHeartbeatIfOnline();
+        } else {
+          debugPrint('🔴 Mechanic is OFFLINE - WebSocket & heartbeat NOT started');
         }
         await _syncActiveTrackingWithServer();
         _subscribeActiveRequestTopic();
@@ -553,7 +610,29 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
     _subscribeActiveRequestTopic();
   }
 
-  Future<void> _toggleOnlineStatus(bool value, {bool showSnack = true}) async {
+  /// Wrapper function for AppBar toggle button (no parameters)
+  Future<void> _toggleOnlineStatus() async {
+    if (_isTogglingOnlineStatus) return;
+    
+    debugPrint('🔘 TOGGLE CLICKED: Current status = $_isOnline');
+    
+    setState(() => _isTogglingOnlineStatus = true);
+    
+    // Toggle the status
+    final newStatus = !_isOnline;
+    
+    debugPrint('🔘 TOGGLE: Calling API with new status = $newStatus');
+    
+    await _updateOnlineStatus(newStatus, showSnack: true);
+    
+    if (mounted) {
+      setState(() => _isTogglingOnlineStatus = false);
+    }
+    
+    debugPrint('🔘 TOGGLE COMPLETE: New status = $_isOnline');
+  }
+
+  Future<void> _updateOnlineStatus(bool value, {bool showSnack = true}) async {
     if (showSnack && mounted) {
       setState(() => _isToggleLoading = true);
     }
@@ -573,9 +652,24 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
         } else {
           isOnline = value;
         }
+        
+        // Update AppBar button state
+        if (mounted) {
+          setState(() => _isOnline = value);
+        }
 
         if (value) {
+          // ✅ ONLINE: Reconnect WebSocket & start heartbeat
+          debugPrint('🟢 Mechanic went ONLINE - Reconnecting WebSocket & starting heartbeat');
           _lifecycleOfflineUpdateInProgress = false;
+          
+          // Reconnect WebSocket (init if first time, or reconnect if disconnected)
+          final controller = MechanicNotificationController();
+          controller.init(); // Will initialize if not already done
+          controller.ensureConnected(); // Ensure connection is active
+          controller.startHeartbeatIfOnline(); // Start heartbeat
+          
+          // Start live location tracking if in active request
           final active = ActiveServiceRequestTracking.current.value;
           final activeRequestId =
               active?['requestId']?.toString() ??
@@ -584,6 +678,9 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
             requestId: activeRequestId,
           );
         } else {
+          // ✅ OFFLINE: Stop heartbeat AND disconnect WebSocket completely
+          debugPrint('🔴 Mechanic went OFFLINE - Stopping heartbeat & disconnecting WebSocket');
+          MechanicNotificationController().disconnectCompletely();
           MechanicLiveLocationService.instance.stop();
         }
         if (showSnack && mounted) {
@@ -773,6 +870,73 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
           ),
         ),
         actions: [
+          // Online/Offline Toggle
+          Padding(
+            padding: const EdgeInsets.only(right: 8.0),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(20),
+                onTap: _isTogglingOnlineStatus ? null : _toggleOnlineStatus,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _isOnline 
+                        ? const Color(0xFF34C759).withOpacity(0.1)
+                        : Colors.grey.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: _isOnline 
+                          ? const Color(0xFF34C759)
+                          : Colors.grey,
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: _isOnline 
+                              ? const Color(0xFF34C759)
+                              : Colors.grey,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        _isOnline ? 'Online' : 'Offline',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: _isOnline 
+                              ? const Color(0xFF34C759)
+                              : Colors.grey,
+                        ),
+                      ),
+                      if (_isTogglingOnlineStatus) ...[
+                        const SizedBox(width: 6),
+                        SizedBox(
+                          width: 10,
+                          height: 10,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              _isOnline 
+                                  ? const Color(0xFF34C759)
+                                  : Colors.grey,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
           Stack(
             alignment: Alignment.center,
             children: [
@@ -1482,9 +1646,8 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
     );
   }
 
-  // ── ONLINE TOGGLE ──
+  // ── ONLINE STATUS DISPLAY (read-only) ──
   Widget _buildOnlineToggle(bool isDark) {
-    final statusColor = isOnline ? const Color(0xFF4CAF50) : const Color(0xFFFF6D00);
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
       decoration: BoxDecoration(
@@ -1493,12 +1656,12 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
         border: Border.all(
           color: isOnline
               ? Colors.green.withOpacity(0.2)
-              : Colors.orange.withOpacity(0.15),
+              : Colors.grey.withOpacity(0.15),
           width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: (isOnline ? Colors.green : Colors.orange).withOpacity(
+            color: (isOnline ? Colors.green : Colors.grey).withOpacity(
               isDark ? 0.12 : 0.05,
             ),
             blurRadius: 16,
@@ -1508,7 +1671,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
       ),
       child: Row(
         children: [
-          // Pulse status indicator icon
+          // Status icon with pulse
           Stack(
             alignment: Alignment.center,
             children: [
@@ -1527,12 +1690,12 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                 decoration: BoxDecoration(
                   color: isOnline
                       ? Colors.green.withOpacity(0.15)
-                      : Colors.orange.withOpacity(0.12),
+                      : Colors.grey.withOpacity(0.12),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   isOnline ? Icons.wifi_tethering_rounded : Icons.portable_wifi_off_rounded,
-                  color: isOnline ? Colors.green : Colors.orange,
+                  color: isOnline ? Colors.green : Colors.grey,
                   size: 18,
                 ),
               ),
@@ -1546,9 +1709,9 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                 Row(
                   children: [
                     Text(
-                      isOnline ? 'Go Offline' : 'Go Online',
+                      isOnline ? 'Online' : 'Offline',
                       style: GoogleFonts.poppins(
-                        color: isDark ? Colors.white : Colors.black87,
+                        color: isOnline ? Colors.green : (isDark ? Colors.grey.shade400 : Colors.grey.shade600),
                         fontWeight: FontWeight.bold,
                         fontSize: 14,
                       ),
@@ -1558,7 +1721,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                       width: 8,
                       height: 8,
                       decoration: BoxDecoration(
-                        color: statusColor,
+                        color: isOnline ? Colors.green : Colors.grey,
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -1577,29 +1740,6 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
               ],
             ),
           ),
-          _isToggleLoading
-              ? const SizedBox(
-                  width: 48,
-                  height: 24,
-                  child: Center(
-                    child: SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
-                      ),
-                    ),
-                  ),
-                )
-              : Switch(
-                  value: isOnline,
-                  activeThumbColor: Colors.green,
-                  activeTrackColor: Colors.green.withOpacity(0.3),
-                  inactiveThumbColor: Colors.grey.shade400,
-                  inactiveTrackColor: Colors.grey.shade300,
-                  onChanged: _toggleOnlineStatus,
-                ),
         ],
       ),
     );
@@ -2540,6 +2680,8 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                   isLogout: true,
                   onTap: () async {
                     final nav = Navigator.of(context);
+                    // ✅ Mark mechanic as inactive before logout
+                    await MechanicPresenceService.instance.updateOnlineStatus(false);
                     MechanicNotificationController().dispose();
                     MechanicLiveLocationService.instance.stop();
                     await UserSession().logout();
@@ -2555,6 +2697,8 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
                 InkWell(
                   onTap: () async {
                     final nav = Navigator.of(context);
+                    // ✅ Mark mechanic as inactive before switching to user
+                    await MechanicPresenceService.instance.updateOnlineStatus(false);
                     MechanicNotificationController().dispose();
                     MechanicLiveLocationService.instance.stop();
                     bool success = await UserSession().trySwitchTo('USER');

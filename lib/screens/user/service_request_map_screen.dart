@@ -350,11 +350,11 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     super.dispose();
   }
 
-  /// Starts a fallback HTTP polling timer that checks request status every 5s.
+  /// Starts a fallback HTTP polling timer that checks request status every 3s.
   /// This is the backup when WebSocket (STOMP) fails due to DNS/network issues.
   void _startStatusPolling(String requestId) {
     _statusPollTimer?.cancel();
-    _statusPollTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
+    _statusPollTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
       if (!mounted) {
         _statusPollTimer?.cancel();
         return;
@@ -374,13 +374,20 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
   }
 
   Future<void> _pollRequestStatus(String requestId) async {
+    // ✅ CRITICAL: Check if widget is still mounted BEFORE making API call
+    if (!mounted || _cancelExitHandled || _workCompleted) {
+      debugPrint('🔴 USER: Skipping poll - widget disposed or request completed');
+      _statusPollTimer?.cancel();
+      return;
+    }
+
     try {
       final response = await http.get(
         Uri.parse(
           'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/tracking/$requestId',
         ),
         headers: UserSession().getAuthHeader(),
-      ).timeout(const Duration(seconds: 6));
+      ).timeout(const Duration(seconds: 20)); // ✅ Increased timeout for Cloud Run
 
       if (response.statusCode != 200 || response.body.isEmpty || !mounted) return;
 
@@ -390,6 +397,8 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       final data = Map<String, dynamic>.from(decoded);
       final type = (data['type'] ?? data['backendType'])?.toString().toUpperCase() ?? '';
       final status = _normalizeTrackingStatus(data);
+
+      debugPrint('🔵 USER POLL: status=$status, type=$type, finalPrice=${data['finalPrice']}, arrivalPrice=${data['arrivalPrice']}');
 
       if (type == 'ROAD_REQUEST_CANCELLED' ||
           type == 'ROAD_REQUEST_EXPIRED' ||
@@ -430,15 +439,26 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       }
 
       // Price received — show approval card
+      // ✅ FIX: Check status first, don't require type or price
       if (!_isPriceReceived && !_paymentApproved) {
         final price = _pickPrice(data);
-        if (price != null && (type == 'FINAL_PRICE_SENT' ||
-            status == 'WAITING_USER_APPROVAL' ||
+        
+        // ✅ Show approval UI if:
+        // 1. Status indicates waiting for approval OR
+        // 2. Type indicates price sent
+        final statusIndicatesWaiting = status == 'WAITING_USER_APPROVAL' ||
             status == 'WAITING_FOR_USER_APPROVAL' ||
-            status.contains('WAITING'))) {
+            status.contains('WAITING');
+        
+        final typeIndicatesPrice = type == 'FINAL_PRICE_SENT' || 
+            type == 'PRICE_SENT' ||
+            type == 'ARRIVAL_PRICE_SENT';
+        
+        if (statusIndicatesWaiting || typeIndicatesPrice) {
+          debugPrint('🟢 USER: Showing price approval - status=$status, type=$type, price=$price');
           setState(() {
             _isPriceReceived = true;
-            _finalPrice = price;
+            if (price != null) _finalPrice = price;
             _paymentApproved = false;
           });
           return;
@@ -698,6 +718,8 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
             destination: '/topic/request/$requestId',
             callback: (frame) {
               if (frame.body == null || !mounted) return;
+              debugPrint('📩 USER WEBSOCKET: Received message on /topic/request/$requestId');
+              debugPrint('📩 USER WEBSOCKET: Body = ${frame.body}');
               try {
                 final decoded = jsonDecode(frame.body!);
                 if (decoded is! Map) return;
@@ -706,7 +728,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
                   requestId,
                 );
               } catch (e) {
-                debugPrint('Request status decode error: $e');
+                debugPrint('❌ USER WEBSOCKET: Decode error: $e');
               }
             },
           );
@@ -773,7 +795,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
           'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/tracking/$requestId',
         ),
         headers: UserSession().getAuthHeader(),
-      ).timeout(const Duration(seconds: 8));
+      ).timeout(const Duration(seconds: 20)); // ✅ Increased from 8s to 20s (Cloud Run cold start)
 
       if (response.statusCode != 200 || response.body.isEmpty) return;
 
@@ -832,6 +854,8 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
             .toUpperCase() ??
         '';
 
+    debugPrint('📬 USER: _onRequestStatusUpdate - type=$backendType, status=$status, data=$data');
+
     if (backendType == 'ROAD_REQUEST_CANCELLED' || status == 'EXPIRED') {
       if (status == 'EXPIRED') {
         _exitToUserHome(
@@ -846,12 +870,19 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       return;
     }
 
-    if (backendType == 'FINAL_PRICE_SENT') {
-      final price = _toDouble(data['finalPrice']);
-      if (price != null && mounted) {
+    if (backendType == 'FINAL_PRICE_SENT' ||
+        backendType == 'PRICE_SENT' ||
+        backendType == 'ARRIVAL_PRICE_SENT' ||
+        status == 'WAITING_USER_APPROVAL' ||
+        status == 'WAITING_FOR_USER_APPROVAL') {
+      debugPrint('📬 USER WEBSOCKET: Received charge approval request - type=$backendType, status=$status');
+      final price = _toDouble(data['finalPrice']) ?? 
+                   _toDouble(data['arrivalPrice']) ??
+                   _toDouble(data['inspectionPrice']);
+      if (mounted) {
         setState(() {
           _isPriceReceived = true;
-          _finalPrice = price;
+          if (price != null) _finalPrice = price;
           _paymentApproved = false;
         });
       }
@@ -1165,9 +1196,12 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     final type =
         (data['type'] ?? data['backendType'])?.toString().toUpperCase() ?? '';
 
+    debugPrint('🟢 USER: _applyTrackingWorkflow - status=$status, type=$type, paymentApproved=$_paymentApproved, isPriceReceived=$_isPriceReceived');
+
     if (_statusMeansPaymentPending(status) ||
         type == 'PAYMENT_PENDING' ||
         data['paymentPending'] == true) {
+      debugPrint('🟢 USER: Applying PAYMENT_PENDING workflow');
       _applyPaymentPendingPayload(data);
       _cashHandoverMarked = data['cashHandoverMarked'] == true;
       return;
@@ -1176,6 +1210,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     if (_statusMeansWaitingForPayment(status) ||
         type == 'WORK_COMPLETED' ||
         data['workCompleted'] == true) {
+      debugPrint('🟢 USER: Applying WORK_COMPLETED workflow');
       _applyWorkCompletedPayload(data);
       return;
     }
@@ -1185,14 +1220,32 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
         status == 'WORK_STARTED' ||
         data['paymentApproved'] == true ||
         type == 'USER_APPROVED') {
+      debugPrint('🟢 USER: Applying APPROVED_PAYMENT workflow');
       _applyApprovedPaymentPayload(data);
       return;
     }
 
     final price = _pickPrice(data);
     if (price != null) _finalPrice = price;
-    if (!_paymentApproved && price != null) {
-      _isPriceReceived = _statusMeansWaitingForUserApproval(status);
+    
+    // Check if we should show price approval UI
+    // ✅ FIX: Status check is enough, type is optional
+    if (!_paymentApproved) {
+      final shouldShowPrice = _statusMeansWaitingForUserApproval(status) ||
+          type == 'FINAL_PRICE_SENT' ||
+          type == 'PRICE_SENT' ||
+          type == 'ARRIVAL_PRICE_SENT';
+      
+      debugPrint('🟢 USER: Price=$price, status=$status, type=$type, shouldShowPrice=$shouldShowPrice');
+      
+      if (shouldShowPrice) {
+        _isPriceReceived = true;
+        // If price is not in API response, try to get from local tracking
+        if (_finalPrice == null && price == null) {
+          final localPrice = _pickPrice(ActiveServiceRequestTracking.current.value ?? {});
+          if (localPrice != null) _finalPrice = localPrice;
+        }
+      }
     }
   }
 
@@ -1278,7 +1331,18 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
 
       final hasAcceptedMechanic =
           merged['mechanicId'] != null || merged['mechanicLatitude'] != null;
-      if (hasAcceptedMechanic) {
+      
+      // If status is PENDING, don't use mechanic details — stay in waiting state
+      if (status == 'PENDING' && hasAcceptedMechanic) {
+        debugPrint('⚠️ Status is PENDING — ignoring premature mechanic details');
+        merged.remove('mechanicId');
+        merged.remove('mechanicName');
+        merged.remove('mechanicLatitude');
+        merged.remove('mechanicLongitude');
+        merged.remove('mechanicNumber');
+      }
+      
+      if (hasAcceptedMechanic && status != 'PENDING') {
         _handleAcceptedMechanic(merged, requestId, updateState: false);
         if (!mounted) return;
         setState(() => _applyTrackingWorkflow(merged));
