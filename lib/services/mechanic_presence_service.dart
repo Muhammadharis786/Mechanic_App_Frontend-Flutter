@@ -33,11 +33,18 @@ class MechanicPresenceService {
   Future<void> _setAndroidPresenceGuard(bool enabled) async {
     if (kIsWeb || !Platform.isAndroid) return;
     try {
-      await _channel.invokeMethod(
-        enabled ? 'startPresenceGuard' : 'stopPresenceGuard',
-      );
+      if (enabled) {
+        final mechanicId = UserSession().userId;
+        final authHeader = UserSession().getAuthHeader()['Authorization'];
+        await _channel.invokeMethod('startPresenceGuard', {
+          if (mechanicId != null) 'mechanicId': mechanicId,
+          if (authHeader != null) 'authHeader': authHeader,
+        });
+      } else {
+        await _channel.invokeMethod('stopPresenceGuard');
+      }
     } catch (e) {
-      debugPrint('Mechanic presence guard error: $e');
+      debugPrint('MechanicPresenceService guard error: $e');
     }
   }
 
@@ -51,21 +58,15 @@ class MechanicPresenceService {
     bool value, {
     String? activeRequestId,
   }) async {
-    debugPrint('🌐 API CALL START: updateOnlineStatus(value=$value, activeRequestId=$activeRequestId)');
-    
     final headers = UserSession().getAuthHeader();
     if (headers.isEmpty) {
-      debugPrint('❌ API CALL FAILED: No auth headers');
       return false;
     }
 
     try {
       final url = Uri.parse(_isActiveUrl);
       final body = jsonEncode({'isonline': value ? 'true' : 'false'});
-      
-      debugPrint('🌐 API CALL: POST $_isActiveUrl');
-      debugPrint('🌐 API BODY: $body');
-      
+
       final response = await http
           .post(
             url,
@@ -77,10 +78,7 @@ class MechanicPresenceService {
           )
           .timeout(const Duration(seconds: 8));
 
-      debugPrint('🌐 API RESPONSE: Status=${response.statusCode}, Body=${response.body}');
-
       if (response.statusCode == 200 || response.statusCode == 201) {
-        debugPrint('✅ API SUCCESS: Status updated to $value');
         await setLocalOnlineFlag(value);
         if (value) {
           await _setAndroidPresenceGuard(true);
@@ -92,11 +90,9 @@ class MechanicPresenceService {
           await MechanicLiveLocationService.instance.stop();
         }
         return true;
-      } else {
-        debugPrint('❌ API FAILED: Unexpected status code ${response.statusCode}');
       }
     } catch (e) {
-      debugPrint('❌ API ERROR: $e');
+      debugPrint('MechanicPresenceService updateOnlineStatus error: $e');
     }
     return false;
   }

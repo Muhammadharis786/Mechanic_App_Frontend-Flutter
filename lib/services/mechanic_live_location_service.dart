@@ -70,7 +70,6 @@ class MechanicLiveLocationService {
 
     final mechanicId = UserSession().userId;
     if (mechanicId == null) {
-      debugPrint('🛑 Live tracking skipped: mechanic id missing');
       return;
     }
 
@@ -87,9 +86,6 @@ class MechanicLiveLocationService {
       final current = await Geolocator.getCurrentPosition(
         locationSettings: settings,
       );
-      debugPrint(
-        '📍 Got initial position: ${current.latitude}, ${current.longitude}',
-      );
 
       _lastLat = current.latitude;
       _lastLng = current.longitude;
@@ -103,13 +99,9 @@ class MechanicLiveLocationService {
         (position) {
           _lastLat = position.latitude;
           _lastLng = position.longitude;
-          debugPrint(
-            '📍 GPS update (5m moved): ${position.latitude}, ${position.longitude}',
-          );
           _sendPosition(position);
         },
-        onError: (error) =>
-            debugPrint('❌ Live location stream error: $error'),
+        onError: (error) {},
       );
     } finally {
       _isStarting = false;
@@ -130,9 +122,7 @@ class MechanicLiveLocationService {
       _lastLat = current.latitude;
       _lastLng = current.longitude;
       return (lat: current.latitude, lng: current.longitude);
-    } catch (e) {
-      debugPrint('⚠️ currentCoordinates error: $e');
-    }
+    } catch (e) {}
 
     if (_lastLat != null && _lastLng != null) {
       return (lat: _lastLat!, lng: _lastLng!);
@@ -177,7 +167,6 @@ class MechanicLiveLocationService {
       await Future<void>.delayed(const Duration(milliseconds: 200));
     }
 
-    debugPrint('⚠️ publishLocationNow: STOMP not connected in time');
     return false;
   }
 
@@ -196,7 +185,6 @@ class MechanicLiveLocationService {
     _client?.deactivate();
     _client = null;
     _isConnected = false;
-    debugPrint('🛑 Live tracking stopped');
   }
 
   void _startHeartbeat() {
@@ -220,7 +208,6 @@ class MechanicLiveLocationService {
   void _connectSocket() {
     if (_client != null) return;
 
-    debugPrint('🔌 Connecting STOMP for live tracking...');
     _client = StompClient(
       config: StompConfig(
         url: _socketUrl,
@@ -231,9 +218,7 @@ class MechanicLiveLocationService {
           debugPrint('✅ Mechanic live tracking STOMP connected!');
 
           if (_lastLat != null && _lastLng != null) {
-            debugPrint(
-              '📤 Sending initial position after connect: $_lastLat, $_lastLng',
-            );
+            debugPrint('📤 Sending initial position after connect: $_lastLat, $_lastLng');
             _sendLocation(
               latitude: _lastLat!,
               longitude: _lastLng!,
@@ -244,15 +229,13 @@ class MechanicLiveLocationService {
         },
         onDisconnect: (_) {
           _isConnected = false;
-          debugPrint('⚠️ Mechanic live tracking disconnected');
+          debugPrint('🛑 Live tracking stopped! Mechanic live tracking disconnected');
         },
         onStompError: (frame) {
           _isConnected = false;
-          debugPrint('❌ Live tracking STOMP error: ${frame.body}');
         },
         onWebSocketError: (error) {
           _isConnected = false;
-          debugPrint('❌ Live tracking socket error: $error');
         },
       ),
     );
@@ -276,19 +259,16 @@ class MechanicLiveLocationService {
   }) {
     final mechanicId = UserSession().userId;
     if (mechanicId == null) {
-      debugPrint('⚠️ Send skipped: mechanicId is null');
       return;
     }
     if (_activeRequestId == null || _activeRequestId!.isEmpty) {
-      debugPrint('⚠️ Send skipped: active requestId missing');
+      debugPrint('! Send skipped: active requestId missing');
       return;
     }
     if (!_isConnected) {
-      debugPrint('⚠️ Send skipped: not connected yet');
       return;
     }
     if (_client == null) {
-      debugPrint('⚠️ Send skipped: client is null');
       return;
     }
 
@@ -309,23 +289,14 @@ class MechanicLiveLocationService {
         destination: '/app/mechanic/live-location',
         body: jsonEncode(payload),
       );
-      debugPrint(
-        '📤 SENT live location → requestId=$requestIdRaw, mechanicId=$mechanicId, lat=$latitude, lng=$longitude',
-      );
     } catch (e) {
       _isConnected = false;
-      debugPrint('❌ Live tracking send failed: $e');
     }
   }
-
- 
-
- 
 
   Future<bool> _ensureLocationPermission() async {
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      debugPrint('🛑 Live tracking skipped: location service disabled');
       return false;
     }
 
@@ -336,9 +307,6 @@ class MechanicLiveLocationService {
 
     final allowed = permission == LocationPermission.always ||
         permission == LocationPermission.whileInUse;
-    if (!allowed) {
-      debugPrint('🛑 Live tracking skipped: location permission denied');
-    }
     return allowed;
   }
 }

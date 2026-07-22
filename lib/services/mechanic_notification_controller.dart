@@ -21,48 +21,33 @@ class MechanicNotificationController {
   OverlayEntry? _overlayEntry;
   Timer? _heartbeatTimer;
   int? _mechanicId;
-  bool _isDisposed = false; // ✅ Track if disposed
-  bool _isOnline = false; // ✅ Track if mechanic is online (to control heartbeat)
+  bool _isDisposed = false;
+  bool _isOnline = false;
 
-  // Callbacks for live UI updates (e.g. on Dashboard)
   final List<Function(Map<String, dynamic> data, String type)> _listeners = [];
 
   void addListener(Function(Map<String, dynamic> data, String type) callback) {
     _listeners.add(callback);
   }
 
-  void removeListener(
-    Function(Map<String, dynamic> data, String type) callback,
-  ) {
+  void removeListener(Function(Map<String, dynamic> data, String type) callback) {
     _listeners.remove(callback);
   }
 
-  /// Ensure WebSocket is connected (call after disconnect or app resume)
   void ensureConnected() {
     if (_webSocketService != null && _mechanicId != null) {
-      debugPrint("🔄 Ensuring WebSocket connection for mechanic ID: $_mechanicId");
       _webSocketService!.ensureConnected(_mechanicId!);
-    } else {
-      debugPrint("⚠️ Cannot ensure connection - WebSocket or mechanicId is null");
     }
   }
 
   void init() {
-    if (_webSocketService != null) {
-      debugPrint("⚠️ MechanicNotificationController: Already initialized");
-      return; // Already initialized
-    }
+    if (_webSocketService != null) return;
 
     final int? mechId = UserSession().userId;
-    if (mechId == null) {
-      debugPrint("❌ MechanicNotificationController: User ID is null");
-      return;
-    }
+    if (mechId == null) return;
 
-    debugPrint("🚀 MechanicNotificationController: Initializing for mechanic ID: $mechId");
     _mechanicId = mechId;
-    _isDisposed = false; // ✅ Reset disposed flag
-    // DON'T set _isOnline here - let caller control it via startHeartbeatIfOnline()
+    _isDisposed = false;
 
     _webSocketService = WebSocketService(
       onNotificationReceived: (data, type) {
@@ -107,17 +92,12 @@ class MechanicNotificationController {
                 mapData.containsKey('userLat') ||
                 mapData.containsKey('latitude');
 
-        // Detect new Service Request format.
         if ((hasRoadRequestLocation && hasRoadRequestId) ||
             mapData.containsKey('userNotes') ||
             mapData.containsKey('notes')) {
-          mapData['requestId'] =
-              mapData['requestId'] ?? resolvedRoadRequestId;
+          mapData['requestId'] = mapData['requestId'] ?? resolvedRoadRequestId;
           EmergencyAlertService.instance.openRoadRequestAlert(mapData);
-          
-          // Optionally still notify listeners so dashboard updates its list
-          // But do NOT show the standard overlay
-          final request = _mapRoadRequest(mapData); // Fallback mapping for lists
+          final request = _mapRoadRequest(mapData);
           for (var listener in _listeners) {
             listener(request, type);
           }
@@ -130,100 +110,66 @@ class MechanicNotificationController {
             ? _mapStatusNotification(mapData, type)
             : _mapRoadRequest(mapData);
 
-        // 1. Show Global Overlay
         showNotificationOverlay(request, type, backendType: backendType);
 
-        // 2. Notify Listeners (like Dashboard)
         for (var listener in _listeners) {
           listener(request, type);
         }
       },
       onConnected: () {
-        debugPrint("🔗 WebSocket connected");
         // ✅ Start heartbeat ONLY if mechanic is online
         if (_isOnline) {
-          debugPrint("🔗 WebSocket connected & mechanic is ONLINE - starting heartbeat");
           _startHeartbeat();
         }
       },
       onDisconnected: () {
-        debugPrint("🔌 WebSocket disconnected");
-        // ✅ Stop heartbeat if it was running
         _stopHeartbeat();
       },
     );
 
     _webSocketService!.connect(mechId);
-    debugPrint(
-      "✅ MechanicNotificationController: WebSocket Connected for ID $mechId",
-    );
   }
 
-  /// Start sending heartbeat every 10 seconds
   void _startHeartbeat() {
-    // ✅ CRITICAL: Check session userType
     final sessionUserType = UserSession().userType?.toUpperCase();
-    if (sessionUserType != 'MECHANIC') {
-      debugPrint("🚫 Cannot start heartbeat - session userType is $sessionUserType (not MECHANIC)");
-      return;
-    }
-    
-    // ✅ CRITICAL: Don't start if disposed
-    if (_isDisposed) {
-      debugPrint("🚫 Cannot start heartbeat - controller is disposed");
-      return;
-    }
-    
-    _stopHeartbeat(); // Clear any existing timer
-    
+    if (sessionUserType != 'MECHANIC') return;
+    if (_isDisposed) return;
+
+    _stopHeartbeat();
     if (_mechanicId == null) return;
-    
-    // ✅ Mark as online
+
     _isOnline = true;
-    
     debugPrint("💓 Starting heartbeat for mechanic ID: $_mechanicId");
-    
-    // ✅ Timer runs continuously, even when app is backgrounded
+
     _heartbeatTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
-      // ✅ CRITICAL: Check session on every tick
       final currentUserType = UserSession().userType?.toUpperCase();
       if (currentUserType != 'MECHANIC') {
-        debugPrint("⏹️ Heartbeat stopping - session switched to $currentUserType");
         timer.cancel();
         _heartbeatTimer = null;
         return;
       }
-      
-      // ✅ CRITICAL: Check if mechanic is still online
+
       if (!_isOnline) {
-        debugPrint("⏹️ Heartbeat stopping - mechanic went offline");
         timer.cancel();
         _heartbeatTimer = null;
         return;
       }
-      
-      // Check if still valid
+
       if (_isDisposed || _mechanicId == null || _webSocketService == null) {
-        debugPrint("⏹️ Heartbeat stopping - disposed=$_isDisposed, mechId=$_mechanicId");
         timer.cancel();
         _heartbeatTimer = null;
         return;
       }
-      
+
       _sendHeartbeat();
     });
-    
-    // ✅ Send initial heartbeat ONLY if WebSocket is already connected
-    // If not connected yet, onConnected callback will handle it
+
+    // Send initial heartbeat ONLY if WebSocket is already connected
     if (_webSocketService != null && (_webSocketService!.client?.connected ?? false)) {
-      debugPrint("💓 WebSocket already connected - sending initial heartbeat");
       _sendHeartbeat();
-    } else {
-      debugPrint("⏳ WebSocket connecting... heartbeat will start after connection");
     }
   }
 
-  /// Stop heartbeat timer
   void _stopHeartbeat() {
     if (_heartbeatTimer != null) {
       debugPrint("💔 Stopping heartbeat for mechanic ID: $_mechanicId");
@@ -232,22 +178,15 @@ class MechanicNotificationController {
     }
   }
 
-  /// Send heartbeat message to backend
   void _sendHeartbeat() {
-    // ✅ Check session first
     final sessionUserType = UserSession().userType?.toUpperCase();
     if (sessionUserType != 'MECHANIC') {
-      debugPrint("⚠️ Cannot send heartbeat - session is $sessionUserType (not MECHANIC)");
-      _stopHeartbeat(); // Stop the timer
+      _stopHeartbeat();
       return;
     }
-    
-    // Triple check before sending
-    if (_isDisposed || _webSocketService == null || _mechanicId == null) {
-      debugPrint("⚠️ Cannot send heartbeat - disposed=$_isDisposed, mechId=$_mechanicId");
-      return;
-    }
-    
+
+    if (_isDisposed || _webSocketService == null || _mechanicId == null) return;
+
     try {
       _webSocketService!.sendMessage(
         destination: '/app/heartbeat',
@@ -255,58 +194,34 @@ class MechanicNotificationController {
       );
       debugPrint("💚 Heartbeat sent for mechanic ID: $_mechanicId");
     } catch (e) {
-      debugPrint("⚠️ Heartbeat send skipped - WebSocket not ready yet: $e");
-      // Don't stop timer - it will retry on next tick when WebSocket is connected
+      // Don't stop timer - will retry on next tick
     }
   }
 
-  /// Call this when app comes to foreground - ensure WebSocket is connected
-  /// BUT only if mechanic is online
   void resumeHeartbeat() {
-    debugPrint("▶️ App foregrounded - checking if should reconnect");
-    
-    // ✅ ONLY reconnect if mechanic is online
-    if (!_isOnline) {
-      debugPrint("⏸️ Mechanic is OFFLINE - skipping WebSocket reconnect");
-      return;
-    }
-    
-    debugPrint("🔄 Mechanic is ONLINE - ensuring WebSocket connection");
-    
-    // Reconnect WebSocket if disconnected
+    if (!_isOnline) return;
     if (_webSocketService != null && _mechanicId != null) {
       _webSocketService!.ensureConnected(_mechanicId!);
     }
   }
 
-  /// Start heartbeat when mechanic goes ONLINE
   void startHeartbeatIfOnline() {
-    debugPrint("💓 startHeartbeatIfOnline called");
-    // ✅ Set flag FIRST so onConnected callback knows to start heartbeat
     _isOnline = true;
-    // If WebSocket already connected, start heartbeat immediately
-    // If not connected yet, onConnected callback will start it
     _startHeartbeat();
   }
 
-  /// Stop heartbeat only - WebSocket stays connected to receive requests
   void stopHeartbeatOnly() {
-    debugPrint("⏸️ stopHeartbeatOnly - Stopping heartbeat timer only");
     _stopHeartbeat();
   }
-  
-  /// Stop heartbeat AND disconnect WebSocket (for offline mode)
+
   void disconnectCompletely() {
-    debugPrint("🔴 disconnectCompletely - Stopping heartbeat & disconnecting WebSocket");
-    _isOnline = false; // ✅ Mark as offline FIRST (stops timer on next tick)
+    _isOnline = false;
     _stopHeartbeat();
     _webSocketService?.disconnect();
-    // Don't nullify _webSocketService so we can reconnect later
   }
 
   void dispose() {
-    debugPrint("🧹 MechanicNotificationController: Disposing");
-    _isDisposed = true; // ✅ Mark as disposed FIRST
+    _isDisposed = true;
     _stopHeartbeat();
     _webSocketService?.disconnect();
     _webSocketService = null;
@@ -339,10 +254,7 @@ class MechanicNotificationController {
     required String destination,
     required Function(Map<String, dynamic> data) onMessage,
   }) {
-    if (_webSocketService == null) {
-      debugPrint("❌ MechanicNotificationController: Cannot subscribe, WebSocket is null");
-      return null;
-    }
+    if (_webSocketService == null) return null;
 
     return _webSocketService!.subscribe(
       destination: destination,
@@ -353,9 +265,7 @@ class MechanicNotificationController {
           if (data is Map) {
             onMessage(Map<String, dynamic>.from(data));
           }
-        } catch (e) {
-          debugPrint('Error decoding topic message: $e');
-        }
+        } catch (_) {}
       },
     );
   }
@@ -375,11 +285,10 @@ class MechanicNotificationController {
     final String userimage = request['userimage'] ?? '';
     final String distance = request['distance'] ?? '';
 
-    // Determine title and styling
     String title = type == 'appointment'
         ? 'New Appointment Request!'
         : 'New Daily Request!';
-    Color accentColor = const Color(0xFFFB3300); // Default primary
+    Color accentColor = const Color(0xFFFB3300);
     IconData headerIcon = Icons.notifications_active_rounded;
 
     final String bType = backendType ?? request['backendType'] ?? '';
@@ -493,11 +402,7 @@ class MechanicNotificationController {
                 ),
                 const SizedBox(width: 8),
                 GestureDetector(
-                  onTap: () {
-                    _removeOverlay();
-                    // Optional: Navigate to notification center using navigatorKey
-                    // navigatorKey.currentState?.pushNamed('/mechanic-notifications');
-                  },
+                  onTap: _removeOverlay,
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 12,
@@ -534,8 +439,7 @@ class MechanicNotificationController {
     return {
       'type': 'road',
       'requestId': data['requestId'] ?? data['requestid'],
-      'id':
-          data['userid']?.toString() ??
+      'id': data['userid']?.toString() ??
           data['requestId']?.toString() ??
           DateTime.now().millisecondsSinceEpoch.toString(),
       'userName': data['username'] ?? 'Unknown User',
@@ -554,12 +458,10 @@ class MechanicNotificationController {
 
   Map<String, dynamic> _mapAppointmentRequest(Map<String, dynamic> data) {
     final rawUser = data['user'];
-    final Map<String, dynamic> user = (rawUser is Map)
-        ? Map<String, dynamic>.from(rawUser)
-        : {};
+    final Map<String, dynamic> user =
+        (rawUser is Map) ? Map<String, dynamic>.from(rawUser) : {};
 
-    final String username =
-        data['username'] ??
+    final String username = data['username'] ??
         data['userName'] ??
         user['username'] ??
         user['phonenumber'] ??
@@ -577,35 +479,31 @@ class MechanicNotificationController {
         ? rawIsRead
         : (rawIsRead?.toString().toLowerCase() == 'true');
 
-    final String notificationId =
-        (data['notificationid'] ??
-                data['notificationId'] ??
-                data['id'] ??
-                data['appointmentid'] ??
-                data['appointmentId'] ??
-                DateTime.now().millisecondsSinceEpoch.toString())
-            .toString();
+    final String notificationId = (data['notificationid'] ??
+            data['notificationId'] ??
+            data['id'] ??
+            data['appointmentid'] ??
+            data['appointmentId'] ??
+            DateTime.now().millisecondsSinceEpoch.toString())
+        .toString();
 
     return {
       'type': 'appointment',
       'id': notificationId,
       'notificationId': notificationId,
-      'appointmentId': (data['appointmentid'] ?? data['appointmentId'] ?? '')
-          .toString(),
+      'appointmentId':
+          (data['appointmentid'] ?? data['appointmentId'] ?? '').toString(),
       'userName': username,
       'userimage': userImg,
-      'location':
-          data['useraddress'] ?? data['address'] ?? 'Address not provided',
+      'location': data['useraddress'] ?? data['address'] ?? 'Address not provided',
       'time': TimeAgo.format(data['created_at']),
-      'issue':
-          data['problemDescription'] ??
+      'issue': data['problemDescription'] ??
           data['problem'] ??
           'Service appointment request',
       'price': 'Rs. --',
       'distance': '',
       'scheduledTime': scheduled,
-      'serviceType':
-          data['serviceType'] ?? data['servicetype'] ?? 'General Service',
+      'serviceType': data['serviceType'] ?? data['servicetype'] ?? 'General Service',
       'status': data['status']?.toString() ?? 'PENDING',
       'isRead': isRead,
       'created_at': data['created_at'] ?? '',
@@ -623,13 +521,11 @@ class MechanicNotificationController {
 
     return {
       'type': 'appointment',
-      'userName':
-          data['title'] ??
+      'userName': data['title'] ??
           (socketType == 'expired'
               ? 'Appointment Expired'
               : 'Appointment Cancelled'),
-      'location':
-          data['message'] ??
+      'location': data['message'] ??
           (socketType == 'expired'
               ? 'This appointment was accepted by another mechanic'
               : 'User cancelled the request'),

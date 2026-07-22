@@ -128,7 +128,6 @@ class _HomeScreenState extends State<HomeScreen> {
         await prefs.setString('location_name', finalLabel);
       }
     } catch (e) {
-      debugPrint("Error fetching home location: $e");
       if (mounted && _locationName == "Loading location...") {
         setState(() {
           _locationName = "Location not available";
@@ -204,45 +203,47 @@ class _HomeScreenState extends State<HomeScreen> {
         stompConnectHeaders: UserSession().getAuthHeader(),
         webSocketConnectHeaders: UserSession().getAuthHeader(),
         onConnect: (_) {
-          _activeRequestClient?.subscribe(
-            destination: '/topic/request/$requestId',
-            callback: (frame) {
-              if (frame.body == null || frame.body!.isEmpty || !mounted) return;
-              try {
-                final decoded = jsonDecode(frame.body!);
-                if (decoded is! Map) return;
-                final data = Map<String, dynamic>.from(decoded);
-                final backendType =
-                    (data['type'] ?? data['backendType'])?.toString().toUpperCase() ??
-                        '';
-                final status = (data['status'] ?? data['requestStatus'])
-                        ?.toString()
-                        .toUpperCase() ??
-                    '';
+          // Listen on user-specific topic for ALL request status updates
+          final userId = UserSession().userId;
+          if (userId != null) {
+            _activeRequestClient?.subscribe(
+              destination: '/topic/user/requests/$userId',
+              callback: (frame) {
+                if (frame.body == null || frame.body!.isEmpty || !mounted) return;
+                try {
+                  final decoded = jsonDecode(frame.body!);
+                  if (decoded is! Map) return;
+                  final data = Map<String, dynamic>.from(decoded);
+                  final backendType =
+                      (data['type'] ?? data['backendType'])?.toString().toUpperCase() ??
+                          '';
+                  final status = (data['status'] ?? data['requestStatus'])
+                          ?.toString()
+                          .toUpperCase() ??
+                      '';
 
-                if (backendType == 'ROAD_REQUEST_CANCELLED' ||
-                    backendType == 'ROAD_REQUEST_EXPIRED' ||
-                    backendType == 'ROAD_REQUEST_REJECTED' ||
-                    backendType == 'ROAD_REQUEST_COMPLETED' ||
-                    backendType == 'PAYMENT_DONE' ||
-                    backendType == 'PAYMENT_SUCCESS' ||
-                    backendType == 'PAYMENT_COMPLETED' ||
-                    status == 'CANCELLED' ||
-                    status == 'REJECTED' ||
-                    status == 'COMPLETED' ||
-                    status == 'EXPIRED') {
-                  ActiveServiceRequestTracking.clearIfMatches(requestId, status: status);
-                  _teardownActiveRequestSubscription();
-                  if (mounted) setState(() {});
+                  if (backendType == 'ROAD_REQUEST_CANCELLED' ||
+                      backendType == 'ROAD_REQUEST_EXPIRED' ||
+                      backendType == 'ROAD_REQUEST_REJECTED' ||
+                      backendType == 'ROAD_REQUEST_COMPLETED' ||
+                      backendType == 'PAYMENT_DONE' ||
+                      backendType == 'PAYMENT_SUCCESS' ||
+                      backendType == 'PAYMENT_COMPLETED' ||
+                      status == 'CANCELLED' ||
+                      status == 'REJECTED' ||
+                      status == 'COMPLETED' ||
+                      status == 'EXPIRED') {
+                    ActiveServiceRequestTracking.clearIfMatches(requestId, status: status);
+                    _teardownActiveRequestSubscription();
+                    if (mounted) setState(() {});
+                  }
+                } catch (e) {
                 }
-              } catch (e) {
-                debugPrint('Home request topic parse error: $e');
-              }
-            },
-          );
+              },
+            );
+          }
         },
-        onWebSocketError: (error) =>
-            debugPrint('Home request WS error: $error'),
+        onWebSocketError: (error) {},
       ),
     );
     _activeRequestClient?.activate();
@@ -279,7 +280,6 @@ class _HomeScreenState extends State<HomeScreen> {
         if (mounted) setState(() => _unreadNotifCount = unread);
       }
     } catch (e) {
-      debugPrint('? Error fetching notif count: $e');
     }
   }
 
@@ -308,7 +308,6 @@ class _HomeScreenState extends State<HomeScreen> {
         }
         
         // Printing the URL to terminal as requested
-        debugPrint('?? Safepay Checkout URL: $checkoutUrl');
         
         if (mounted) {
           if (kIsWeb) {
@@ -351,23 +350,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
     try {
       final headers = UserSession().getAuthHeader();
-      debugPrint('🔑 Auth Header: ${headers['Authorization']}');
-      debugPrint('🔑 UserSession: email=${UserSession().email}, userType=${UserSession().userType}');
       
       final response = await http.get(
         url,
         headers: headers,
       );
 
-      debugPrint('📡 Dashboard Response Status: ${response.statusCode}');
-      debugPrint('📡 Dashboard Response Body: ${response.body.length > 200 ? response.body.substring(0, 200) : response.body}');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         
         // Handle both flat and nested response formats
         final user = data['user'] ?? data; // If no 'user' key, data itself is the user object
-        debugPrint('✅ Dashboard data parsed. User: ${user['username']}');
         
         setState(() {
           if (user['username'] != null || user['userid'] != null) {
@@ -423,22 +417,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
               // 🔍 DEBUG: Print each mechanic's subscription plan on the Dashboard
               for (final m in nearbyMechanics) {
-                debugPrint('🔧 Dashboard Mechanic: ${m['name']} | subscriptionPlan: ${m['subscriptionPlan']}');
               }
             }
           }
           _isLoading = false;
         });
       } else {
-        debugPrint("❌ Failed to fetch dashboard: ${response.statusCode}");
-        debugPrint("❌ Response body: ${response.body}");
         setState(() {
           _userName = "USER";
           _isLoading = false;
         });
       }
     } catch (e) {
-      debugPrint("Error fetching dashboard: $e");
       setState(() {
         _userName = "USER";
         _isLoading = false;
@@ -1514,7 +1504,6 @@ class _NearbyMechanicCompactCard extends StatelessWidget {
                           },
                           errorBuilder: (context, error, stackTrace) {
                             // Error ko console mein print karein
-                            debugPrint('Image Load Error for ${mechanic['name']}: $error');
                             return Icon(Icons.person_outline_rounded, size: 24, color: Colors.grey.shade400);
                           },
                         )

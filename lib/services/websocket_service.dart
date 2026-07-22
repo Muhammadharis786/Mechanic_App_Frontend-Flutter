@@ -33,14 +33,12 @@ class WebSocketService {
         stompConnectHeaders: connectHeaders,
         webSocketConnectHeaders: connectHeaders,
         onConnect: (StompFrame frame) {
-          debugPrint('✅ Connected to WebSocket for mechanic ID: $mechanicId');
           _subscribe(mechanicId);
           onConnected?.call();
         },
-        onStompError: (frame) => debugPrint('❌ STOMP Error: ${frame.body}'),
-        onWebSocketError: (error) => debugPrint('❌ WebSocket Error: $error'),
+        onStompError: (frame) {},
+        onWebSocketError: (error) {},
         onDisconnect: (frame) {
-          debugPrint('💔 Disconnected from WebSocket');
           onDisconnected?.call();
         },
       ),
@@ -51,31 +49,21 @@ class WebSocketService {
   /// Send message to backend (for heartbeat, etc.)
   void sendMessage({required String destination, required String body}) {
     if (client == null || !client!.connected) {
-      debugPrint('❌ Cannot send message - WebSocket not connected');
       throw Exception('WebSocket not connected');
     }
-    
-    try {
-      client!.send(
-        destination: destination,
-        body: body,
-      );
-    } catch (e) {
-      debugPrint('❌ Error sending message to $destination: $e');
-      rethrow;
-    }
+    client!.send(destination: destination, body: body);
   }
 
-  /// Ensure WebSocket is connected, reconnect if needed
   void ensureConnected(int mechanicId) {
     if (client == null || !client!.connected) {
-      debugPrint('🔄 Reconnecting WebSocket for mechanic ID: $mechanicId');
       connect(mechanicId);
     }
   }
 
   void _subscribe(int mechanicId) {
-    _subscribeToTopic('/topic/nearbymechanics/$mechanicId', 'road');
+    // All service request notifications (broadcast + specific) come on this single path
+    _subscribeToTopic('/topic/mechanic/requests/$mechanicId', 'serviceRequest');
+    // Appointment-related topics
     _subscribeToTopic(
       '/topic/bookappointment/nearbymechanics/$mechanicId',
       'appointment',
@@ -85,11 +73,6 @@ class WebSocketService {
       'cancel',
     );
     _subscribeToTopic('/topic/appointment/expired/$mechanicId', 'expired');
-    _subscribeToTopic('/topic/mechanic/requests/$mechanicId', 'serviceRequest');
-    _subscribeToTopic(
-      '/topic/mechanic/slectedmechanic/requests/$mechanicId',
-      'serviceRequest',
-    );
     _subscribeToTopic(
       '/topic/appointment/appointmentdone/$mechanicId',
       'appointment_done',
@@ -101,7 +84,6 @@ class WebSocketService {
       destination: destination,
       onMessage: (body) {
         if (body == null) return;
-        debugPrint('[$type] Notification received on $destination: $body');
         try {
           final dynamic decoded = jsonDecode(body);
           if (decoded is List) {
@@ -111,9 +93,7 @@ class WebSocketService {
           } else {
             onNotificationReceived(decoded, type);
           }
-        } catch (e) {
-          debugPrint('Error decoding notification: $e');
-        }
+        } catch (_) {}
       },
     );
   }

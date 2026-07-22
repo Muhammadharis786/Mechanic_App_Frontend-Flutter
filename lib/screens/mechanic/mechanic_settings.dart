@@ -8,6 +8,9 @@ import '../role_selection_screen.dart';
 import '../../widgets/app_back_button.dart';
 import '../../services/app_state.dart';
 import '../../l10n/app_strings.dart';
+import '../../services/mechanic_presence_service.dart';
+import '../../services/mechanic_notification_controller.dart';
+import '../../services/mechanic_live_location_service.dart';
 import 'mechanic_subscription_screen.dart';
 
 class MechanicSettingsScreen extends StatefulWidget {
@@ -72,7 +75,12 @@ class _MechanicSettingsScreenState extends State<MechanicSettingsScreen> {
               Navigator.pop(context); // close dialog
               final currentThemeMode = themeNotifier.value == ThemeMode.dark ? 'dark' : 'light';
               final currentLanguageCode = appLanguageController.value.languageCode;
-              
+
+              // Stop online presence / heartbeat before logout
+              await MechanicPresenceService.instance.updateOnlineStatus(false);
+              MechanicNotificationController().dispose();
+              await MechanicLiveLocationService.instance.stop();
+
               // ✅ Firebase logout
               await _auth.signOut();
 
@@ -109,6 +117,9 @@ class _MechanicSettingsScreenState extends State<MechanicSettingsScreen> {
             onPressed: () async {
               final nav = Navigator.of(context);
               Navigator.pop(context);
+              await MechanicPresenceService.instance.updateOnlineStatus(false);
+              MechanicNotificationController().dispose();
+              await MechanicLiveLocationService.instance.stop();
               await _auth.currentUser?.delete();
               await UserSession().logout();
               nav.pushAndRemoveUntil(

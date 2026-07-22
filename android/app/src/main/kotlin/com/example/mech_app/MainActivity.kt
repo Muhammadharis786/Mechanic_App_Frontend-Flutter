@@ -1,6 +1,7 @@
 package com.example.mech_app
 
 import android.content.Intent
+import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -15,11 +16,35 @@ class MainActivity : FlutterActivity() {
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "startPresenceGuard" -> {
-                    startService(Intent(this, MechanicPresenceService::class.java))
+                    val args = call.arguments as? Map<*, *>
+                    val mechanicId = when (val raw = args?.get("mechanicId")) {
+                        is Number -> raw.toLong()
+                        is String -> raw.toLongOrNull() ?: -1L
+                        else -> -1L
+                    }
+                    val authHeader = args?.get("authHeader")?.toString()
+
+                    val intent = Intent(this, MechanicPresenceService::class.java).apply {
+                        if (mechanicId > 0) {
+                            putExtra(MechanicPresenceService.EXTRA_MECHANIC_ID, mechanicId)
+                        }
+                        if (!authHeader.isNullOrBlank()) {
+                            putExtra(MechanicPresenceService.EXTRA_AUTH_HEADER, authHeader)
+                        }
+                    }
+
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        startForegroundService(intent)
+                    } else {
+                        startService(intent)
+                    }
                     result.success(null)
                 }
                 "stopPresenceGuard" -> {
-                    stopService(Intent(this, MechanicPresenceService::class.java))
+                    val stopIntent = Intent(this, MechanicPresenceService::class.java).apply {
+                        action = MechanicPresenceService.ACTION_STOP
+                    }
+                    startService(stopIntent)
                     result.success(null)
                 }
                 else -> result.notImplemented()

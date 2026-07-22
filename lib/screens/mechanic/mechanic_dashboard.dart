@@ -115,7 +115,6 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
           popupMessage = "Your $_subscriptionPlan plan has expired. Please renew your plan to continue receiving premium benefits.";
         }
       } catch (e) {
-        debugPrint('Error parsing plan_endDate: $e');
       }
     }
 
@@ -280,8 +279,10 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
     super.didChangeAppLifecycleState(state);
 
     if (state == AppLifecycleState.resumed) {
-      // App came to foreground - ensure WebSocket reconnected
+      // App came to foreground - ensure WebSocket + Android FG heartbeat
       MechanicNotificationController().resumeHeartbeat();
+      unawaited(MechanicPresenceService.instance.ensureAndroidPresenceGuard());
+      unawaited(_syncOnlineUiFromLocalFlag());
       return;
     }
 
@@ -291,6 +292,20 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
     if (shouldGoOffline && isOnline && !_lifecycleOfflineUpdateInProgress) {
       _lifecycleOfflineUpdateInProgress = true;
       _updateOnlineStatus(false, showSnack: false);
+    }
+  }
+
+  /// Notification "Go offline" can mark native prefs offline while UI still says online.
+  Future<void> _syncOnlineUiFromLocalFlag() async {
+    final localOnline = await MechanicPresenceService.instance.localOnlineFlag();
+    if (!mounted) return;
+    if (!localOnline && (_isOnline || isOnline)) {
+      setState(() {
+        _isOnline = false;
+        isOnline = false;
+      });
+      MechanicNotificationController().disconnectCompletely();
+      unawaited(MechanicLiveLocationService.instance.stop());
     }
   }
 
@@ -310,7 +325,6 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
   @override
   void didPopNext() {
     // Called when returning to this screen from another screen
-    debugPrint('🔄 Dashboard: Returned from another screen - refreshing');
     setState(() => _isLoading = true);
     _refreshDashboard();
   }
@@ -318,19 +332,16 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
   @override
   void didPush() {
     // Called when this screen is pushed
-    debugPrint('🔄 Dashboard: Screen pushed');
   }
 
   @override
   void didPop() {
     // Called when this screen is popped
-    debugPrint('🔄 Dashboard: Screen popped');
   }
 
   @override
   void didPushNext() {
     // Called when a new screen is pushed on top
-    debugPrint('🔄 Dashboard: New screen pushed on top');
   }
 
   void _initWebSocket() {
@@ -421,56 +432,58 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
         stompConnectHeaders: UserSession().getAuthHeader(),
         webSocketConnectHeaders: UserSession().getAuthHeader(),
         onConnect: (_) {
-          _activeRequestClient?.subscribe(
-            destination: '/topic/request/$requestId',
-            callback: (frame) {
-              if (frame.body == null || frame.body!.isEmpty) return;
-              try {
-                final decoded = jsonDecode(frame.body!);
-                if (decoded is! Map) return;
-                final data = Map<String, dynamic>.from(decoded);
-                final backendType =
-                    (data['type'] ?? data['backendType'])?.toString() ?? '';
-                final status =
-                    (data['status'] ?? data['requestStatus'])
-                        ?.toString()
-                        .toUpperCase() ??
-                    '';
+          // Listen on mechanic-specific topic for ALL request status updates
+          final mechanicId = UserSession().userId;
+          if (mechanicId != null) {
+            _activeRequestClient?.subscribe(
+              destination: '/topic/mechanic/requests/$mechanicId',
+              callback: (frame) {
+                if (frame.body == null || frame.body!.isEmpty) return;
+                try {
+                  final decoded = jsonDecode(frame.body!);
+                  if (decoded is! Map) return;
+                  final data = Map<String, dynamic>.from(decoded);
+                  debugPrint('📩 MECHANIC DASHBOARD: Received on /topic/mechanic/requests/$mechanicId');
+                  final backendType =
+                      (data['type'] ?? data['backendType'])?.toString() ?? '';
+                  final status =
+                      (data['status'] ?? data['requestStatus'])
+                          ?.toString()
+                          .toUpperCase() ??
+                      '';
 
-                if (backendType == 'ROAD_REQUEST_CANCELLED' ||
-                    backendType == 'ROAD_REQUEST_EXPIRED' ||
-                    backendType == 'ROAD_REQUEST_REJECTED' ||
-                    backendType == 'ROAD_REQUEST_COMPLETED' ||
-                    backendType == 'PAYMENT_DONE' ||
-                    backendType == 'PAYMENT_SUCCESS' ||
-                    backendType == 'PAYMENT_COMPLETED' ||
-                    status == 'CANCELLED' ||
-                    status == 'REJECTED' ||
-                    status == 'COMPLETED' ||
-                    status == 'EXPIRED') {
-                  ActiveServiceRequestTracking.clearIfMatches(
-                    requestId,
-                    status: status,
-                  );
-                  _teardownActiveRequestSubscription();
-                  if (mounted) {
-                    setState(() {});
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(data['message']?.toString() ?? 'Customer cancelled the request'),
-                        backgroundColor: Colors.orange,
-                      ),
+                  if (backendType == 'ROAD_REQUEST_CANCELLED' ||
+                      backendType == 'ROAD_REQUEST_EXPIRED' ||
+                      backendType == 'ROAD_REQUEST_REJECTED' ||
+                      backendType == 'ROAD_REQUEST_COMPLETED' ||
+                      backendType == 'PAYMENT_DONE' ||
+                      backendType == 'PAYMENT_SUCCESS' ||
+                      backendType == 'PAYMENT_COMPLETED' ||
+                      status == 'CANCELLED' ||
+                      status == 'REJECTED' ||
+                      status == 'COMPLETED' ||
+                      status == 'EXPIRED') {
+                    ActiveServiceRequestTracking.clearIfMatches(
+                      requestId,
+                      status: status,
                     );
+                    _teardownActiveRequestSubscription();
+                    if (mounted) {
+                      setState(() {});
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(data['message']?.toString() ?? 'Customer cancelled the request'),
+                          backgroundColor: Colors.orange,
+                        ),
+                      );
+                    }
                   }
-                }
-              } catch (e) {
-                debugPrint('Dashboard request topic parse error: $e');
-              }
-            },
-          );
+                } catch (e) {}
+              },
+            );
+          }
         },
-        onWebSocketError: (error) =>
-            debugPrint('Dashboard request WS error: $error'),
+        onWebSocketError: (error) {},
       ),
     );
     _activeRequestClient?.activate();
@@ -564,8 +577,6 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
           // ✅ Init WebSocket & start heartbeat ONLY if mechanic is ONLINE
           _initWebSocket();
           MechanicNotificationController().startHeartbeatIfOnline();
-        } else {
-          debugPrint('🔴 Mechanic is OFFLINE - WebSocket & heartbeat NOT started');
         }
         await _syncActiveTrackingWithServer();
         _subscribeActiveRequestTopic();
@@ -596,9 +607,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
           });
         }
       }
-    } catch (e) {
-      debugPrint('Recent jobs fetch failed: $e');
-    }
+    } catch (e) {}
   }
 
   Future<void> _refreshDashboard() async {
@@ -613,23 +622,15 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
   /// Wrapper function for AppBar toggle button (no parameters)
   Future<void> _toggleOnlineStatus() async {
     if (_isTogglingOnlineStatus) return;
-    
-    debugPrint('🔘 TOGGLE CLICKED: Current status = $_isOnline');
-    
     setState(() => _isTogglingOnlineStatus = true);
     
     // Toggle the status
     final newStatus = !_isOnline;
-    
-    debugPrint('🔘 TOGGLE: Calling API with new status = $newStatus');
-    
     await _updateOnlineStatus(newStatus, showSnack: true);
     
     if (mounted) {
       setState(() => _isTogglingOnlineStatus = false);
     }
-    
-    debugPrint('🔘 TOGGLE COMPLETE: New status = $_isOnline');
   }
 
   Future<void> _updateOnlineStatus(bool value, {bool showSnack = true}) async {
@@ -660,7 +661,6 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
 
         if (value) {
           // ✅ ONLINE: Reconnect WebSocket & start heartbeat
-          debugPrint('🟢 Mechanic went ONLINE - Reconnecting WebSocket & starting heartbeat');
           _lifecycleOfflineUpdateInProgress = false;
           
           // Reconnect WebSocket (init if first time, or reconnect if disconnected)
@@ -679,7 +679,6 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
           );
         } else {
           // ✅ OFFLINE: Stop heartbeat AND disconnect WebSocket completely
-          debugPrint('🔴 Mechanic went OFFLINE - Stopping heartbeat & disconnecting WebSocket');
           MechanicNotificationController().disconnectCompletely();
           MechanicLiveLocationService.instance.stop();
         }
@@ -744,9 +743,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
           });
         }
       }
-    } catch (e) {
-      debugPrint("❌ Error fetching appointment notifications: $e");
-    }
+    } catch (e) {}
   }
 
   // ignore: unused_element
@@ -2385,7 +2382,6 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
           ),
         );
       } catch (e) {
-        debugPrint('Error parsing plan_endDate for banner: $e');
       }
     }
     

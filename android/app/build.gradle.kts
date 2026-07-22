@@ -11,9 +11,8 @@ dependencies {
   
   implementation(platform("com.google.firebase:firebase-bom:34.7.0"))
   coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
-
-
-
+  implementation("com.squareup.okhttp3:okhttp:4.12.0")
+  implementation("androidx.core:core-ktx:1.16.0")
 
   // TODO: Add the dependencies for Firebase products you want to use
   // When using the BoM, don't specify versions in Firebase dependencies

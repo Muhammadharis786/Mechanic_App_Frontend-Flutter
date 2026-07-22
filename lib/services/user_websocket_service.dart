@@ -20,12 +20,11 @@ class UserWebSocketService {
         stompConnectHeaders: UserSession().getAuthHeader(),
         webSocketConnectHeaders: UserSession().getAuthHeader(),
         onConnect: (StompFrame frame) {
-          print('✅ User WebSocket Connected');
           _subscribe(userId);
         },
-        onStompError: (frame) => print('❌ User STOMP Error: ${frame.body}'),
-        onWebSocketError: (error) => print('❌ User WebSocket Error: $error'),
-        onDisconnect: (frame) => print('ℹ️ User WebSocket Disconnected'),
+        onStompError: (frame) {},
+        onWebSocketError: (error) {},
+        onDisconnect: (frame) {},
       ),
     );
     client?.activate();
@@ -39,8 +38,7 @@ class UserWebSocketService {
     _subscribeToTopic('/topic/appointment/in-progress/$userId', 'in_progress');
     _subscribeToTopic('/topic/appointment/completework/$userId', 'work_completed');
     _subscribeToTopic('/topic/appointment/sendcharges/$userId', 'send_charges');
-    _subscribeToTopic('/topic/request-status/$userId', 'request_expired');
-    _subscribeToTopic('/topic/user/requests/$userId', 'request_cancelled');
+    _subscribeToTopic('/topic/user/requests/$userId', 'service_request');
   }
 
   void _subscribeToTopic(String destination, String type) {
@@ -55,7 +53,6 @@ class UserWebSocketService {
               onNotificationReceived(Map<String, dynamic>.from(decoded), type);
             }
           } catch (e) {
-            print('❌ Error decoding user notification: $e');
           }
         }
       },

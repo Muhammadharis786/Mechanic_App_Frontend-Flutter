@@ -374,11 +374,9 @@ class _MechanicUserMapState extends State<MechanicUserMap>
     final requestId = widget.requestData['requestId']?.toString() ??
         widget.requestData['requestid']?.toString();
     if (requestId == null || requestId.isEmpty) {
-      debugPrint('🔴 MECHANIC: Cannot start polling - requestId is null/empty');
       return;
     }
 
-    debugPrint('🟢 MECHANIC: Starting workflow polling for requestId=$requestId');
     _workflowPollTimer?.cancel();
     _workflowPollTimer = Timer.periodic(const Duration(seconds: 3), (_) {
       if (!mounted || _isClosingForCancellation || _showJobCompletedBanner) {
@@ -475,7 +473,6 @@ class _MechanicUserMapState extends State<MechanicUserMap>
   Future<void> _refreshWorkflowFromServer() async {
     // ✅ CRITICAL: Check if widget is still mounted BEFORE making API call
     if (!mounted || _isClosingForCancellation || _showJobCompletedBanner) {
-      debugPrint('🔴 MECHANIC: Skipping poll - widget disposed or job completed');
       _workflowPollTimer?.cancel();
       return;
     }
@@ -483,11 +480,9 @@ class _MechanicUserMapState extends State<MechanicUserMap>
     final requestId = widget.requestData['requestId']?.toString() ??
         widget.requestData['requestid']?.toString();
     if (requestId == null || requestId.isEmpty) {
-      debugPrint('🔴 MECHANIC: refreshWorkflow - requestId is null/empty');
       return;
     }
 
-    debugPrint('🔵 MECHANIC: Polling API for requestId=$requestId...');
     
     try {
       final response = await http.get(
@@ -498,13 +493,11 @@ class _MechanicUserMapState extends State<MechanicUserMap>
       );
 
       if (!mounted || response.statusCode != 200 || response.body.isEmpty) {
-        debugPrint('🔴 MECHANIC: API failed - status=${response.statusCode}, mounted=$mounted');
         return;
       }
 
       final decoded = jsonDecode(response.body);
       if (decoded is! Map) {
-        debugPrint('🔴 MECHANIC: Response is not a Map');
         return;
       }
 
@@ -550,13 +543,9 @@ class _MechanicUserMapState extends State<MechanicUserMap>
       }
 
       final merged = _mergeWorkflowData(_localTrackingSnapshot(), serverData);
-      debugPrint('🔵 MECHANIC POLL: status=$status, type=$backendType');
-      debugPrint('🔵 MECHANIC STATE: hasSentPrice=$_hasSentPrice, workStarted=$_workStarted, paymentPending=$_paymentPending, workCompleted=$_workCompleted');
-      debugPrint('🔵 MECHANIC MERGED: hasSentPrice=${merged['hasSentPrice']}, workStarted=${merged['workStarted']}, finalPrice=${merged['finalPrice']}');
       setState(() => _restoreWorkflowStateFrom(merged));
       _persistWorkflowState(finalPrice: _approvedFinalPrice);
     } catch (e) {
-      debugPrint('🔴 MECHANIC: Workflow refresh failed: $e');
     }
   }
 
@@ -589,9 +578,17 @@ class _MechanicUserMapState extends State<MechanicUserMap>
         _statusMeansApprovedPayment(
           data['status']?.toString().toUpperCase() ?? '',
         )) {
+      debugPrint('✅ MECHANIC MAP: User approved payment');
+      debugPrint('🔍 MECHANIC MAP: Approved finalPrice = ${_extractFinalPrice(data)}');
+      debugPrint('🔍 MECHANIC MAP: Approved arrivalPrice = ${_extractArrivalPrice(data)}');
+      
       if (!mounted) return;
       setState(() => _applyApprovedCharges(data));
       _persistWorkflowState(finalPrice: _approvedFinalPrice);
+      
+      debugPrint('✅ MECHANIC MAP: _workStarted = $_workStarted');
+      debugPrint('✅ MECHANIC MAP: _approvedFinalPrice = $_approvedFinalPrice');
+      
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -605,6 +602,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
     }
 
     if (backendType == 'PAYMENT_DONE' || status == 'COMPLETED') {
+      debugPrint('✅ MECHANIC MAP: Payment received - job completed!');
       if (!mounted) return;
       _stopWorkflowPolling();
       ActiveServiceRequestTracking.clear();
@@ -636,6 +634,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
 
     if (backendType == 'PAYMENT_PENDING' ||
         _statusMeansPaymentPending(status)) {
+      debugPrint('✅ MECHANIC MAP: Payment marked as pending');
       if (!mounted) return;
       final snapshot = _localTrackingSnapshot();
       setState(() {
@@ -648,6 +647,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
         _approvedArrivalPrice =
             _extractArrivalPrice(data) ?? _extractArrivalPrice(snapshot) ?? _approvedArrivalPrice;
       });
+      debugPrint('✅ MECHANIC MAP: _paymentPending = $_paymentPending');
       _persistWorkflowState(finalPrice: _approvedFinalPrice);
       return;
     }
@@ -656,6 +656,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
         _statusMeansWaitingForPayment(
           _normalizeStatus(data),
         )) {
+      debugPrint('✅ MECHANIC MAP: Work completed - waiting for payment');
       if (!mounted) return;
       final snapshot = _localTrackingSnapshot();
       setState(() {
@@ -672,6 +673,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
             _extractArrivalPrice(snapshot) ??
             _approvedArrivalPrice;
       });
+      debugPrint('✅ MECHANIC MAP: _workCompleted = $_workCompleted');
       _persistWorkflowState(finalPrice: _approvedFinalPrice);
       return;
     }
@@ -814,7 +816,6 @@ class _MechanicUserMapState extends State<MechanicUserMap>
         _mechanicTargetPos = mechanicPos;
       }
     } catch (e) {
-      debugPrint('Error parsing user location: $e');
     }
   }
 
@@ -837,11 +838,9 @@ class _MechanicUserMapState extends State<MechanicUserMap>
 
     // Get initial position
     try {
-      debugPrint('📍 Fetching initial mechanic position...');
       Position pos = await Geolocator.getCurrentPosition(
         timeLimit: const Duration(seconds: 4),
       ).catchError((e) {
-        debugPrint('Geolocator error: $e');
         if (lastKnown != null) return lastKnown;
         throw e;
       });
@@ -851,12 +850,10 @@ class _MechanicUserMapState extends State<MechanicUserMap>
       _routeTracker.reset(_mechanicCurrentPos!);
       
       if (mounted) {
-        debugPrint('✅ Initial position found: ${_mechanicCurrentPos!.latitude}, ${_mechanicCurrentPos!.longitude}');
         setState(() => _isLocatingMechanic = false);
         _fetchRoute(force: true);
       }
     } catch (e) {
-      debugPrint('❌ Initial position error: $e');
       if (mounted) setState(() => _isLocatingMechanic = false);
     }
 
@@ -957,7 +954,6 @@ class _MechanicUserMapState extends State<MechanicUserMap>
         }
       }
     } catch (e) {
-      debugPrint('Route fetch error: $e');
     }
   }
 
@@ -1020,7 +1016,6 @@ class _MechanicUserMapState extends State<MechanicUserMap>
         _userTrackingIcon = userIcon;
       });
     } catch (e) {
-      debugPrint('Error loading marker icons: $e');
       if (mounted) {
         setState(() {
           _mechanicTrackingIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
@@ -1605,6 +1600,11 @@ class _MechanicUserMapState extends State<MechanicUserMap>
         widget.requestData['requestid'];
     if (requestId == null) return;
 
+    final mechanicId = UserSession().userId;
+    if (mechanicId == null) {
+      return;
+    }
+
     _mapClient?.deactivate();
     _mapClient = StompClient(
       config: StompConfig(
@@ -1612,42 +1612,29 @@ class _MechanicUserMapState extends State<MechanicUserMap>
         stompConnectHeaders: UserSession().getAuthHeader(),
         webSocketConnectHeaders: UserSession().getAuthHeader(),
         onConnect: (frame) {
-          // Listen for status changes (like user cancellation)
+
+          // ✅ PRIMARY: All status updates from backend come here
+          // (user cancellation, price approval, payment done, etc.)
           _mapClient?.subscribe(
-            destination: '/topic/request/$requestId',
+            destination: '/topic/mechanic/requests/$mechanicId',
             callback: (message) {
               if (message.body == null || !mounted) return;
+              debugPrint('📩 MECHANIC MAP: Received on /topic/mechanic/requests/$mechanicId');
+              debugPrint('📩 MECHANIC MAP: Body = ${message.body}');
               try {
                 final data = jsonDecode(message.body!);
                 if (data is Map) {
-                  _applyRequestTopicUpdate(
-                    Map<String, dynamic>.from(data),
-                  );
+                  final mapData = Map<String, dynamic>.from(data);
+                  debugPrint('📩 MECHANIC MAP: Type = ${mapData['type']}, Status = ${mapData['status']}');
+                  _applyRequestTopicUpdate(mapData);
                 }
-              } catch (_) {}
+              } catch (e) {
+                debugPrint('❌ MECHANIC MAP: JSON decode error: $e');
+              }
             },
           );
 
-          // Listen on mechanic-specific topic — user cancel hone pe backend yahan bhejta hai
-          final mechanicId = UserSession().userId;
-          if (mechanicId != null) {
-            _mapClient?.subscribe(
-              destination: '/topic/mechanic/requests/$mechanicId',
-              callback: (message) {
-                if (message.body == null || !mounted) return;
-                try {
-                  final data = jsonDecode(message.body!);
-                  if (data is Map) {
-                    _applyRequestTopicUpdate(
-                      Map<String, dynamic>.from(data),
-                    );
-                  }
-                } catch (_) {}
-              },
-            );
-          }
-
-          // Listen for Live Location updates from Backend
+          // ✅ SECONDARY: Live location ETA/distance updates
           _mapClient?.subscribe(
             destination: '/topic/request/$requestId/live-location',
             callback: (message) {
@@ -1669,8 +1656,8 @@ class _MechanicUserMapState extends State<MechanicUserMap>
             },
           );
         },
-        onStompError: (frame) => debugPrint('Mechanic Map STOMP error: ${frame.body}'),
-        onWebSocketError: (error) => debugPrint('Mechanic Map socket error: $error'),
+        onDisconnect: (frame) {
+        },
       ),
     );
     _mapClient?.activate();

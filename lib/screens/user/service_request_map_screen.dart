@@ -227,7 +227,6 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
   void _onGlobalTrackingChanged() {
     final active = ActiveServiceRequestTracking.current.value;
     if (active == null && mounted && !_cancelExitHandled) {
-      debugPrint('MapScreen: Active tracking cleared globally, exiting...');
       
       final backendMsg = ActiveServiceRequestTracking.lastExitMessage.value;
       final exitStatus = ActiveServiceRequestTracking.lastExitStatus.value;
@@ -376,7 +375,6 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
   Future<void> _pollRequestStatus(String requestId) async {
     // ✅ CRITICAL: Check if widget is still mounted BEFORE making API call
     if (!mounted || _cancelExitHandled || _workCompleted) {
-      debugPrint('🔴 USER: Skipping poll - widget disposed or request completed');
       _statusPollTimer?.cancel();
       return;
     }
@@ -398,7 +396,6 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       final type = (data['type'] ?? data['backendType'])?.toString().toUpperCase() ?? '';
       final status = _normalizeTrackingStatus(data);
 
-      debugPrint('🔵 USER POLL: status=$status, type=$type, finalPrice=${data['finalPrice']}, arrivalPrice=${data['arrivalPrice']}');
 
       if (type == 'ROAD_REQUEST_CANCELLED' ||
           type == 'ROAD_REQUEST_EXPIRED' ||
@@ -455,7 +452,6 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
             type == 'ARRIVAL_PRICE_SENT';
         
         if (statusIndicatesWaiting || typeIndicatesPrice) {
-          debugPrint('🟢 USER: Showing price approval - status=$status, type=$type, price=$price');
           setState(() {
             _isPriceReceived = true;
             if (price != null) _finalPrice = price;
@@ -677,9 +673,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       final decoded = jsonDecode(body);
       final requestId = _findRequestId(decoded);
       _activeRequestId = requestId?.toString();
-      debugPrint('Service request id captured: $_activeRequestId');
     } catch (e) {
-      debugPrint('Request id parse error: $e');
     }
   }
 
@@ -714,53 +708,33 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
         webSocketConnectHeaders: UserSession().getAuthHeader(),
         onConnect: (_) {
           _requestSocketConnected = true;
+          
+          final userId = UserSession().userId;
+          if (userId == null) {
+            return;
+          }
+
+
+          // ✅ PRIMARY: ALL service request updates from backend come here
+          // (accept, cancel, price sent, work completed, payment done, etc.)
           _requestClient?.subscribe(
-            destination: '/topic/request/$requestId',
+            destination: '/topic/user/requests/$userId',
             callback: (frame) {
               if (frame.body == null || !mounted) return;
-              debugPrint('📩 USER WEBSOCKET: Received message on /topic/request/$requestId');
-              debugPrint('📩 USER WEBSOCKET: Body = ${frame.body}');
+              debugPrint('📩 USER MAP: Received on /topic/user/requests/$userId');
+              debugPrint('📩 USER MAP: Body = ${frame.body}');
               try {
                 final decoded = jsonDecode(frame.body!);
                 if (decoded is! Map) return;
-                _onRequestStatusUpdate(
-                  Map<String, dynamic>.from(decoded),
-                  requestId,
-                );
+                final data = Map<String, dynamic>.from(decoded);
+                debugPrint('📩 USER MAP: Type = ${data['type']}, Status = ${data['status']}');
+                _onRequestStatusUpdate(data, requestId);
               } catch (e) {
-                debugPrint('❌ USER WEBSOCKET: Decode error: $e');
+                debugPrint('❌ USER MAP: JSON decode error: $e');
               }
             },
           );
-          // Subscribe to user-specific topic — mechanic cancel hone pe yahan message aayega
-          final userId = UserSession().userId;
-          if (userId != null) {
-            _requestClient?.subscribe(
-              destination: '/topic/user/requests/$userId',
-              callback: (frame) {
-                if (frame.body == null || !mounted) return;
-                try {
-                  final decoded = jsonDecode(frame.body!);
-                  if (decoded is! Map) return;
-                  _onRequestStatusUpdate(
-                    Map<String, dynamic>.from(decoded),
-                    requestId,
-                  );
-                } catch (e) {
-                  debugPrint('User topic decode error: $e');
-                }
-              },
-            );
-          }
-          // Subscribe to selected mechanic topic so mechanic receives the request
-          if (widget.selectedMechanicId != null) {
-            _requestClient?.subscribe(
-              destination: '/topic/mechanic/slectedmechanic/requests/${widget.selectedMechanicId}',
-              callback: (frame) {
-                debugPrint('Selected mechanic topic msg: ${frame.body}');
-              },
-            );
-          }
+
           if (_isAccepted) {
             _subscribeAcceptedLiveLocation(requestId);
           }
@@ -771,12 +745,10 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
           _requestSocketConnected = false;
           _liveLocationSubscribed = false;
         },
-        onStompError: (frame) =>
-            debugPrint('Request status STOMP error: ${frame.body}'),
+        onStompError: (frame) {},
         onWebSocketError: (error) {
           _requestSocketConnected = false;
           _liveLocationSubscribed = false;
-          debugPrint('Request status socket error: $error');
         },
       ),
     );
@@ -834,7 +806,6 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       final hasAcceptedMechanic =
           data['mechanicId'] != null || data['mechanicLatitude'] != null;
       if (hasAcceptedMechanic && status != 'PENDING') {
-        debugPrint('⚡ Caught missed acceptance via HTTP poll for request $requestId');
         _handleAcceptedMechanic(data, requestId);
         if (mounted) {
           setState(() => _applyTrackingWorkflow(data));
@@ -842,7 +813,6 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
         _saveActiveTracking();
       }
     } catch (e) {
-      debugPrint('Poll missed status failed: $e');
     }
   }
 
@@ -854,7 +824,6 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
             .toUpperCase() ??
         '';
 
-    debugPrint('📬 USER: _onRequestStatusUpdate - type=$backendType, status=$status, data=$data');
 
     if (backendType == 'ROAD_REQUEST_CANCELLED' || status == 'EXPIRED') {
       if (status == 'EXPIRED') {
@@ -875,16 +844,24 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
         backendType == 'ARRIVAL_PRICE_SENT' ||
         status == 'WAITING_USER_APPROVAL' ||
         status == 'WAITING_FOR_USER_APPROVAL') {
-      debugPrint('📬 USER WEBSOCKET: Received charge approval request - type=$backendType, status=$status');
+      debugPrint('🔍 USER MAP: Price payload received');
+      debugPrint('🔍 USER MAP: Raw finalPrice = ${data['finalPrice']}');
+      debugPrint('🔍 USER MAP: Raw arrivalPrice = ${data['arrivalPrice']}');
+      
       final price = _toDouble(data['finalPrice']) ?? 
                    _toDouble(data['arrivalPrice']) ??
                    _toDouble(data['inspectionPrice']);
+      
+      debugPrint('🔍 USER MAP: Extracted price = $price');
+      
       if (mounted) {
         setState(() {
           _isPriceReceived = true;
           if (price != null) _finalPrice = price;
           _paymentApproved = false;
         });
+        debugPrint('✅ USER MAP: _finalPrice set to $_finalPrice');
+        debugPrint('✅ USER MAP: _isPriceReceived = $_isPriceReceived');
       }
       return;
     }
@@ -892,6 +869,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     if (backendType == 'USER_APPROVED' ||
         status == 'APPROVED_PAYMENT_REQUEST' ||
         status == 'WORK_STARTED') {
+      debugPrint('✅ USER MAP: Payment approved - work started');
       if (!mounted) return;
       setState(() => _applyApprovedPaymentPayload(data));
       _saveActiveTracking();
@@ -900,6 +878,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
 
     if (backendType == 'WORK_COMPLETED' ||
         _statusMeansWaitingForPayment(_normalizeTrackingStatus(data))) {
+      debugPrint('✅ USER MAP: Work completed - waiting for payment');
       if (!mounted) return;
       final local = ActiveServiceRequestTracking.current.value;
       final merged = local != null
@@ -934,7 +913,6 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     }
 
     if (!_handleAcceptedMechanic(data, requestId)) {
-      debugPrint('Ignored request topic message: $data');
       return;
     }
 
@@ -1196,12 +1174,10 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     final type =
         (data['type'] ?? data['backendType'])?.toString().toUpperCase() ?? '';
 
-    debugPrint('🟢 USER: _applyTrackingWorkflow - status=$status, type=$type, paymentApproved=$_paymentApproved, isPriceReceived=$_isPriceReceived');
 
     if (_statusMeansPaymentPending(status) ||
         type == 'PAYMENT_PENDING' ||
         data['paymentPending'] == true) {
-      debugPrint('🟢 USER: Applying PAYMENT_PENDING workflow');
       _applyPaymentPendingPayload(data);
       _cashHandoverMarked = data['cashHandoverMarked'] == true;
       return;
@@ -1210,7 +1186,6 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     if (_statusMeansWaitingForPayment(status) ||
         type == 'WORK_COMPLETED' ||
         data['workCompleted'] == true) {
-      debugPrint('🟢 USER: Applying WORK_COMPLETED workflow');
       _applyWorkCompletedPayload(data);
       return;
     }
@@ -1220,7 +1195,6 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
         status == 'WORK_STARTED' ||
         data['paymentApproved'] == true ||
         type == 'USER_APPROVED') {
-      debugPrint('🟢 USER: Applying APPROVED_PAYMENT workflow');
       _applyApprovedPaymentPayload(data);
       return;
     }
@@ -1236,7 +1210,6 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
           type == 'PRICE_SENT' ||
           type == 'ARRIVAL_PRICE_SENT';
       
-      debugPrint('🟢 USER: Price=$price, status=$status, type=$type, shouldShowPrice=$shouldShowPrice');
       
       if (shouldShowPrice) {
         _isPriceReceived = true;
@@ -1334,7 +1307,6 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       
       // If status is PENDING, don't use mechanic details — stay in waiting state
       if (status == 'PENDING' && hasAcceptedMechanic) {
-        debugPrint('⚠️ Status is PENDING — ignoring premature mechanic details');
         merged.remove('mechanicId');
         merged.remove('mechanicName');
         merged.remove('mechanicLatitude');
@@ -1349,7 +1321,6 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
         _saveActiveTracking();
       }
     } catch (e) {
-      debugPrint('Refresh resumed tracking failed: $e');
     }
   }
 
@@ -1394,7 +1365,6 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     );
 
     if (requestId == null || mechanicId == null) {
-      debugPrint('Accepted mechanic payload missing identity fields: $data');
       return false;
     }
 
@@ -1489,7 +1459,6 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
             _handleAcceptedLiveLocation(Map<String, dynamic>.from(decoded));
           }
         } catch (e) {
-          debugPrint('Accepted live location decode error: $e');
         }
       },
     );
@@ -1553,7 +1522,6 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
         'longitude': lng,
       });
     } catch (e) {
-      debugPrint('Accepted location fallback refresh failed: $e');
     }
   }
 
@@ -1572,7 +1540,6 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
         _rebuildMechanicMarkersWithCurrentIcons();
       });
     } catch (e) {
-      debugPrint('Error loading marker icons: $e');
       // Fallback to default if asset fails
       if (mounted) {
         setState(() {
@@ -1760,7 +1727,6 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
         });
       }
     } catch (e) {
-      debugPrint('Accepted route fetch error: $e');
     }
   }
 
@@ -2020,15 +1986,12 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
                   _updateMechanicMarker(Map<String, dynamic>.from(decoded));
                 }
               } catch (e) {
-                debugPrint('Nearby mechanic tracking decode error: $e');
               }
             },
           );
         },
-        onStompError: (frame) =>
-            debugPrint('Nearby mechanic STOMP error: ${frame.body}'),
-        onWebSocketError: (error) =>
-            debugPrint('Nearby mechanic socket error: $error'),
+        onStompError: (frame) {},
+        onWebSocketError: (error) {},
       ),
     );
     _trackingClient?.activate();
@@ -2054,7 +2017,6 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       _markerTicker.start();
     }
     
-    debugPrint('🎬 Marker update received for $mechanicId → Animating to $lat, $lng');
   }
 
   double? _toDouble(dynamic value) {
