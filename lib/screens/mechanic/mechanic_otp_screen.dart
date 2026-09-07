@@ -8,6 +8,7 @@ import 'package:pinput/pinput.dart';
 import 'mechanic_kyc_screen.dart';
 import 'mechanic_registration_screen.dart';
 import '../../widgets/app_back_button.dart';
+import '../../config/app_config.dart';
 
 class MechanicOtpScreen extends StatefulWidget {
   final String phoneNumber;
@@ -80,7 +81,7 @@ class _MechanicOtpScreenState extends State<MechanicOtpScreen> {
 
     setState(() => _isLoading = true);
 
-    final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/register/verify");
+    final url = Uri.parse("${AppConfig.baseUrl}/api/mechanic/register/verify");
 
     try {
       final response = await http.post(
@@ -147,7 +148,7 @@ class _MechanicOtpScreenState extends State<MechanicOtpScreen> {
       _isOtpComplete = false;
     });
 
-    final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/registerwithotp");
+    final url = Uri.parse("${AppConfig.baseUrl}/api/mechanic/registerwithotp");
 
     try {
       final response = await http.post(

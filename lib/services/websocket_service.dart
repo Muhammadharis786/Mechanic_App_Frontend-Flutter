@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:stomp_dart_client/stomp_dart_client.dart';
 
 import '../screens/authentication/user_session.dart';
+import '../config/app_config.dart';
 
 class WebSocketService {
   StompClient? client;
@@ -28,8 +29,7 @@ class WebSocketService {
 
     client = StompClient(
       config: StompConfig(
-        url:
-            'wss://mechanicapp-service-621632382478.asia-south1.run.app/ws-notifications/websocket',
+        url: AppConfig.webSocketUrl,
         stompConnectHeaders: connectHeaders,
         webSocketConnectHeaders: connectHeaders,
         onConnect: (StompFrame frame) {

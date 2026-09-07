@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import '../authentication/user_session.dart';
 import '../../widgets/app_back_button.dart';
+import '../../config/app_config.dart';
 
 class MechanicHistoryScreen extends StatefulWidget {
   const MechanicHistoryScreen({super.key});
@@ -26,7 +27,7 @@ class _MechanicHistoryScreenState extends State<MechanicHistoryScreen> {
   Future<void> _fetchHistory() async {
     setState(() => _isLoading = true);
     final url = Uri.parse(
-        "https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/alljobs/history");
+        "${AppConfig.baseUrl}/api/mechanic/alljobs/history");
     try {
       final response =
           await http.get(url, headers: UserSession().getAuthHeader());

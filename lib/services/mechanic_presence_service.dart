@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../screens/authentication/user_session.dart';
 import 'mechanic_live_location_service.dart';
+import '../config/app_config.dart';
 
 class MechanicPresenceService {
   MechanicPresenceService._();
@@ -17,8 +18,7 @@ class MechanicPresenceService {
   static const MethodChannel _channel =
       MethodChannel('com.example.mech_app/mechanic_presence');
   static const String _onlinePrefKey = 'mechanic_is_online';
-  static const String _isActiveUrl =
-      'https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/isactive';
+  static String get _isActiveUrl => '${AppConfig.baseUrl}/api/mechanic/isactive';
 
   Future<void> setLocalOnlineFlag(bool value) async {
     final prefs = await SharedPreferences.getInstance();
@@ -39,6 +39,7 @@ class MechanicPresenceService {
         await _channel.invokeMethod('startPresenceGuard', {
           if (mechanicId != null) 'mechanicId': mechanicId,
           if (authHeader != null) 'authHeader': authHeader,
+          'wsUrl': AppConfig.webSocketUrl,
         });
       } else {
         await _channel.invokeMethod('stopPresenceGuard');

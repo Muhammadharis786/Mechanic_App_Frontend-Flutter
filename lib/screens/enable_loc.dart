@@ -5,7 +5,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 
 import 'homescreen.dart'; 
-import 'authentication/user_session.dart'; 
+import 'authentication/user_session.dart';
+import '../config/app_config.dart'; 
 
 class EnableLocationScreen extends StatefulWidget {
   const EnableLocationScreen({super.key});
@@ -19,7 +20,7 @@ class _EnableLocationScreenState extends State<EnableLocationScreen> {
   String _statusMessage = 'Allow location access to continue using the app.';
 
   Future<void> _updateLocationOnServer(double lat, double lng) async {
-    final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/user/currentlocation");
+    final url = Uri.parse("${AppConfig.baseUrl}/api/user/currentlocation");
 
     try {
       final response = await http.post(

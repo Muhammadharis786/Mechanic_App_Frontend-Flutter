@@ -9,6 +9,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import '../../widgets/app_back_button.dart';
 import '../../utils/map_theme_helper.dart';
+import '../../config/app_config.dart';
 
 class MechanicRequestDetailScreen extends StatefulWidget {
   final Map<String, dynamic> request;
@@ -86,7 +87,7 @@ class _MechanicRequestDetailScreenState
         });
       }
 
-      const String apiKey = "AIzaSyBpyZg2i30gOLUKK0furYdGDbWXe4lqpkU";
+      const String apiKey = AppConfig.googleMapsApiKey;
       
       // 3. Fetch duration & route (async, won't block UI if fails)
       _updateRouteAndDuration(mechLatLng, userLatLng, apiKey, mechanicIcon);

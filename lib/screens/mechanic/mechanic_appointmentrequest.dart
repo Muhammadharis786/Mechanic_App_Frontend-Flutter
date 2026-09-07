@@ -9,6 +9,7 @@ import '../authentication/user_session.dart';
 import '../../widgets/app_back_button.dart';
 import '../user/appointment_tracking_map.dart';
 import '../../services/mechanic_notification_controller.dart';
+import '../../config/app_config.dart';
 
 class MechanicAppointmentRequestScreen extends StatefulWidget {
   final List<dynamic> requests;
@@ -28,8 +29,7 @@ class MechanicAppointmentRequestScreen extends StatefulWidget {
 class _MechanicAppointmentRequestScreenState
     extends State<MechanicAppointmentRequestScreen> {
   final Color primaryColor = const Color(0xFFFB3300);
-  static const String _baseUrl =
-      'https://mechanicapp-service-621632382478.asia-south1.run.app';
+  static String get _baseUrl => AppConfig.baseUrl;
 
   List<dynamic> _allAppointments = [];
   bool _isLoading = true;

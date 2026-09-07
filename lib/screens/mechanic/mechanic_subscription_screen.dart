@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'payment_webview_screen.dart';
 import '../authentication/user_session.dart';
+import '../../config/app_config.dart';
 
 class MechanicSubscriptionScreen extends StatefulWidget {
   const MechanicSubscriptionScreen({super.key});
@@ -280,7 +281,7 @@ class _MechanicSubscriptionScreenState
     try {
       final response = await http.post(
         Uri.parse(
-            'https://mechanicapp-service-621632382478.asia-south1.run.app/generate-url'),
+            '${AppConfig.baseUrl}/generate-url'),
         headers: UserSession().getAuthHeader(),
         body: jsonEncode({
           'payeeName': payeeName,

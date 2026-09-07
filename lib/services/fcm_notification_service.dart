@@ -10,9 +10,9 @@ import '../firebase_options.dart';
 import '../screens/authentication/user_session.dart';
 import 'emergency_alert_service.dart';
 import 'active_service_request_tracking.dart';
+import '../config/app_config.dart';
 
-const String _baseUrl =
-    'https://mechanicapp-service-621632382478.asia-south1.run.app';
+String get _baseUrl => AppConfig.baseUrl;
 
 const String emergencyChannelId = 'emergency_channel';
 

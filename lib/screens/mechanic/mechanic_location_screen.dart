@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'mechanic_dashboard.dart';
 import '../authentication/user_session.dart';
+import '../../config/app_config.dart';
 
 class MechanicLocationScreen extends StatefulWidget {
   const MechanicLocationScreen({super.key});
@@ -19,7 +20,7 @@ class _MechanicLocationScreenState extends State<MechanicLocationScreen> {
   String _statusMessage = 'Enable location to receive nearby service requests.';
 
   Future<void> _updateLocationOnServer(double lat, double lng) async {
-    final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/currentlocation");
+    final url = Uri.parse("${AppConfig.baseUrl}/api/mechanic/currentlocation");
 
     try {
       final response = await http.post(

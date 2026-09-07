@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import '../auto_assign.dart';
 import 'user_session.dart';
 import '../../widgets/app_back_button.dart';
+import '../../config/app_config.dart';
 
 class ServiceChatScreen extends StatefulWidget {
   final String serviceType;
@@ -52,7 +53,7 @@ Future<void> fetchOptions(int parentId) async {
     isLoading = true;
   });
 
-  final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/subproblems/$parentId" );
+  final url = Uri.parse("${AppConfig.baseUrl}/api/subproblems/$parentId" );
 
   try {
     // 🔐 AB YAHAN HARDCODED EMAIL/PASS KI ZAROORAT NAHI

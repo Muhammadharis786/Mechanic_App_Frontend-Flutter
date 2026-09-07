@@ -39,6 +39,7 @@ class MechanicPresenceService : Service() {
     private val stompConnected = AtomicBoolean(false)
     private var mechanicId: Long = -1L
     private var authHeader: String? = null
+    private var wsUrl: String = ""
 
     private val heartbeatRunnable = object : Runnable {
         override fun run() {
@@ -69,6 +70,16 @@ class MechanicPresenceService : Service() {
 
         authHeader = intent?.getStringExtra(EXTRA_AUTH_HEADER)
             ?: MechanicPresenceHelper.readAuthHeader(applicationContext)
+
+        // WebSocket endpoint comes from Flutter (AppConfig) so the native
+        // heartbeat follows the active backend (local or cloud).
+        val intentWsUrl = intent?.getStringExtra(EXTRA_WS_URL)?.takeIf { it.isNotBlank() }
+        if (intentWsUrl != null) {
+            wsUrl = intentWsUrl
+            MechanicPresenceHelper.persistWsUrl(applicationContext, intentWsUrl)
+        } else {
+            wsUrl = MechanicPresenceHelper.readWsUrl(applicationContext)
+        }
 
         if (mechanicId <= 0 || authHeader.isNullOrBlank()) {
             Log.w(TAG, "Missing mechanicId/auth — cannot keep presence")
@@ -156,7 +167,7 @@ class MechanicPresenceService : Service() {
 
         val auth = authHeader ?: return
         val request = Request.Builder()
-            .url(WS_URL)
+            .url(wsUrl)
             .header("Authorization", auth)
             .header("Content-Type", "application/json")
             .build()
@@ -268,11 +279,10 @@ class MechanicPresenceService : Service() {
         private const val HEARTBEAT_INTERVAL_MS = 10_000L
         private const val RECONNECT_DELAY_MS = 5_000L
         private const val NULL = "\u0000"
-        private const val WS_URL =
-            "wss://mechanicapp-service-621632382478.asia-south1.run.app/ws-notifications/websocket"
 
         const val ACTION_STOP = "com.example.mech_app.ACTION_STOP_PRESENCE"
         const val EXTRA_MECHANIC_ID = "mechanicId"
         const val EXTRA_AUTH_HEADER = "authHeader"
+        const val EXTRA_WS_URL = "wsUrl"
     }
 }

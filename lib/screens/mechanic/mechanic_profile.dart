@@ -8,6 +8,7 @@ import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
 import '../authentication/user_session.dart';
 import '../../widgets/app_back_button.dart';
+import '../../config/app_config.dart';
 
 class MechanicProfileScreen extends StatefulWidget {
   const MechanicProfileScreen({super.key});
@@ -55,7 +56,7 @@ class _MechanicProfileScreenState extends State<MechanicProfileScreen> {
     setState(() => _isLoading = true);
     try {
       final url = Uri.parse(
-        'https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/showprofile',
+        '${AppConfig.baseUrl}/api/mechanic/showprofile',
       );
       final response = await http.get(url, headers: UserSession().getAuthHeader());
 
@@ -90,7 +91,7 @@ class _MechanicProfileScreenState extends State<MechanicProfileScreen> {
 
     try {
       final uri = Uri.parse(
-        'https://mechanicapp-service-621632382478.asia-south1.run.app/api/save/mechanic/userimage',
+        '${AppConfig.baseUrl}/api/save/mechanic/userimage',
       );
 
       var request = http.MultipartRequest('PUT', uri);

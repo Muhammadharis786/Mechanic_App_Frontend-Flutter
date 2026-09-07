@@ -23,6 +23,7 @@ import '../../widgets/service_charges_price_badge.dart';
 import 'package:stomp_dart_client/stomp_dart_client.dart';
 import '../authentication/user_session.dart';
 import 'mechanic_dashboard.dart';
+import '../../config/app_config.dart';
 
 const String _mechanicMapStyle = '''
 [
@@ -100,7 +101,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
   // State
   bool _isLocatingMechanic = false;
   final Color _primary = const Color(0xFFFB3300);
-  final String _googleApiKey = "AIzaSyBpyZg2i30gOLUKK0furYdGDbWXe4lqpkU";
+  final String _googleApiKey = AppConfig.googleMapsApiKey;
 
   @override
   void initState() {
@@ -109,7 +110,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
     _isLocatingMechanic = _userLocation == null;
     _currentDistance = _initialDistanceLabel();
     _restoreWorkflowStateFrom(_localTrackingSnapshot());
-    _currentEta = widget.requestData['eta']?.toString() ?? '--';
+    _currentEta = _initialEtaLabel();
     _animTicker = createTicker(_onTick);
     _jobDoneController = AnimationController(
       vsync: this,
@@ -409,7 +410,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
     try {
       final response = await http.get(
         Uri.parse(
-          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/work-completed/$requestId',
+          '${AppConfig.baseUrl}/api/service-request/work-completed/$requestId',
         ),
         headers: UserSession().getAuthHeader(),
       );
@@ -487,7 +488,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
     try {
       final response = await http.get(
         Uri.parse(
-          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/tracking/$requestId',
+          '${AppConfig.baseUrl}/api/service-request/tracking/$requestId',
         ),
         headers: UserSession().getAuthHeader(),
       );
@@ -529,6 +530,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
           _paymentPending = false;
           _workCompleted = false;
           _workStarted = false;
+          _hasSentPrice = false;
         });
         _jobDoneController.forward(from: 0);
         Future.delayed(const Duration(milliseconds: 1100), () {
@@ -611,6 +613,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
         _paymentPending = false;
         _workCompleted = false;
         _workStarted = false;
+        _hasSentPrice = false;
       });
       _jobDoneController.forward(from: 0);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -731,7 +734,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
     try {
       final response = await http.get(
         Uri.parse(
-          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/mechanic/cancel/$requestId',
+          '${AppConfig.baseUrl}/api/service-request/mechanic/cancel/$requestId',
         ),
         headers: UserSession().getAuthHeader(),
       );
@@ -919,6 +922,10 @@ class _MechanicUserMapState extends State<MechanicUserMap>
 
     _lastRouteFetchAt = now;
     _lastRouteOrigin = _mechanicTargetPos;
+
+    // Instant fallback so UI never stays on "--" while Directions loads
+    _updateDistanceEtaFallback();
+    unawaited(_fetchDistanceAndEtaFromDirections());
 
     try {
       PolylinePoints polylinePoints = PolylinePoints(apiKey: _googleApiKey);
@@ -1176,14 +1183,89 @@ class _MechanicUserMapState extends State<MechanicUserMap>
   }
 
   String _initialDistanceLabel() {
-    if (widget.requestData['distance'] != null) {
-      return DistanceFormatter.formatKilometers(widget.requestData['distance']);
-    }
-    final distanceKm = widget.requestData['distanceKm'];
-    if (distanceKm is num) {
-      return DistanceFormatter.formatKilometers(distanceKm);
+    final raw = widget.requestData['distance'] ??
+        widget.requestData['distanceKm'] ??
+        widget.requestData['distanceInKm'];
+    if (raw != null) {
+      final formatted = DistanceFormatter.formatKilometers(raw);
+      if (formatted != '--') return formatted;
     }
     return '--';
+  }
+
+  String _initialEtaLabel() {
+    final raw = widget.requestData['eta'] ??
+        widget.requestData['duration'] ??
+        widget.requestData['distancetime'];
+    if (raw == null) return '--';
+    final text = raw.toString().trim();
+    if (text.isEmpty || text.toLowerCase() == 'null' || text == '--') {
+      return '--';
+    }
+    return text;
+  }
+
+  void _updateDistanceEtaFallback() {
+    if (_hasArrived || _mechanicTargetPos == null || _userLocation == null) {
+      return;
+    }
+    final meters = _distanceMeters(_mechanicTargetPos!, _userLocation!);
+    final distanceLabel = DistanceFormatter.formatMeters(meters);
+    // Rough ETA assuming ~25 km/h city traffic
+    final minutes = (meters / 1000 / 25 * 60).clamp(1, 999).round();
+    final etaLabel = minutes < 60
+        ? '$minutes min'
+        : '${minutes ~/ 60} hr ${minutes % 60} min';
+
+    if (!mounted) return;
+    setState(() {
+      _currentDistance = distanceLabel;
+      // Keep road ETA from Directions if we already have a real one
+      if (_currentEta == '--') {
+        _currentEta = etaLabel;
+      }
+    });
+  }
+
+  Future<void> _fetchDistanceAndEtaFromDirections() async {
+    if (_mechanicTargetPos == null || _userLocation == null) return;
+
+    try {
+      final originLat = _mechanicTargetPos!.latitude;
+      final originLng = _mechanicTargetPos!.longitude;
+      final destLat = _userLocation!.latitude;
+      final destLng = _userLocation!.longitude;
+      final url =
+          'https://maps.googleapis.com/maps/api/directions/json'
+          '?origin=$originLat,$originLng'
+          '&destination=$destLat,$destLng'
+          '&key=$_googleApiKey';
+
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode != 200 || !mounted) return;
+
+      final data = jsonDecode(response.body);
+      if (data is! Map || data['status'] != 'OK') return;
+      final routes = data['routes'];
+      if (routes is! List || routes.isEmpty) return;
+      final legs = routes[0]['legs'];
+      if (legs is! List || legs.isEmpty) return;
+
+      final distanceText = legs[0]['distance']?['text']?.toString();
+      final durationText = legs[0]['duration']?['text']?.toString();
+
+      if (!mounted) return;
+      setState(() {
+        if (distanceText != null && distanceText.isNotEmpty) {
+          _currentDistance = distanceText;
+        }
+        if (durationText != null && durationText.isNotEmpty) {
+          _currentEta = durationText;
+        }
+      });
+    } catch (e) {
+      debugPrint('Directions distance/ETA error: $e');
+    }
   }
 
   Future<void> _onHaveArrived() async {
@@ -1205,7 +1287,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
           await MechanicLiveLocationService.instance.currentCoordinates();
 
       final arrivalUri = Uri.parse(
-        'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/isarrived/$requestId',
+        '${AppConfig.baseUrl}/api/service-request/isarrived/$requestId',
       ).replace(
         queryParameters: coords != null
             ? {
@@ -1463,7 +1545,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
     try {
       final response = await http.post(
         Uri.parse(
-          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/send-final-price',
+          '${AppConfig.baseUrl}/api/service-request/send-final-price',
         ),
         headers: {
           'Content-Type': 'application/json',
@@ -1527,7 +1609,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
     try {
       final response = await http.get(
         Uri.parse(
-          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/completed/$requestId',
+          '${AppConfig.baseUrl}/api/service-request/completed/$requestId',
         ),
         headers: UserSession().getAuthHeader(),
       );
@@ -1608,7 +1690,7 @@ class _MechanicUserMapState extends State<MechanicUserMap>
     _mapClient?.deactivate();
     _mapClient = StompClient(
       config: StompConfig(
-        url: 'wss://mechanicapp-service-621632382478.asia-south1.run.app/ws-notifications/websocket',
+        url: '${AppConfig.webSocketUrl}',
         stompConnectHeaders: UserSession().getAuthHeader(),
         webSocketConnectHeaders: UserSession().getAuthHeader(),
         onConnect: (frame) {
@@ -2307,7 +2389,11 @@ class _MechanicUserMapState extends State<MechanicUserMap>
                               ),
                             ],
                             const SizedBox(height: 24),
-                            if (_paymentPending)
+                            // While job-done banner shows, hide workflow buttons
+                            // so SEND CHARGES does not flash before dashboard.
+                            if (_showJobCompletedBanner)
+                              const SizedBox.shrink()
+                            else if (_paymentPending)
                               SizedBox(
                                 width: double.infinity,
                                 height: 54,

@@ -15,9 +15,9 @@ import 'package:mech_app/widgets/app_back_button.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
+import '../../config/app_config.dart';
 
-const String _baseUrl =
-    'https://mechanicapp-service-621632382478.asia-south1.run.app';
+String get _baseUrl => AppConfig.baseUrl;
 
 class BookAppointmentScreen extends StatefulWidget {
   final double? initialLat;

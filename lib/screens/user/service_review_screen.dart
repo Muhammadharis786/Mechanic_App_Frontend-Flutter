@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import '../authentication/user_session.dart';
 import '../homescreen.dart';
+import '../../config/app_config.dart';
 
 class ServiceReviewScreen extends StatefulWidget {
   final String serviceId;
@@ -113,7 +114,7 @@ class _ServiceReviewScreenState extends State<ServiceReviewScreen> {
 
       final response = await http.post(
         Uri.parse(
-          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/review/submit',
+          '${AppConfig.baseUrl}/api/service-request/review/submit',
         ),
         headers: {
           'Content-Type': 'application/json',

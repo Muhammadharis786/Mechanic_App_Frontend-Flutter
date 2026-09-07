@@ -11,6 +11,7 @@ import 'package:intl/intl.dart';
 import 'package:mech_app/services/user_notification_controller.dart';
 import 'package:mech_app/screens/user/service_review_screen.dart';
 import 'package:mech_app/widgets/app_back_button.dart';
+import '../../config/app_config.dart';
 
 class RequestHistoryScreen extends StatefulWidget {
   const RequestHistoryScreen({super.key});
@@ -21,7 +22,7 @@ class RequestHistoryScreen extends StatefulWidget {
 
 class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
   final Color primaryColor = const Color(0xFFFB3300);
-  final String _baseUrl = 'https://mechanicapp-service-621632382478.asia-south1.run.app';
+  final String _baseUrl = '${AppConfig.baseUrl}';
 
   List<dynamic> _allAppointments = [];
   bool _isLoading = true;

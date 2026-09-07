@@ -23,6 +23,7 @@ class MainActivity : FlutterActivity() {
                         else -> -1L
                     }
                     val authHeader = args?.get("authHeader")?.toString()
+                    val wsUrl = args?.get("wsUrl")?.toString()
 
                     val intent = Intent(this, MechanicPresenceService::class.java).apply {
                         if (mechanicId > 0) {
@@ -30,6 +31,9 @@ class MainActivity : FlutterActivity() {
                         }
                         if (!authHeader.isNullOrBlank()) {
                             putExtra(MechanicPresenceService.EXTRA_AUTH_HEADER, authHeader)
+                        }
+                        if (!wsUrl.isNullOrBlank()) {
+                            putExtra(MechanicPresenceService.EXTRA_WS_URL, wsUrl)
                         }
                     }
 

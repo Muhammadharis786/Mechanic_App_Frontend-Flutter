@@ -6,6 +6,7 @@ import 'package:mech_app/screens/authentication/user_session.dart';
 
 import 'mechanic_otp_screen.dart';
 import 'package:mech_app/widgets/app_back_button.dart';
+import '../../config/app_config.dart';
 
 class MechanicRegisterPhoneScreen extends StatefulWidget {
   const MechanicRegisterPhoneScreen({super.key});
@@ -35,7 +36,7 @@ class _MechanicRegisterPhoneScreenState
     final password = _passwordController.text.trim();
 
     final url = Uri.parse(
-        "https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/registerwithotp");
+        "${AppConfig.baseUrl}/api/mechanic/registerwithotp");
 
     try {
       final response = await http.post(

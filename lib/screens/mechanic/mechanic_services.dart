@@ -4,6 +4,7 @@ import '../../widgets/app_back_button.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../authentication/user_session.dart';
+import '../../config/app_config.dart';
 
 class MechanicServicesScreen extends StatefulWidget {
   const MechanicServicesScreen({super.key});
@@ -14,8 +15,7 @@ class MechanicServicesScreen extends StatefulWidget {
 
 class _MechanicServicesScreenState extends State<MechanicServicesScreen>
     with SingleTickerProviderStateMixin {
-  static const String _baseUrl =
-      'https://mechanicapp-service-621632382478.asia-south1.run.app';
+  static String get _baseUrl => AppConfig.baseUrl;
 
   bool _isLoading = true;
 

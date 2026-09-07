@@ -10,6 +10,7 @@ import 'package:image_picker/image_picker.dart';
 
 import 'mechanic_registration_screen.dart';
 import '../../widgets/app_back_button.dart';
+import '../../config/app_config.dart';
 
 class MechanicKycScreen extends StatefulWidget {
   final String phoneNumber;
@@ -26,8 +27,7 @@ class MechanicKycScreen extends StatefulWidget {
 }
 
 class _MechanicKycScreenState extends State<MechanicKycScreen> {
-  static const _baseUrl =
-      'https://mechanicapp-service-621632382478.asia-south1.run.app';
+  static String get _baseUrl => AppConfig.baseUrl;
 
   final ImagePicker _picker = ImagePicker();
   final Color primary = const Color(0xFFEF3838);

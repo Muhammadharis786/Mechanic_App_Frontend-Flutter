@@ -11,6 +11,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 // ignore: unused_import
 import 'role_selection_screen.dart';
+import '../config/app_config.dart';
 
 class OtpScreen extends StatefulWidget {
   final String email;
@@ -38,7 +39,7 @@ Future<void> _verifyOtp() async {
       SnackBar(content: Text("Verifying OTP...")),
     );
 
-    final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/verify/user/token");
+    final url = Uri.parse("${AppConfig.baseUrl}/api/verify/user/token");
 
     try {
       final response = await http.post(
@@ -96,7 +97,7 @@ Future<void> _resendOtp() async {
     SnackBar(content: Text("Resending OTP...")),
   );
 
-  final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/user/register");
+  final url = Uri.parse("${AppConfig.baseUrl}/api/user/register");
 
   try {
     final response = await http.post(

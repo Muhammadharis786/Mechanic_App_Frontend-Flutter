@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../screens/authentication/user_session.dart';
+import '../config/app_config.dart';
 
 class ActiveServiceRequestTracking {
   ActiveServiceRequestTracking._();
@@ -131,7 +132,7 @@ class ActiveServiceRequestTracking {
     try {
       final response = await http.get(
         Uri.parse(
-          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/tracking/$requestId',
+          '${AppConfig.baseUrl}/api/service-request/tracking/$requestId',
         ),
         headers: headers,
       ).timeout(const Duration(seconds: 15)); // Increased from 8 to 15 seconds
@@ -195,7 +196,7 @@ class ActiveServiceRequestTracking {
     try {
       final response = await http.get(
         Uri.parse(
-          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/checkrequest/$requestId',
+          '${AppConfig.baseUrl}/api/service-request/checkrequest/$requestId',
         ),
         headers: headers,
       ).timeout(const Duration(seconds: 5));

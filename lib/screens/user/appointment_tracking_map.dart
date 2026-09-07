@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../../widgets/app_back_button.dart';
 import '../../utils/map_theme_helper.dart';
+import '../../config/app_config.dart';
 
 class AppointmentTrackingMap extends StatefulWidget {
   final double userLat;
@@ -37,7 +38,7 @@ class _AppointmentTrackingMapState extends State<AppointmentTrackingMap> {
   final Set<Circle> _circles = {};
   
   // API Key from mechanic_usermap.dart
-  final String _apiKey = "AIzaSyBpyZg2i30gOLUKK0furYdGDbWXe4lqpkU";
+  final String _apiKey = AppConfig.googleMapsApiKey;
 
   // Refined Yango Map Style (Clean, Minimalist, Light Grey/White with building structures)
   final String _mapStyle = jsonEncode([

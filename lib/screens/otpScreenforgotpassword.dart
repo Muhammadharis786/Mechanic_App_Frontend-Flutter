@@ -9,6 +9,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'Forgot_New_Password.dart';
+import '../config/app_config.dart';
 
 class OtpScreen extends StatefulWidget {
   final String email;
@@ -36,7 +37,7 @@ Future<void> _verifyOtp() async {
       SnackBar(content: Text("Verifying OTP...")),
     );
 
-    final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/user/forget/verify");
+    final url = Uri.parse("${AppConfig.baseUrl}/api/user/forget/verify");
 
     try {
       final response = await http.post(
@@ -93,7 +94,7 @@ Future<void> _resendOtp() async {
     SnackBar(content: Text("Resending OTP...")),
   );
 
-  final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/user/forgot");
+  final url = Uri.parse("${AppConfig.baseUrl}/api/user/forgot");
 
   try {
     final response = await http.post(

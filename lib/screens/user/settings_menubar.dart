@@ -10,6 +10,7 @@ import 'package:mech_app/services/user_notification_controller.dart';
 import 'package:mech_app/services/app_state.dart';
 import 'package:mech_app/l10n/app_strings.dart';
 import 'package:mech_app/widgets/app_back_button.dart';
+import '../../config/app_config.dart';
 
 class SettingsMenuBar extends StatefulWidget {
   const SettingsMenuBar({super.key});
@@ -34,7 +35,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
   Future<void> _loadPhoneNumber() async {
     try {
       final url = Uri.parse(
-        'https://mechanicapp-service-621632382478.asia-south1.run.app/api/user/dashboard',
+        '${AppConfig.baseUrl}/api/user/dashboard',
       );
       final response = await http.get(url, headers: UserSession().getAuthHeader());
 
@@ -328,7 +329,7 @@ class _SettingsMenuBarState extends State<SettingsMenuBar> {
 
     try {
       final url = Uri.parse(
-        "https://mechanicapp-service-621632382478.asia-south1.run.app/api/user/delete/$userId",
+        "${AppConfig.baseUrl}/api/user/delete/$userId",
       );
 
       final response = await http.delete(

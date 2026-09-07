@@ -35,6 +35,7 @@ import 'role_selection_screen.dart';
 import '../services/fcm_notification_service.dart';
 import 'package:stomp_dart_client/stomp_dart_client.dart';
 import 'verify_screen.dart';
+import '../config/app_config.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key} );
@@ -199,7 +200,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _activeRequestClient = StompClient(
       config: StompConfig(
         url:
-            'wss://mechanicapp-service-621632382478.asia-south1.run.app/ws-notifications/websocket',
+            '${AppConfig.webSocketUrl}',
         stompConnectHeaders: UserSession().getAuthHeader(),
         webSocketConnectHeaders: UserSession().getAuthHeader(),
         onConnect: (_) {
@@ -271,7 +272,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _fetchUnreadCount() async {
     try {
       final response = await http.get(
-        Uri.parse('https://mechanicapp-service-621632382478.asia-south1.run.app/api/user/appointments/allnotifications'),
+        Uri.parse('${AppConfig.baseUrl}/api/user/appointments/allnotifications'),
         headers: UserSession().getAuthHeader(),
       );
       if (response.statusCode == 200) {
@@ -287,7 +288,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _isLoading = true);
     try {
       final response = await http.post(
-        Uri.parse('https://mechanicapp-service-621632382478.asia-south1.run.app/api/payment/create-session'),
+        Uri.parse('${AppConfig.baseUrl}/api/payment/create-session'),
         headers: {
           'Content-Type': 'application/json',
           ...UserSession().getAuthHeader(),
@@ -346,7 +347,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
 
   Future<void> _fetchDashboardData() async {
-    final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/user/dashboard" );
+    final url = Uri.parse("${AppConfig.baseUrl}/api/user/dashboard" );
 
     try {
       final headers = UserSession().getAuthHeader();

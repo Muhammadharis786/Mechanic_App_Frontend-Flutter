@@ -4,6 +4,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'authentication/user_session.dart';
 import '../widgets/app_back_button.dart';
+import '../config/app_config.dart';
 
 class MapScreen extends StatefulWidget {
   final String serviceType;
@@ -25,7 +26,7 @@ class _MapScreenState extends State<MapScreen> {
   Future<void> _triggerNotification() async {
     try {
       final response = await http.get(
-        Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/service/request/nearbymechanic"),
+        Uri.parse("${AppConfig.baseUrl}/api/service/request/nearbymechanic"),
         headers: UserSession().getAuthHeader(),
       );
       if (response.statusCode == 200) {

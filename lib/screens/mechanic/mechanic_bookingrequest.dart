@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../authentication/user_session.dart';
 import '../user/appointment_tracking_map.dart';
 import '../../widgets/app_back_button.dart';
+import '../../config/app_config.dart';
 
 class MechanicBookingRequestScreen extends StatefulWidget {
   const MechanicBookingRequestScreen({super.key});
@@ -19,8 +20,7 @@ class MechanicBookingRequestScreen extends StatefulWidget {
 class _MechanicBookingRequestScreenState
     extends State<MechanicBookingRequestScreen> {
   final Color primaryColor = const Color(0xFFFB3300);
-  static const String _baseUrl =
-      'https://mechanicapp-service-621632382478.asia-south1.run.app';
+  static String get _baseUrl => AppConfig.baseUrl;
 
   List<dynamic> _allRequests = [];
   bool _isLoading = true;

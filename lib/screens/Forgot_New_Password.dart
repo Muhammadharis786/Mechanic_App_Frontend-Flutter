@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import 'role_selection_screen.dart';
 import '../widgets/app_back_button.dart';
+import '../config/app_config.dart';
 
 class NewPassword extends StatefulWidget {
   final String email;
@@ -34,7 +35,7 @@ class _NewPasswordState extends State<NewPassword> {
     final password = _passwordController.text.trim();
     final email = widget.email;
 
-    final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/user/newPassword");
+    final url = Uri.parse("${AppConfig.baseUrl}/api/user/newPassword");
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text("Changing password...")),

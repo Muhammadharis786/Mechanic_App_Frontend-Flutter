@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:pinput/pinput.dart';
 import 'mechanic_new_password_screen.dart';
+import '../../config/app_config.dart';
 
 class MechanicForgotOtpScreen extends StatefulWidget {
   final String phoneNumber;
@@ -26,7 +27,7 @@ class _MechanicForgotOtpScreenState extends State<MechanicForgotOtpScreen> {
 
     setState(() => _isLoading = true);
 
-    final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/forget/verifytoken");
+    final url = Uri.parse("${AppConfig.baseUrl}/api/mechanic/forget/verifytoken");
 
     try {
       final response = await http.post(

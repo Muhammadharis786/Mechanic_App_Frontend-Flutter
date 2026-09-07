@@ -8,6 +8,7 @@ import 'mechanic_request_detail.dart';
 import '../authentication/user_session.dart';
 import '../../utils/time_utils.dart';
 import '../../widgets/app_back_button.dart';
+import '../../config/app_config.dart';
 
 class MechanicNotificationScreen extends StatefulWidget {
   final List<Map<String, dynamic>> dailyRequests;
@@ -32,8 +33,7 @@ class _MechanicNotificationScreenState
     extends State<MechanicNotificationScreen>
     with SingleTickerProviderStateMixin {
   final Color primaryColor = const Color(0xFFFB3300);
-  static const String _baseUrl =
-      'https://mechanicapp-service-621632382478.asia-south1.run.app';
+  static String get _baseUrl => AppConfig.baseUrl;
   
   late TabController _tabController;
   Timer? _refreshTimer;

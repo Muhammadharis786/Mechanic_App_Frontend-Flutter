@@ -4,6 +4,7 @@ import 'otp_screen.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../widgets/app_back_button.dart';
+import '../config/app_config.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -42,7 +43,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final phone = '92${_phoneC.text.trim()}';
     final password = _passC.text.trim();
 
-    final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/user/register");
+    final url = Uri.parse("${AppConfig.baseUrl}/api/user/register");
 
     setState(() => isLoading = true);
 

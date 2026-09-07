@@ -14,8 +14,38 @@ object MechanicPresenceHelper {
     private const val KEY_IS_ONLINE = "flutter.mechanic_is_online"
     private const val KEY_USER_ID = "flutter.userId"
     private const val KEY_MECH_NUMERIC_ID = "flutter.cached_mech_numeric_id"
-    private const val OFFLINE_URL =
-        "https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/isactive"
+    private const val KEY_BASE_URL = "flutter.base_url"
+    private const val KEY_WS_URL = "flutter.ws_url"
+
+    // Cloud fallback used until the Flutter side has persisted the active
+    // backend (local or cloud) — see AppConfig in lib/config/app_config.dart.
+    private const val DEFAULT_BASE_URL =
+        "https://mechanicapp-service-621632382478.asia-south1.run.app"
+
+    /** Active backend base URL (HTTP) chosen by the Flutter side. */
+    fun readBaseUrl(context: Context): String {
+        val saved = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_BASE_URL, null)
+        return if (!saved.isNullOrBlank()) saved else DEFAULT_BASE_URL
+    }
+
+    /** WebSocket endpoint for the active backend (ws:// or wss://). */
+    fun readWsUrl(context: Context): String {
+        val saved = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_WS_URL, null)
+        return if (!saved.isNullOrBlank()) saved else defaultWsUrl()
+    }
+
+    /** Remembers the WebSocket endpoint so sticky service restarts reuse it. */
+    fun persistWsUrl(context: Context, wsUrl: String) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_WS_URL, wsUrl)
+            .apply()
+    }
+
+    private fun defaultWsUrl(): String =
+        "${DEFAULT_BASE_URL.replace("https://", "wss://")}/ws-notifications/websocket"
 
     fun persistOnlineFlag(context: Context, online: Boolean) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -86,7 +116,7 @@ object MechanicPresenceHelper {
         Thread {
             var connection: HttpURLConnection? = null
             try {
-                connection = (URL(OFFLINE_URL).openConnection() as HttpURLConnection).apply {
+                connection = (URL("${readBaseUrl(context)}/api/mechanic/isactive").openConnection() as HttpURLConnection).apply {
                     requestMethod = "POST"
                     connectTimeout = 4000
                     readTimeout = 4000

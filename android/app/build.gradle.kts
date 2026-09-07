@@ -1,9 +1,25 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
     id("com.google.gms.google-services")
+}
+
+// Google Maps API key for AndroidManifest.xml — read from the gitignored
+// `.env` file at the project root so the key never lands in git.
+// Copy .env.example to .env and add GOOGLE_MAPS_API_KEY=... there.
+val mapsApiKey: String by lazy {
+    val envFile = rootProject.file("../.env")
+    if (envFile.exists()) {
+        val props = Properties()
+        envFile.inputStream().use { props.load(it) }
+        props.getProperty("GOOGLE_MAPS_API_KEY")?.trim().orEmpty()
+    } else {
+        ""
+    }
 }
 dependencies {
   // Import the Firebase BoM
@@ -42,6 +58,9 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // Injected into AndroidManifest.xml as ${MAPS_API_KEY}
+        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
     }
 
     buildTypes {

@@ -59,8 +59,17 @@
     }
   </style>
 
-  <!-- Google Maps API -->
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBpyZg2i30gOLUKK0furYdGDbWXe4lqpkU"></script>
+  <!-- Google Maps API — the key lives in web/env.js (gitignored).
+       Create it once from web/env.example.js, or let run_local.ps1 /
+       run_cloud.ps1 generate it automatically from the .env file. -->
+  <script src="env.js"></script>
+  <script>
+    if (window.MAPS_API_KEY) {
+      document.write('<script src="https://maps.googleapis.com/maps/api/js?key=' + window.MAPS_API_KEY + '"><\/script>');
+    } else {
+      console.error('Google Maps API key missing: copy web/env.example.js to web/env.js and add your key.');
+    }
+  </script>
 
 </head>
 

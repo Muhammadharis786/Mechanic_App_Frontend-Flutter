@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'package:mech_app/screens/authentication/user_session.dart';
 import '../../utils/map_theme_helper.dart';
+import '../../config/app_config.dart';
 
 const String _mapStyle = '''
 [
@@ -20,7 +21,7 @@ const String _mapStyle = '''
 ]
 ''';
 
-const String _googleApiKey = 'AIzaSyBpyZg2i30gOLUKK0furYdGDbWXe4lqpkU';
+const String _googleApiKey = AppConfig.googleMapsApiKey;
 
 class LocationPickerScreen extends StatefulWidget {
   const LocationPickerScreen({super.key});

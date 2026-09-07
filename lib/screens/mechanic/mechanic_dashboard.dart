@@ -34,7 +34,8 @@ import 'mechanic_history.dart';
 import '../../services/fcm_notification_service.dart';
 import '../../services/mechanic_presence_service.dart';
 import 'package:intl/intl.dart';
-import '../../main.dart'; // Import for routeObserver
+import '../../main.dart';
+import '../../config/app_config.dart'; // Import for routeObserver
 
 class MechanicDashboardScreen extends StatefulWidget {
   const MechanicDashboardScreen({super.key});
@@ -428,7 +429,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
     _activeRequestClient = StompClient(
       config: StompConfig(
         url:
-            'wss://mechanicapp-service-621632382478.asia-south1.run.app/ws-notifications/websocket',
+            '${AppConfig.webSocketUrl}',
         stompConnectHeaders: UserSession().getAuthHeader(),
         webSocketConnectHeaders: UserSession().getAuthHeader(),
         onConnect: (_) {
@@ -509,7 +510,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
 
   Future<void> _fetchDashboardData() async {
     final url = Uri.parse(
-      "https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/dashboard",
+      "${AppConfig.baseUrl}/api/mechanic/dashboard",
     );
 
     try {
@@ -590,7 +591,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
 
   Future<void> _fetchRecentJobs() async {
     final url = Uri.parse(
-      "https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/recent-activity",
+      "${AppConfig.baseUrl}/api/mechanic/recent-activity",
     );
     try {
       final response = await http.get(
@@ -719,7 +720,7 @@ class _MechanicDashboardScreenState extends State<MechanicDashboardScreen>
 
   Future<void> _fetchAppointmentNotifications() async {
     final url = Uri.parse(
-      "https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/appointments/allnotifications",
+      "${AppConfig.baseUrl}/api/mechanic/appointments/allnotifications",
     );
 
     try {

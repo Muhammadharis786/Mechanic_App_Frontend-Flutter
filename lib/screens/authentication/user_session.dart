@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
+import '../../config/app_config.dart';
 
 class UserSession {
   // Singleton instance
@@ -139,7 +140,7 @@ class UserSession {
       try {
         await http
             .post(
-              Uri.parse("http://localhost:8080/api/logout"),
+              Uri.parse("${AppConfig.baseUrl}/api/logout"),
               headers: getAuthHeader(),
             )
             .timeout(const Duration(seconds: 2));

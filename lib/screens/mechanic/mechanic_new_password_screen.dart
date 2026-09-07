@@ -4,6 +4,7 @@ import '../../widgets/app_back_button.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'mechanic_login.dart';
+import '../../config/app_config.dart';
 
 class MechanicNewPasswordScreen extends StatefulWidget {
   final String phoneNumber;
@@ -36,7 +37,7 @@ class _MechanicNewPasswordScreenState extends State<MechanicNewPasswordScreen> {
 
     setState(() => _isLoading = true);
 
-    final url = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/forget/newPassword");
+    final url = Uri.parse("${AppConfig.baseUrl}/api/mechanic/forget/newPassword");
 
     try {
       final response = await http.post(

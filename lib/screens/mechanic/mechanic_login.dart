@@ -9,6 +9,7 @@ import 'mechanic_under_review_screen.dart';
 import '../authentication/user_session.dart';
 import '../../services/fcm_notification_service.dart';
 import '../../widgets/app_back_button.dart';
+import '../../config/app_config.dart';
 
 class MechanicLoginScreen extends StatefulWidget {
   const MechanicLoginScreen({super.key});
@@ -43,7 +44,7 @@ class _MechanicLoginScreenState extends State<MechanicLoginScreen> {
 
     try {
       final url = Uri.parse(
-        "https://mechanicapp-service-621632382478.asia-south1.run.app/api/login",
+        "${AppConfig.baseUrl}/api/login",
       );
 
       final response = await http.post(

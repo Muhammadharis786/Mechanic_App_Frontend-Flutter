@@ -8,6 +8,7 @@ import 'package:stomp_dart_client/stomp_dart_client.dart';
 
 import '../screens/authentication/user_session.dart';
 import 'active_service_request_tracking.dart';
+import '../config/app_config.dart';
 
 class MechanicLiveLocationService {
   MechanicLiveLocationService._();
@@ -15,8 +16,7 @@ class MechanicLiveLocationService {
   static final MechanicLiveLocationService instance =
       MechanicLiveLocationService._();
 
-  static const String _socketUrl =
-      'wss://mechanicapp-service-621632382478.asia-south1.run.app/ws-notifications/websocket';
+  static String get _socketUrl => AppConfig.webSocketUrl;
 
   StompClient? _client;
   StreamSubscription<Position>? _positionSub;

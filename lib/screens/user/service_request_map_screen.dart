@@ -14,12 +14,14 @@ import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../services/active_service_request_tracking.dart';
 import '../authentication/user_session.dart';
+import '../../utils/distance_formatter.dart';
 import '../../utils/map_marker_icon.dart';
 import '../../utils/smooth_route_tracker.dart';
 import '../../widgets/service_charges_price_badge.dart';
 import '../homescreen.dart';
 import '../../utils/map_theme_helper.dart';
 import 'service_review_screen.dart';
+import '../../config/app_config.dart';
 
 const String _mapStyle = '''
 [
@@ -34,7 +36,7 @@ const String _mapStyle = '''
 ]
 ''';
 
-const String _googleApiKey = 'AIzaSyBpyZg2i30gOLUKK0furYdGDbWXe4lqpkU';
+const String _googleApiKey = AppConfig.googleMapsApiKey;
 
 class ServiceRequestMapScreen extends StatefulWidget {
   final String serviceType;
@@ -373,8 +375,9 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
   }
 
   Future<void> _pollRequestStatus(String requestId) async {
-    // ✅ CRITICAL: Check if widget is still mounted BEFORE making API call
-    if (!mounted || _cancelExitHandled || _workCompleted) {
+    // Keep polling through payment-pending so PAYMENT_DONE/COMPLETED is not missed
+    // if the WebSocket event drops. Stop only after we navigate away.
+    if (!mounted || _cancelExitHandled) {
       _statusPollTimer?.cancel();
       return;
     }
@@ -382,7 +385,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     try {
       final response = await http.get(
         Uri.parse(
-          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/tracking/$requestId',
+          '${AppConfig.baseUrl}/api/service-request/tracking/$requestId',
         ),
         headers: UserSession().getAuthHeader(),
       ).timeout(const Duration(seconds: 20)); // ✅ Increased timeout for Cloud Run
@@ -602,7 +605,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       "locationName": _locationLabel,
     };
 
-    final String baseUrl = "https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request";
+    final String baseUrl = "${AppConfig.baseUrl}/api/service-request";
     final String url = (widget.selectedMechanicId != null) 
         ? "$baseUrl/create-for-mechanic/${widget.selectedMechanicId}"
         : "$baseUrl/create";
@@ -703,7 +706,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     _requestClient = StompClient(
       config: StompConfig(
         url:
-            'wss://mechanicapp-service-621632382478.asia-south1.run.app/ws-notifications/websocket',
+            '${AppConfig.webSocketUrl}',
         stompConnectHeaders: UserSession().getAuthHeader(),
         webSocketConnectHeaders: UserSession().getAuthHeader(),
         onConnect: (_) {
@@ -764,7 +767,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     try {
       final response = await http.get(
         Uri.parse(
-          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/tracking/$requestId',
+          '${AppConfig.baseUrl}/api/service-request/tracking/$requestId',
         ),
         headers: UserSession().getAuthHeader(),
       ).timeout(const Duration(seconds: 20)); // ✅ Increased from 8s to 20s (Cloud Run cold start)
@@ -1056,7 +1059,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     try {
       final response = await http.get(
         Uri.parse(
-          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/user/cancel/$_activeRequestId',
+          '${AppConfig.baseUrl}/api/service-request/user/cancel/$_activeRequestId',
         ),
         headers: UserSession().getAuthHeader(),
       ).timeout(const Duration(seconds: 10));
@@ -1256,7 +1259,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     try {
       final response = await http.get(
         Uri.parse(
-          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/tracking/$requestId',
+          '${AppConfig.baseUrl}/api/service-request/tracking/$requestId',
         ),
         headers: UserSession().getAuthHeader(),
       );
@@ -1411,10 +1414,23 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
         _acceptedRouteTracker.reset(position);
       }
       _acceptedBearing = 0;
-      _acceptedDistanceText = distance == null
-          ? data['distance']?.toString()
-          : '${distance.toStringAsFixed(1)} km';
-      _acceptedEta = eta;
+      final etaText = (eta == null ||
+              eta.trim().isEmpty ||
+              eta.toLowerCase() == 'null')
+          ? null
+          : eta.trim();
+      if (distance != null) {
+        _acceptedDistanceText =
+            DistanceFormatter.formatKilometers(distance);
+      } else if (data['distance'] != null) {
+        _acceptedDistanceText =
+            DistanceFormatter.formatKilometers(data['distance']);
+      } else if (position != null) {
+        _acceptedDistanceText = DistanceFormatter.formatMeters(
+          _distanceMeters(_markerPos, position),
+        );
+      }
+      _acceptedEta = etaText;
       if (position != null) {
         _mechanicMarkers = {
           Marker(
@@ -1441,8 +1457,45 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     _connectAcceptedLiveLocation(requestId);
     _startAcceptedLocationPolling(requestId);
     _fetchAcceptedRoute(force: true);
+    unawaited(_fetchAcceptedDistanceAndEta());
     _fitAcceptedBounds();
     return true;
+  }
+
+  Future<void> _fetchAcceptedDistanceAndEta() async {
+    final origin = _acceptedMechanicPosition;
+    if (origin == null) return;
+
+    try {
+      final url =
+          'https://maps.googleapis.com/maps/api/directions/json'
+          '?origin=${origin.latitude},${origin.longitude}'
+          '&destination=${_markerPos.latitude},${_markerPos.longitude}'
+          '&key=$_googleApiKey';
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode != 200 || !mounted) return;
+
+      final data = jsonDecode(response.body);
+      if (data is! Map || data['status'] != 'OK') return;
+      final routes = data['routes'];
+      if (routes is! List || routes.isEmpty) return;
+      final legs = routes[0]['legs'];
+      if (legs is! List || legs.isEmpty) return;
+
+      final distanceText = legs[0]['distance']?['text']?.toString();
+      final durationText = legs[0]['duration']?['text']?.toString();
+
+      if (!mounted) return;
+      setState(() {
+        if (distanceText != null && distanceText.isNotEmpty) {
+          _acceptedDistanceText = distanceText;
+        }
+        if (durationText != null && durationText.isNotEmpty) {
+          _acceptedEta = durationText;
+        }
+      });
+      _saveActiveTracking();
+    } catch (_) {}
   }
 
   void _subscribeAcceptedLiveLocation(String requestId) {
@@ -1486,7 +1539,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     try {
       final response = await http.get(
         Uri.parse(
-          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/tracking/$requestId',
+          '${AppConfig.baseUrl}/api/service-request/tracking/$requestId',
         ),
         headers: UserSession().getAuthHeader(),
       );
@@ -1614,10 +1667,18 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
         if (eta != null) 'eta': eta,
       };
       if (distance != null) {
-        _acceptedDistanceText = '${distance.toStringAsFixed(1)} km';
+        _acceptedDistanceText =
+            DistanceFormatter.formatKilometers(distance);
       }
-      if (eta != null && eta.isNotEmpty) {
+      if (eta != null && eta.isNotEmpty && eta.toLowerCase() != 'null') {
         _acceptedEta = eta;
+      } else if (_acceptedMechanicPosition != null) {
+        // Keep last good ETA; fill distance from live GPS if missing
+        if (_acceptedDistanceText == null || _acceptedDistanceText == '--') {
+          _acceptedDistanceText = DistanceFormatter.formatMeters(
+            _distanceMeters(_markerPos, target),
+          );
+        }
       }
     });
 
@@ -1818,7 +1879,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       };
 
       final res = await http.post(
-        Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/selectedmechanic/map/$requestId"),
+        Uri.parse("${AppConfig.baseUrl}/api/service-request/selectedmechanic/map/$requestId"),
         headers: {
           'Content-Type': 'application/json',
           ...UserSession().getAuthHeader(),
@@ -1896,7 +1957,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       };
 
       final res = await http.post(
-        Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/nearbymechanic"),
+        Uri.parse("${AppConfig.baseUrl}/api/service-request/nearbymechanic"),
         headers: {
           'Content-Type': 'application/json',
           ...UserSession().getAuthHeader(),
@@ -1972,7 +2033,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     _trackingClient = StompClient(
       config: StompConfig(
         url:
-            'wss://mechanicapp-service-621632382478.asia-south1.run.app/ws-notifications/websocket',
+            '${AppConfig.webSocketUrl}',
         stompConnectHeaders: UserSession().getAuthHeader(),
         webSocketConnectHeaders: UserSession().getAuthHeader(),
         onConnect: (_) {
@@ -2778,7 +2839,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
     try {
       final response = await http.post(
         Uri.parse(
-          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/paynow/$_activeRequestId',
+          '${AppConfig.baseUrl}/api/service-request/paynow/$_activeRequestId',
         ),
         headers: {
           'Content-Type': 'application/json',
@@ -2800,6 +2861,11 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
           });
         });
         _saveActiveTracking();
+        // Ensure HTTP fallback keeps running while waiting for mechanic confirm
+        final requestId = _activeRequestId;
+        if (requestId != null && requestId.isNotEmpty) {
+          _startStatusPolling(requestId);
+        }
         await _showCashHandoverSheet();
         return;
       }
@@ -2945,7 +3011,7 @@ class _ServiceRequestMapScreenState extends State<ServiceRequestMapScreen>
       final requestId = int.tryParse(_activeRequestId!) ?? _activeRequestId;
       final response = await http.post(
         Uri.parse(
-          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/approve-payment-request',
+          '${AppConfig.baseUrl}/api/service-request/approve-payment-request',
         ),
         headers: {
           'Content-Type': 'application/json',

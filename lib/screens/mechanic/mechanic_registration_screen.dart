@@ -13,6 +13,7 @@ import 'dart:convert';
 import 'mechanic_login.dart'; // Import MechanicLoginScreen
 import 'mechanic_map_selection_screen.dart';
 import '../../widgets/app_back_button.dart';
+import '../../config/app_config.dart';
 
 class MechanicRegistrationScreen extends StatefulWidget {
   final String phoneNumber;
@@ -79,7 +80,7 @@ class _MechanicRegistrationScreenState
     setState(() => isSubmitting = true);
     
     try {
-      var uri = Uri.parse("https://mechanicapp-service-621632382478.asia-south1.run.app/api/mechanic/register");
+      var uri = Uri.parse("${AppConfig.baseUrl}/api/mechanic/register");
       var request = http.MultipartRequest("POST", uri);
 
       // 1. Create JSON Data

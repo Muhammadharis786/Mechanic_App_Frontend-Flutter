@@ -6,6 +6,7 @@ import '../../utils/map_theme_helper.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
+import '../../config/app_config.dart';
 
 // ────────────────────────────────────────────────────────────────
 //  Simple greyscale map style – no rivers, trees, or POI colors
@@ -23,7 +24,7 @@ const String _mapStyle = '''
 ]
 ''';
 
-const String _googleApiKey = 'AIzaSyBpyZg2i30gOLUKK0furYdGDbWXe4lqpkU';
+const String _googleApiKey = AppConfig.googleMapsApiKey;
 
 class MechanicMapSelectionScreen extends StatefulWidget {
   final double? initialLat;

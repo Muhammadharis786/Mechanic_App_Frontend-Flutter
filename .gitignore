@@ -43,3 +43,12 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Secrets / local environment — NEVER commit real API keys.
+# Template files (*.example) ARE committed, the real ones are not.
+.env
+web/env.js
+ios/Runner/Secrets.plist
+
+# VS Code run configs can contain keys passed via --dart-define
+.vscode/launch.json

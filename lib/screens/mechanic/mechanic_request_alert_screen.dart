@@ -14,6 +14,7 @@ import 'mechanic_usermap.dart';
 import 'mechanic_dashboard.dart';
 import '../authentication/user_session.dart';
 import '../../utils/map_theme_helper.dart';
+import '../../config/app_config.dart';
 
 const String _mapStyle = '''
 [
@@ -52,7 +53,7 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
   bool _isClosingForCancellation = false;
 
   final Color primaryColor = const Color(0xFFFB3300);
-  final String _googleApiKey = 'AIzaSyBpyZg2i30gOLUKK0furYdGDbWXe4lqpkU';
+  final String _googleApiKey = AppConfig.googleMapsApiKey;
   String _calculatedDistance = '--';
   String _calculatedEta = '--';
 
@@ -330,7 +331,7 @@ class _MechanicRequestAlertScreenState extends State<MechanicRequestAlertScreen>
     try {
       final response = await http.post(
         Uri.parse(
-          'https://mechanicapp-service-621632382478.asia-south1.run.app/api/service-request/accept/$requestId',
+          '${AppConfig.baseUrl}/api/service-request/accept/$requestId',
         ),
         headers: {
           ...UserSession().getAuthHeader(),

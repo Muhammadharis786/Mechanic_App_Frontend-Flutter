@@ -1,5 +1,7 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'config/app_config.dart';
 import 'screens/s_screen.dart';
 import 'firebase_options.dart';
 import 'services/fcm_notification_service.dart';
@@ -19,6 +21,11 @@ void main() async {
   await languageNotifier.load();
   await FcmNotificationService.instance.initialize();
   ConnectivityController().init();
+  // Keep the native Android presence service in sync with the active
+  // backend (cloud or local) — it reads these keys on service restarts.
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString('base_url', AppConfig.baseUrl);
+  await prefs.setString('ws_url', AppConfig.webSocketUrl);
   runApp(const MechConnectApp());
 }
 

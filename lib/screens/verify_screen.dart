@@ -9,6 +9,7 @@ import 'r_screen.dart';
 import 'enable_loc.dart';
 import '../services/fcm_notification_service.dart';
 import '../widgets/app_back_button.dart';
+import '../config/app_config.dart';
 
 class VerifyScreen extends StatefulWidget {
   const VerifyScreen({super.key});
@@ -60,7 +61,7 @@ class _VerifyScreenState extends State<VerifyScreen> {
     final password = _passwordController.text.trim();
 
     final url = Uri.parse(
-      "https://mechanicapp-service-621632382478.asia-south1.run.app/api/login",
+      "${AppConfig.baseUrl}/api/login",
     );
 
     try {
@@ -118,7 +119,7 @@ class _VerifyScreenState extends State<VerifyScreen> {
     setState(() => isForgotLoading = true);
 
     final url = Uri.parse(
-      "https://mechanicapp-service-621632382478.asia-south1.run.app/api/user/forgot",
+      "${AppConfig.baseUrl}/api/user/forgot",
     );
 
     try {

@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import '../authentication/user_session.dart';
 import '../../widgets/app_back_button.dart';
+import '../../config/app_config.dart';
 
 class UserNotificationScreen extends StatefulWidget {
   const UserNotificationScreen({super.key});
@@ -14,8 +15,7 @@ class UserNotificationScreen extends StatefulWidget {
 
 class _UserNotificationScreenState extends State<UserNotificationScreen> {
   final Color primaryColor = const Color(0xFFFB3300);
-  static const String _baseUrl =
-      'https://mechanicapp-service-621632382478.asia-south1.run.app';
+  static String get _baseUrl => AppConfig.baseUrl;
 
   List<dynamic> _notifications = [];
   bool _isLoading = true;

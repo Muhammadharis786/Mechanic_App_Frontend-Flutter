@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:stomp_dart_client/stomp_dart_client.dart';
 import '../screens/authentication/user_session.dart';
+import '../config/app_config.dart';
 
 /// WebSocket service for user-side real-time appointment notifications.
 /// Listens to appointment accept, reject, on-the-way, and cancel topics.
@@ -16,7 +17,7 @@ class UserWebSocketService {
   void connect(int userId) {
     client = StompClient(
       config: StompConfig(
-        url: 'wss://mechanicapp-service-621632382478.asia-south1.run.app/ws-notifications/websocket',
+        url: AppConfig.webSocketUrl,
         stompConnectHeaders: UserSession().getAuthHeader(),
         webSocketConnectHeaders: UserSession().getAuthHeader(),
         onConnect: (StompFrame frame) {
